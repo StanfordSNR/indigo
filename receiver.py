@@ -14,10 +14,10 @@ def main():
 
     ack = {}
     while True:
-        data, addr = s.recvfrom(1500)
-        data_loaded = json.loads(data)
+        raw_data, addr = s.recvfrom(1500)
+        data = json.loads(raw_data)
 
-        ack['send_ts'] = data_loaded['send_ts']
+        ack['send_ts'] = data['send_ts']
         s.sendto(json.dumps(ack), addr)
 
 
