@@ -1,18 +1,24 @@
 #!/usr/bin/env python
 
 import sys
+import json
 import socket
+from helpers import curr_ts_ms
 
 
 def main():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(('localhost', 0))
+    s.bind(('0.0.0.0', 10000))
     ip, port = s.getsockname()
-    sys.stderr.write('Listening on %s:%s\n' % (ip, port))
+    sys.stderr.write('Listening on port: %s\n' % port)
 
-    data, addr = s.recvfrom(1024)
-    sys.stderr.write('Received a message "%s" from %s:%s\n'
-                     % (data, addr[0], addr[1]))
+    ack = {}
+    while True:
+        data, addr = s.recvfrom(1500)
+        data_loaded = json.loads(data)
+
+        ack['send_ts'] = data_loaded['send_ts']
+        s.sendto(json.dumps(ack), addr)
 
 
 if __name__ == '__main__':
