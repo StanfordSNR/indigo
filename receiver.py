@@ -22,6 +22,7 @@ class Receiver(object):
             raw_data, addr = s.recvfrom(1500)
             data = json.loads(raw_data)
             ack['send_ts'] = data['send_ts']
+            ack['acked_bytes'] = len(raw_data)
             s.sendto(json.dumps(ack), addr)
 
     def cleanup(self):
