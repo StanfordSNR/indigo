@@ -3,33 +3,43 @@
 import sys
 import json
 import socket
-from helpers import curr_ts_ms
+import argparse
 
 
 class Receiver(object):
-    def __init__(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.bind(('0.0.0.0', 10000))
-        ip, port = s.getsockname()
-        sys.stderr.write('Listening on port: %s\n' % port)
-        self.s = s
+    def __init__(self, port=0):
+        self.port = port
 
-    def start(self):
+    def loop(self):
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s = self.s
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(('0.0.0.0', self.port))
+        sys.stderr.write('Listening on port: %s\n' % self.port)
+
         ack = {}
-
         while True:
-            raw_data, addr = self.s.recvfrom(1500)
+            raw_data, addr = s.recvfrom(1500)
             data = json.loads(raw_data)
             ack['send_ts'] = data['send_ts']
-            self.s.sendto(json.dumps(ack), addr)
+            s.sendto(json.dumps(ack), addr)
 
-    def stop(self):
+    def cleanup(self):
         self.s.close()
 
 
 def main():
-    receiver = Receiver()
-    receiver.start()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('port', type=int)
+    args = parser.parse_args()
+
+    receiver = Receiver(args.port)
+    try:
+        receiver.loop()
+    except:
+        pass
+    finally:
+        receiver.cleanup()
 
 
 if __name__ == '__main__':
