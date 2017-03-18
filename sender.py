@@ -6,24 +6,19 @@ import json
 import socket
 import argparse
 import numpy as np
-from helpers import curr_ts_ms
+from helpers import curr_ts_ms, test_sender_rl_params
 
 
 class Sender(object):
-    def __init__(self,
-                 ip,
-                 port,
-                 state_dim,
-                 action_num,
-                 sample_action,  # sample_action(state) is a function
-                 max_steps,
-                 delay_weight):
+    def __init__(self, ip, port):
         self.dest_addr = (ip, port)
-        self.state_dim = state_dim
-        self.action_num = action_num
-        self.sample_action = sample_action
-        self.max_steps = max_steps
-        self.delay_weight = delay_weight
+
+    def init_rl_params(self, rl_params):
+        self.state_dim = rl_params['state_dim']
+        self.action_num = rl_params['action_num']
+        self.sample_action = rl_params['sample_action']
+        self.max_steps = rl_params['max_steps']
+        self.delay_weight = rl_params['delay_weight']
 
         self.rtts = []
         self.state_buf = []
@@ -85,11 +80,9 @@ def main():
     parser.add_argument('port', type=int)
     args = parser.parse_args()
 
-    def test_sample_action(state):
-        time.sleep(1)
-        return 1
+    sender = Sender(args.ip, args.port)
+    sender.init_rl_params(test_sender_rl_params())
 
-    sender = Sender(args.ip, args.port, 10, 3, test_sample_action, 10, 0.8)
     try:
         sender.loop()
     except:
