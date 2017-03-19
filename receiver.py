@@ -10,7 +10,7 @@ class Receiver(object):
     def __init__(self, port=0):
         self.port = port
 
-    def loop(self):
+    def run(self):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s = self.s
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -36,7 +36,7 @@ def main():
 
     receiver = Receiver(args.port)
     try:
-        receiver.loop()
+        receiver.run()
     except:
         pass
     finally:

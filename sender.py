@@ -37,7 +37,7 @@ class Sender(object):
         self.reward = np.log(avg_throughput) - (self.delay_weight *
                                                 np.log(delay_percentile))
 
-    def loop(self):
+    def run(self):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s = self.s
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -84,7 +84,7 @@ def main():
     sender.init_rl_params(test_sender_rl_params())
 
     try:
-        sender.loop()
+        sender.run()
     except:
         pass
     finally:
