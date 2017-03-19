@@ -35,6 +35,7 @@ def main():
     args = parser.parse_args()
 
     receiver = Receiver(args.port)
+
     try:
         receiver.run()
     except:

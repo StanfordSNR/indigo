@@ -6,16 +6,15 @@ import json
 import socket
 import argparse
 import numpy as np
-from helpers import curr_ts_ms, test_sender_rl_params
+from helpers import curr_ts_ms
 
 
 class Sender(object):
     def __init__(self, ip, port):
         self.dest_addr = (ip, port)
 
-    def init_rl_params(self, rl_params):
+    def init_rl_params(self, **rl_params):
         self.state_dim = rl_params['state_dim']
-        self.action_num = rl_params['action_num']
         self.sample_action = rl_params['sample_action']
         self.max_steps = rl_params['max_steps']
         self.delay_weight = rl_params['delay_weight']
@@ -81,7 +80,17 @@ def main():
     args = parser.parse_args()
 
     sender = Sender(args.ip, args.port)
-    sender.init_rl_params(test_sender_rl_params())
+
+    # for test purposes
+    def test_sample_action(state):
+        time.sleep(1)
+        return 1
+
+    sender.init_rl_params(
+        state_dim=10,
+        max_steps=10,
+        delay_weight=0.8,
+        sample_action=test_sample_action)
 
     try:
         sender.run()
