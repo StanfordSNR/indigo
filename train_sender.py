@@ -29,12 +29,8 @@ class Trainer(object):
                 delay_weight=0.8,
                 sample_action=self.learner.sample_action)
 
-            try:
-                sender.run()
-            except:
-                break
-            finally:
-                sender.cleanup()
+            sender.run()
+            sender.cleanup()
 
             experience = sender.get_experience()
             self.learner.store_experience(experience)
