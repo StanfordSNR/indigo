@@ -30,11 +30,12 @@ class Trainer(object):
                 sample_action=self.learner.sample_action)
 
             sender.run()
-            sender.cleanup()
 
             experience = sender.get_experience()
             self.learner.store_experience(experience)
             self.learner.update_model()
+
+            sender.cleanup()
 
             sys.stderr.write('Episode %s\n' % episode_i)
             sys.stderr.write('Final reward: %s\n' % experience[2])
