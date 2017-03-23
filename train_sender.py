@@ -12,7 +12,7 @@ class Trainer(object):
         self.port = port
 
         self.state_dim = 10
-        self.action_cnt = 3
+        self.action_cnt = 2
         self.max_episodes = 5
         self.max_steps = 5
 

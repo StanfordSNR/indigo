@@ -79,15 +79,12 @@ class Reinforce(object):
         # epsilon-greedy exploration
         if np.random.random() < self.explore_prob:
             action = np.random.randint(0, self.action_cnt)
-            print 'random action', action
         else:
             state = np.array([state])
             action = self.session.run(self.predicted_action,
                                       {self.state: state})[0][0]
-            print 'predicted action', action
 
-        time.sleep(1)
-        return 1
+        return action + 1
 
     def store_experience(self, experience):
         self.state_buf, self.action_buf, self.reward = experience
