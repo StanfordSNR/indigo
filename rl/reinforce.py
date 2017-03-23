@@ -11,9 +11,9 @@ class Reinforce(object):
 
     def build_tf_graph(self):
         self.session = tf.Session()
-        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
         self.build_policy_network()
         self.build_loss()
+        self.build_gradients()
 
         # initialize variables
         self.session.run(tf.global_variables_initializer())
@@ -32,7 +32,7 @@ class Reinforce(object):
                              initializer=tf.constant_initializer(0.0))
         self.action_scores = tf.matmul(h1, W2) + b2
         self.predicted_action = tf.multinomial(self.action_scores, 1)
-        self.network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+        self.network_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
 
     def build_loss(self):
         self.taken_action = tf.placeholder(tf.int32, (None,))
@@ -49,6 +49,20 @@ class Reinforce(object):
         self.reg_loss *= self.reg_penalty
 
         self.loss = self.ce_loss + self.reg_loss
+
+    def build_gradients(self):
+        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
+
+        # create notes to compute gradients update used in REINFORCE
+        self.gradients = self.optimizer.compute_gradients(self.loss)
+
+        self.discounted_reward = tf.placeholder(tf.float32, (None,))
+        for i, (grad, var) in enumerate(self.gradients):
+            assert grad is not None
+            self.gradients[i] = (self.discounted_reward * grad, var)
+
+        # create notes to apply gradients
+        self.train = self.optimizer.apply_gradients(self.gradients)
 
     def sample_action(self, state):
         state = np.array([state])
