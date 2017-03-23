@@ -7,6 +7,8 @@ class Reinforce(object):
     def __init__(self, **params):
         self.state_dim = params['state_dim']
         self.action_cnt = params['action_cnt']
+        self.explore_prob = 0.5
+
         self.build_tf_graph()
 
     def build_tf_graph(self):
@@ -65,9 +67,14 @@ class Reinforce(object):
         self.train = self.optimizer.apply_gradients(self.gradients)
 
     def sample_action(self, state):
-        state = np.array([state])
-        action = self.session.run(self.predicted_action, {self.state: state})
-        print 'Will be taking action %s in the future' % action[0][0]
+        if np.random.random() < self.explore_prob:
+            action = np.random.randint(0, self.action_cnt)
+            print 'random action', action
+        else:
+            state = np.array([state])
+            action = self.session.run(self.predicted_action,
+                                      {self.state: state})[0][0]
+            print 'predicted action', action
 
         time.sleep(1)
         return 1
