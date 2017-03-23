@@ -7,8 +7,14 @@ class Reinforce(object):
     def __init__(self, **params):
         self.state_dim = params['state_dim']
         self.action_cnt = params['action_cnt']
-        self.explore_prob = 0.5
 
+        # epsilon-greedy exploration probability
+        self.explore_prob = 0.5
+        self.init_explore_prob = 0.5
+        self.final_explore_prob = 0.0
+        self.anneal_steps = 10000
+
+        self.train_iter = 0
         self.build_tf_graph()
 
     def build_tf_graph(self):
@@ -45,7 +51,7 @@ class Reinforce(object):
         self.ce_loss = tf.reduce_mean(self.ce_loss)
 
         self.reg_penalty = 0.001
-        self.reg_loss = 0
+        self.reg_loss = 0.0
         for x in self.network_vars:
             self.reg_loss += tf.nn.l2_loss(x)
         self.reg_loss *= self.reg_penalty
@@ -67,6 +73,7 @@ class Reinforce(object):
         self.train = self.optimizer.apply_gradients(self.gradients)
 
     def sample_action(self, state):
+        # epsilon-greedy exploration
         if np.random.random() < self.explore_prob:
             action = np.random.randint(0, self.action_cnt)
             print 'random action', action
@@ -86,5 +93,13 @@ class Reinforce(object):
         self.compute_discounted_rewards()
         return
 
+    def anneal_exploration(self):
+        ratio = float(self.anneal_steps - self.train_iter) / self.anneal_steps
+        ratio = max(ratio, 0)
+        self.explore_prob = self.final_explore_prob + ratio * (
+                            self.init_explore_prob - self.final_explore_prob)
+
     def update_model(self):
+        self.anneal_exploration()
+        self.train_iter += 1
         return
