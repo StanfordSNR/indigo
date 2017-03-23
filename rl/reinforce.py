@@ -13,6 +13,7 @@ class Reinforce(object):
         self.session = tf.Session()
         self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
         self.build_policy_network()
+        self.build_loss()
 
         # initialize variables
         self.session.run(tf.global_variables_initializer())
@@ -31,6 +32,23 @@ class Reinforce(object):
                              initializer=tf.constant_initializer(0.0))
         self.action_scores = tf.matmul(h1, W2) + b2
         self.predicted_action = tf.multinomial(self.action_scores, 1)
+        self.network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+
+    def build_loss(self):
+        self.taken_action = tf.placeholder(tf.int32, (None,))
+
+        # create nodes to compute cross entropy and regularization loss
+        self.ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+            labels=self.taken_action, logits=self.action_scores)
+        self.ce_loss = tf.reduce_mean(self.ce_loss)
+
+        self.reg_penalty = 0.001
+        self.reg_loss = 0
+        for x in self.network_vars:
+            self.reg_loss += tf.nn.l2_loss(x)
+        self.reg_loss *= self.reg_penalty
+
+        self.loss = self.ce_loss + self.reg_loss
 
     def sample_action(self, state):
         state = np.array([state])
