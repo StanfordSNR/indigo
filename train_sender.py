@@ -13,8 +13,8 @@ class Trainer(object):
 
         self.state_dim = 10
         self.action_cnt = 3
-        self.max_episodes = 10
-        self.max_steps = 10
+        self.max_episodes = 5
+        self.max_steps = 5
 
         if algorithm == 'reinforce':
             self.learner = Reinforce(state_dim=self.state_dim,

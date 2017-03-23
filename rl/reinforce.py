@@ -15,6 +15,9 @@ class Reinforce(object):
         self.anneal_steps = 10000
 
         self.train_iter = 0
+
+        self.reward_discount = 0.99
+
         self.build_tf_graph()
 
     def build_tf_graph(self):
@@ -86,12 +89,9 @@ class Reinforce(object):
         time.sleep(1)
         return 1
 
-    def compute_discounted_rewards(self):
-        return
-
     def store_experience(self, experience):
-        self.compute_discounted_rewards()
-        return
+        self.state_buf, self.action_buf, self.reward = experience
+        assert len(self.state_buf) == len(self.action_buf)
 
     def anneal_exploration(self):
         ratio = float(self.anneal_steps - self.train_iter) / self.anneal_steps
@@ -100,6 +100,19 @@ class Reinforce(object):
                             self.init_explore_prob - self.final_explore_prob)
 
     def update_model(self):
+        T = len(self.state_buf)
+
+        for t in xrange(T-1):
+            state = np.array(self.state_buf[t])[np.newaxis, :]
+            action = np.array([self.action_buf[t]])
+            reward_discount = pow(self.reward_discount, T-1-t)
+            discounted_reward = np.array([reward_discount * self.reward])
+
+            self.session.run(self.train, {
+                self.state: state,
+                self.taken_action: action,
+                self.discounted_reward: discounted_reward
+            })
+
         self.anneal_exploration()
         self.train_iter += 1
-        return
