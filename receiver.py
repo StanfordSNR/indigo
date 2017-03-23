@@ -38,8 +38,8 @@ def main():
 
     try:
         receiver.run()
-    except:
-        pass
+    except KeyboardInterrupt:
+        sys.exit(0)
     finally:
         receiver.cleanup()
 

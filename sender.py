@@ -84,6 +84,7 @@ def main():
     # for test purposes
     def test_sample_action(state):
         time.sleep(1)
+        sys.stderr.write('Test: sampling action and sending 1 packet\n')
         return 1
 
     sender.init_rl_params(
@@ -94,8 +95,8 @@ def main():
 
     try:
         sender.run()
-    except:
-        pass
+    except KeyboardInterrupt:
+        sys.exit(0)
     finally:
         sender.cleanup()
 

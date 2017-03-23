@@ -22,6 +22,7 @@ class Trainer(object):
 
     def run(self):
         for episode_i in xrange(1, self.max_episodes + 1):
+            sys.stderr.write('Episode %s is running...\n' % episode_i)
             sender = Sender(self.ip, self.port)
             sender.init_rl_params(
                 state_dim=self.state_dim,
@@ -29,16 +30,18 @@ class Trainer(object):
                 delay_weight=0.8,
                 sample_action=self.learner.sample_action)
 
-            sender.run()
+            try:
+                sender.run()
+            except KeyboardInterrupt:
+                sys.exit(0)
+            finally:
+                sender.cleanup()
 
             experience = sender.get_experience()
             self.learner.store_experience(experience)
             self.learner.update_model()
 
-            sender.cleanup()
-
-            sys.stderr.write('Episode %s\n' % episode_i)
-            sys.stderr.write('Final reward: %s\n' % experience[2])
+            sys.stderr.write('Reward: %s\n\n' % experience[2])
 
 
 def main():
