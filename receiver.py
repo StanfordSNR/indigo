@@ -19,10 +19,10 @@ class Receiver(object):
 
         ack = {}
         while True:
-            raw_data, addr = s.recvfrom(1500)
-            data = json.loads(raw_data)
+            serialized_data, addr = s.recvfrom(1500)
+            data = json.loads(serialized_data)
             ack['send_ts'] = data['send_ts']
-            ack['acked_bytes'] = len(raw_data)
+            ack['acked_bytes'] = len(serialized_data)
             s.sendto(json.dumps(ack), addr)
 
     def cleanup(self):
