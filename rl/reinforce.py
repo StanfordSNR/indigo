@@ -1,3 +1,4 @@
+import sys
 import time
 import tensorflow as tf
 import numpy as np
@@ -12,7 +13,7 @@ class Reinforce(object):
         self.explore_prob = 0.5
         self.init_explore_prob = 0.5
         self.final_explore_prob = 0.0
-        self.anneal_steps = 10000
+        self.anneal_steps = 30
 
         self.train_iter = 0
 
@@ -97,12 +98,14 @@ class Reinforce(object):
                             self.init_explore_prob - self.final_explore_prob)
 
     def update_model(self):
+        sys.stderr.write('Updating model...\n')
         T = len(self.state_buf)
 
-        for t in xrange(T-1):
+        for t in xrange(T - 1):
             state = np.array(self.state_buf[t])[np.newaxis, :]
-            action = np.array([self.action_buf[t]])
-            reward_discount = pow(self.reward_discount, T-1-t)
+            action = np.array([self.action_buf[t]]) - 1
+
+            reward_discount = pow(self.reward_discount, T - 1 - t)
             discounted_reward = np.array([reward_discount * self.reward])
 
             self.session.run(self.train, {

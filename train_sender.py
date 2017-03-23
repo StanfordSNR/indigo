@@ -11,10 +11,10 @@ class Trainer(object):
         self.ip = ip
         self.port = port
 
-        self.state_dim = 10
+        self.state_dim = 5000
         self.action_cnt = 2
-        self.max_episodes = 5
-        self.max_steps = 5
+        self.max_episodes = 300
+        self.max_steps = 10000
 
         if algorithm == 'reinforce':
             self.learner = Reinforce(state_dim=self.state_dim,
@@ -22,12 +22,13 @@ class Trainer(object):
 
     def run(self):
         for episode_i in xrange(1, self.max_episodes + 1):
-            sys.stderr.write('Episode %s is running...\n' % episode_i)
+            sys.stderr.write('\nEpisode %s is running...\n' % episode_i)
             sender = Sender(self.ip, self.port)
             sender.init_rl_params(
                 state_dim=self.state_dim,
                 max_steps=self.max_steps,
-                delay_weight=0.8,
+                delay_weight=1.0,
+                loss_weight=10.0,
                 sample_action=self.learner.sample_action)
 
             try:
@@ -38,10 +39,10 @@ class Trainer(object):
                 sender.cleanup()
 
             experience = sender.get_experience()
+            sys.stderr.write('Reward: %s\n' % experience[2])
+
             self.learner.store_experience(experience)
             self.learner.update_model()
-
-            sys.stderr.write('Reward: %s\n\n' % experience[2])
 
 
 def main():
