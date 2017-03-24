@@ -18,13 +18,11 @@ class Sender(object):
         self.sample_action = rl_params['sample_action']
         self.max_steps = rl_params['max_steps']
         self.delay_weight = rl_params['delay_weight']
-        self.loss_weight = rl_params['loss_weight']
 
         self.rtts = []
         self.state_buf = []
         self.action_buf = []
 
-        self.sent_bytes = 0
         self.acked_bytes = 0
 
     def get_curr_state(self):
@@ -34,19 +32,15 @@ class Sender(object):
             return self.rtts[-self.state_dim:]
 
     def compute_reward(self):
-        avg_throughput = float(self.acked_bytes * 8) / self.duration
+        avg_throughput = float(self.acked_bytes * 8) * 0.001 / self.duration
         delay_percentile = float(np.percentile(self.rtts, 95))
-        loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
-        sys.stderr.write('Average throughput: %s Mbps\n' %
-                         (0.001 * avg_throughput))
+        sys.stderr.write('Average throughput: %s Mbps\n' % avg_throughput)
         sys.stderr.write('95th percentile RTT: %s ms\n' % delay_percentile)
-        sys.stderr.write('Loss rate: %s\n' % loss_rate)
 
         self.reward = np.log(max(avg_throughput, 1e-5))
         self.reward -= self.delay_weight * max(
-                       np.log(max(delay_percentile, 1e-5)), 0)
-        self.reward += self.loss_weight * np.log(max(1 - loss_rate, 1e-50))
+                       np.log(max(0.02 * delay_percentile, 1e-5)), 0)
 
     def run(self):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -58,18 +52,23 @@ class Sender(object):
 
         first_send_ts = sys.maxint
         last_send_ts = 0
+
+        sys.stderr.write('[')
+        progress = 0
         for t in xrange(self.max_steps):
+            if float(t) / self.max_steps > progress:
+                sys.stderr.write('-')
+                progress += 0.1
+
             state = self.get_curr_state()
             self.state_buf.append(state)
 
             action = self.sample_action(state)
             self.action_buf.append(action)
 
-            # send #action datagrams
             for i in xrange(action):
                 data['send_ts'] = curr_ts_ms()
                 serialized_data = json.dumps(data)
-                self.sent_bytes += len(serialized_data)
                 s.sendto(serialized_data, self.dest_addr)
 
             raw_ack = s.recvfrom(1500)[0]
@@ -82,6 +81,7 @@ class Sender(object):
             first_send_ts = min(send_ts, first_send_ts)
             last_send_ts = max(send_ts, last_send_ts)
 
+        sys.stderr.write(']\n')
         self.duration = last_send_ts - first_send_ts
         self.compute_reward()
 
@@ -110,7 +110,6 @@ def main():
         state_dim=10,
         max_steps=10,
         delay_weight=0.8,
-        loss_weight=0.8,
         sample_action=test_sample_action)
 
     try:

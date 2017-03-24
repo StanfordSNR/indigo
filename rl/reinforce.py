@@ -13,10 +13,10 @@ class Reinforce(object):
         self.explore_prob = 0.5
         self.init_explore_prob = 0.5
         self.final_explore_prob = 0.0
-        self.anneal_steps = 30
+        self.anneal_steps = 1000
 
         self.train_iter = 0
-        self.reward_discount = 0.99
+        self.reward_discount = 0.999
 
         # reward history for normalization
         self.reward_len = 0
@@ -36,14 +36,14 @@ class Reinforce(object):
 
     def build_policy_network(self):
         self.state = tf.placeholder(tf.float32, [None, self.state_dim])
-        W1 = tf.get_variable('W1', [self.state_dim, 5],
+        W1 = tf.get_variable('W1', [self.state_dim, 20],
                              initializer=tf.random_normal_initializer())
-        b1 = tf.get_variable('b1', [5],
+        b1 = tf.get_variable('b1', [20],
                              initializer=tf.constant_initializer(0.0))
         h1 = tf.nn.relu(tf.matmul(self.state, W1) + b1)
 
-        W2 = tf.get_variable('W2', [5, self.action_cnt],
-                             initializer=tf.random_normal_initializer())
+        W2 = tf.get_variable('W2', [20, self.action_cnt], initializer=
+                             tf.random_normal_initializer(stddev=0.1))
         b2 = tf.get_variable('b2', [self.action_cnt],
                              initializer=tf.constant_initializer(0.0))
         self.action_scores = tf.matmul(h1, W2) + b2
@@ -66,7 +66,7 @@ class Reinforce(object):
         self.loss = ce_loss + reg_loss
 
     def build_gradients(self):
-        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.0001)
 
         # create nodes to compute gradients update used in REINFORCE
         self.gradients = self.optimizer.compute_gradients(self.loss)
@@ -74,7 +74,7 @@ class Reinforce(object):
         self.discounted_reward = tf.placeholder(tf.float32, (None,))
         for i, (grad, var) in enumerate(self.gradients):
             assert grad is not None
-            self.gradients[i] = (self.discounted_reward * grad, var)
+            self.gradients[i] = (-self.discounted_reward * grad, var)
 
         # create nodes to apply gradients
         self.train_op = self.optimizer.apply_gradients(self.gradients)

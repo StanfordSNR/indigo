@@ -13,10 +13,10 @@ class Trainer(object):
         self.ip = ip
         self.port = port
 
-        self.state_dim = 5000
+        self.state_dim = 1000
         self.action_cnt = 2
-        self.max_episodes = 300
-        self.max_steps = 10000
+        self.max_episodes = 10000
+        self.max_steps = 2000
 
         self.reward_history = deque(maxlen=100)
         if algorithm == 'reinforce':
@@ -30,8 +30,7 @@ class Trainer(object):
             sender.init_rl_params(
                 state_dim=self.state_dim,
                 max_steps=self.max_steps,
-                delay_weight=1.0,
-                loss_weight=10.0,
+                delay_weight=0.5,
                 sample_action=self.learner.sample_action)
 
             try:
@@ -46,8 +45,8 @@ class Trainer(object):
 
             reward = experience[2]
             self.reward_history.append(reward)
-            sys.stderr.write('Reward for this episode: %s\n' % reward)
-            sys.stderr.write('Average reward for the last 100 episodes: %s\n'
+            sys.stderr.write('Reward for this episode: %.3f\n' % reward)
+            sys.stderr.write('Average reward for the last 100 episodes: %.3f\n'
                              % np.mean(self.reward_history))
 
 
