@@ -43,9 +43,10 @@ class Sender(object):
         sys.stderr.write('95th percentile RTT: %s ms\n' % delay_percentile)
         sys.stderr.write('Loss rate: %s\n' % loss_rate)
 
-        self.reward = np.log(avg_throughput)
-        self.reward -= self.delay_weight * max(np.log(delay_percentile), 0)
-        self.reward += self.loss_weight * np.log(1 - loss_rate)
+        self.reward = np.log(max(avg_throughput, 1e-5))
+        self.reward -= self.delay_weight * max(
+                       np.log(max(delay_percentile, 1e-5)), 0)
+        self.reward += self.loss_weight * np.log(max(1 - loss_rate, 1e-50))
 
     def run(self):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
