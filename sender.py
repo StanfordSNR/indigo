@@ -36,7 +36,7 @@ class Sender(object):
     def compute_reward(self):
         avg_throughput = float(self.acked_bytes * 8) / self.duration
         delay_percentile = float(np.percentile(self.rtts, 95))
-        loss_rate = float(self.acked_bytes) / self.sent_bytes
+        loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
         sys.stderr.write('Average throughput: %s Mbps\n' %
                          (0.001 * avg_throughput))
