@@ -18,6 +18,11 @@ class Reinforce(object):
         self.train_iter = 0
         self.reward_discount = 0.99
 
+        # reward history for normalization
+        self.reward_len = 0
+        self.reward_mean = 0.0
+        self.reward_var = 1.0
+
         self.build_tf_graph()
 
     def build_tf_graph(self):
@@ -79,7 +84,7 @@ class Reinforce(object):
         if np.random.random() < self.explore_prob:
             action = np.random.randint(0, self.action_cnt)
         else:
-            state = np.array(state)[np.newaxis, :]
+            state = np.array([state])
             action = self.session.run(self.predicted_action,
                                       {self.state: state})[0][0]
 
@@ -96,16 +101,31 @@ class Reinforce(object):
 
         state_buf, action_buf, final_reward = experience
         assert len(state_buf) == len(action_buf)
-
         T = len(state_buf)
+
         # compute discounted rewards
         reward_buf = np.zeros(T)
         reward_buf[T - 1] = final_reward
         for t in reversed(xrange(T - 1)):
             reward_buf[t] = self.reward_discount * reward_buf[t + 1]
 
+        # update reward history for normalization
+        reward_len_new = self.reward_len + T
+        ratio_new = float(T) / reward_len_new
+        ratio_old = float(self.reward_len) / reward_len_new
+
+        self.reward_len = reward_len_new
+        self.reward_mean = (self.reward_mean * ratio_old +
+                            np.mean(reward_buf) * ratio_new)
+        self.reward_var = (self.reward_var * ratio_old +
+                           np.var(reward_buf) * ratio_new)
+
+        reward_buf -= self.reward_mean
+        reward_buf /= np.sqrt(self.reward_var)
+
+        # update variables in policy network
         for t in xrange(T - 1):
-            state = np.array(state_buf[t])[np.newaxis, :]
+            state = np.array([state_buf[t]])
             action = np.array([action_buf[t]]) - 1
             discounted_reward = np.array([reward_buf[t]])
 

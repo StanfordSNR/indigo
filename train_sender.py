@@ -2,6 +2,8 @@
 
 import sys
 import argparse
+import numpy as np
+from collections import deque
 from sender import Sender
 from rl.reinforce import Reinforce
 
@@ -16,6 +18,7 @@ class Trainer(object):
         self.max_episodes = 300
         self.max_steps = 10000
 
+        self.reward_history = deque(maxlen=100)
         if algorithm == 'reinforce':
             self.learner = Reinforce(state_dim=self.state_dim,
                                      action_cnt=self.action_cnt)
@@ -39,9 +42,13 @@ class Trainer(object):
                 sender.cleanup()
 
             experience = sender.get_experience()
-            sys.stderr.write('Reward: %s\n' % experience[2])
-
             self.learner.update_model(experience)
+
+            reward = experience[2]
+            self.reward_history.append(reward)
+            sys.stderr.write('Reward for this episode: %s\n' % reward)
+            sys.stderr.write('Average reward for the last 100 episodes: %s\n'
+                             % np.mean(self.reward_history))
 
 
 def main():
