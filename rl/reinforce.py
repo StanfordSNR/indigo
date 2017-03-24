@@ -9,6 +9,8 @@ class Reinforce(object):
         self.state_dim = params['state_dim']
         self.action_cnt = params['action_cnt']
 
+        self.session = tf.Session()
+
         # epsilon-greedy exploration probability
         self.explore_prob = 0.5
         self.init_explore_prob = 0.5
@@ -26,7 +28,6 @@ class Reinforce(object):
         self.build_tf_graph()
 
     def build_tf_graph(self):
-        self.session = tf.Session()
         self.build_policy_network()
         self.build_loss()
         self.build_gradients()

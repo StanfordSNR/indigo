@@ -19,28 +19,29 @@ class Sender(object):
         self.max_steps = rl_params['max_steps']
         self.delay_weight = rl_params['delay_weight']
 
-        self.rtts = []
+        self.delays = []
+        self.acked_bytes = 0
+
         self.state_buf = []
         self.action_buf = []
 
-        self.acked_bytes = 0
-
     def get_curr_state(self):
-        if len(self.rtts) < self.state_dim:
-            return [0] * (self.state_dim - len(self.rtts)) + self.rtts
+        if len(self.delays) < self.state_dim:
+            return [0] * (self.state_dim - len(self.delays)) + self.delays
         else:
-            return self.rtts[-self.state_dim:]
+            return self.delays[-self.state_dim:]
 
     def compute_reward(self):
         avg_throughput = float(self.acked_bytes * 8) * 0.001 / self.duration
-        delay_percentile = float(np.percentile(self.rtts, 95))
+        delay_percentile = float(np.percentile(self.delays, 95))
 
         sys.stderr.write('Average throughput: %s Mbps\n' % avg_throughput)
-        sys.stderr.write('95th percentile RTT: %s ms\n' % delay_percentile)
+        sys.stderr.write('95th percentile one-way delay: %s ms\n' %
+                         delay_percentile)
 
         self.reward = np.log(max(avg_throughput, 1e-5))
         self.reward -= self.delay_weight * max(
-                       np.log(max(0.02 * delay_percentile, 1e-5)), 0)
+                       np.log(max(0.03 * delay_percentile, 1e-5)), 0)
 
     def run(self):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -50,8 +51,8 @@ class Sender(object):
         data = {}
         data['payload'] = 'x' * 1400
 
-        first_send_ts = sys.maxint
-        last_send_ts = 0
+        first_ack_ts = sys.maxint
+        last_ack_ts = 0
 
         sys.stderr.write('[')
         progress = 0
@@ -71,18 +72,19 @@ class Sender(object):
                 serialized_data = json.dumps(data)
                 s.sendto(serialized_data, self.dest_addr)
 
-            raw_ack = s.recvfrom(1500)[0]
-            ack = json.loads(raw_ack)
+            serialized_ack = s.recvfrom(1500)[0]
+            ack = json.loads(serialized_ack)
             send_ts = ack['send_ts']
-            rtt = curr_ts_ms() - send_ts
-            self.rtts.append(rtt)
+            ack_ts = ack['ack_ts']
+            delay = ack_ts - send_ts
+            self.delays.append(delay)
 
             self.acked_bytes += ack['acked_bytes']
-            first_send_ts = min(send_ts, first_send_ts)
-            last_send_ts = max(send_ts, last_send_ts)
+            first_ack_ts = min(ack_ts, first_ack_ts)
+            last_ack_ts = max(ack_ts, last_ack_ts)
 
         sys.stderr.write(']\n')
-        self.duration = last_send_ts - first_send_ts
+        self.duration = last_ack_ts - first_ack_ts
         self.compute_reward()
 
     def get_experience(self):

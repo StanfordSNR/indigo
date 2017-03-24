@@ -4,6 +4,7 @@ import sys
 import json
 import socket
 import argparse
+from helpers import curr_ts_ms
 
 
 class Receiver(object):
@@ -22,6 +23,7 @@ class Receiver(object):
             serialized_data, addr = s.recvfrom(1500)
             data = json.loads(serialized_data)
             ack['send_ts'] = data['send_ts']
+            ack['ack_ts'] = curr_ts_ms()
             ack['acked_bytes'] = len(serialized_data)
             s.sendto(json.dumps(ack), addr)
 

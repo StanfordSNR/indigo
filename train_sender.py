@@ -9,17 +9,21 @@ from rl.reinforce import Reinforce
 
 
 class Trainer(object):
-    def __init__(self, ip, port, algorithm):
-        self.ip = ip
-        self.port = port
+    def __init__(self, args):
+        self.ip = args.ip
+        self.port = args.port
 
         self.state_dim = 1000
         self.action_cnt = 2
-        self.max_episodes = 10000
         self.max_steps = 2000
-
         self.reward_history = deque(maxlen=100)
-        if algorithm == 'reinforce':
+
+        if args.episodes is not None:
+            self.max_episodes = args.episodes
+        else:
+            self.max_episodes = 10000
+
+        if args.algorithm == 'reinforce':
             self.learner = Reinforce(state_dim=self.state_dim,
                                      action_cnt=self.action_cnt)
 
@@ -54,12 +58,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('ip', metavar='IP')
     parser.add_argument('port', type=int)
+    parser.add_argument('--episodes', metavar='N', type=int,
+                        help='maximum episodes to train (default 10000)')
     parser.add_argument(
         '--algorithm', choices=['reinforce'], default='reinforce',
-        help='reinforcement learning algorithm to train the sender')
+        help='reinforcement learning algorithm to train the sender'
+        ' (default REINFORCE)')
     args = parser.parse_args()
 
-    trainer = Trainer(args.ip, args.port, args.algorithm)
+    trainer = Trainer(args)
     trainer.run()
 
 
