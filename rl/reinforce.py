@@ -16,7 +16,6 @@ class Reinforce(object):
         self.anneal_steps = 30
 
         self.train_iter = 0
-
         self.reward_discount = 0.99
 
         self.build_tf_graph()
@@ -44,28 +43,27 @@ class Reinforce(object):
                              initializer=tf.constant_initializer(0.0))
         self.action_scores = tf.matmul(h1, W2) + b2
         self.predicted_action = tf.multinomial(self.action_scores, 1)
-        self.network_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
 
     def build_loss(self):
         self.taken_action = tf.placeholder(tf.int32, (None,))
 
         # create nodes to compute cross entropy and regularization loss
-        self.ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
+        ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=self.taken_action, logits=self.action_scores)
-        self.ce_loss = tf.reduce_mean(self.ce_loss)
+        ce_loss = tf.reduce_mean(ce_loss)
 
-        self.reg_penalty = 0.001
-        self.reg_loss = 0.0
-        for x in self.network_vars:
-            self.reg_loss += tf.nn.l2_loss(x)
-        self.reg_loss *= self.reg_penalty
+        reg_penalty = 0.001
+        reg_loss = 0.0
+        for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+            reg_loss += tf.nn.l2_loss(x)
+        reg_loss *= reg_penalty
 
-        self.loss = self.ce_loss + self.reg_loss
+        self.loss = ce_loss + reg_loss
 
     def build_gradients(self):
         self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
 
-        # create notes to compute gradients update used in REINFORCE
+        # create nodes to compute gradients update used in REINFORCE
         self.gradients = self.optimizer.compute_gradients(self.loss)
 
         self.discounted_reward = tf.placeholder(tf.float32, (None,))
@@ -73,23 +71,19 @@ class Reinforce(object):
             assert grad is not None
             self.gradients[i] = (self.discounted_reward * grad, var)
 
-        # create notes to apply gradients
-        self.train = self.optimizer.apply_gradients(self.gradients)
+        # create nodes to apply gradients
+        self.train_op = self.optimizer.apply_gradients(self.gradients)
 
     def sample_action(self, state):
         # epsilon-greedy exploration
         if np.random.random() < self.explore_prob:
             action = np.random.randint(0, self.action_cnt)
         else:
-            state = np.array([state])
+            state = np.array(state)[np.newaxis, :]
             action = self.session.run(self.predicted_action,
                                       {self.state: state})[0][0]
 
         return action + 1
-
-    def store_experience(self, experience):
-        self.state_buf, self.action_buf, self.reward = experience
-        assert len(self.state_buf) == len(self.action_buf)
 
     def anneal_exploration(self):
         ratio = float(self.anneal_steps - self.train_iter) / self.anneal_steps
@@ -97,18 +91,25 @@ class Reinforce(object):
         self.explore_prob = self.final_explore_prob + ratio * (
                             self.init_explore_prob - self.final_explore_prob)
 
-    def update_model(self):
+    def update_model(self, experience):
         sys.stderr.write('Updating model...\n')
-        T = len(self.state_buf)
+
+        state_buf, action_buf, final_reward = experience
+        assert len(state_buf) == len(action_buf)
+
+        T = len(state_buf)
+        # compute discounted rewards
+        reward_buf = np.zeros(T)
+        reward_buf[T - 1] = final_reward
+        for t in reversed(xrange(T - 1)):
+            reward_buf[t] = self.reward_discount * reward_buf[t + 1]
 
         for t in xrange(T - 1):
-            state = np.array(self.state_buf[t])[np.newaxis, :]
-            action = np.array([self.action_buf[t]]) - 1
+            state = np.array(state_buf[t])[np.newaxis, :]
+            action = np.array([action_buf[t]]) - 1
+            discounted_reward = np.array([reward_buf[t]])
 
-            reward_discount = pow(self.reward_discount, T - 1 - t)
-            discounted_reward = np.array([reward_discount * self.reward])
-
-            self.session.run(self.train, {
+            self.session.run(self.train_op, {
                 self.state: state,
                 self.taken_action: action,
                 self.discounted_reward: discounted_reward

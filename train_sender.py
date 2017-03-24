@@ -41,8 +41,7 @@ class Trainer(object):
             experience = sender.get_experience()
             sys.stderr.write('Reward: %s\n' % experience[2])
 
-            self.learner.store_experience(experience)
-            self.learner.update_model()
+            self.learner.update_model(experience)
 
 
 def main():
