@@ -21,7 +21,7 @@ class Trainer(object):
         if args.episodes is not None:
             self.max_episodes = args.episodes
         else:
-            self.max_episodes = 10000
+            self.max_episodes = 1000
 
         if args.algorithm == 'reinforce':
             self.learner = Reinforce(state_dim=self.state_dim,
@@ -34,7 +34,7 @@ class Trainer(object):
             sender.init_rl_params(
                 state_dim=self.state_dim,
                 max_steps=self.max_steps,
-                delay_weight=0.5,
+                delay_weight=0.8,
                 sample_action=self.learner.sample_action)
 
             try:
@@ -59,7 +59,7 @@ def main():
     parser.add_argument('ip', metavar='IP')
     parser.add_argument('port', type=int)
     parser.add_argument('--episodes', metavar='N', type=int,
-                        help='maximum episodes to train (default 10000)')
+                        help='maximum episodes to train (default 1000)')
     parser.add_argument(
         '--algorithm', choices=['reinforce'], default='reinforce',
         help='reinforcement learning algorithm to train the sender'

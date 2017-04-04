@@ -67,7 +67,7 @@ class Reinforce(object):
         self.loss = ce_loss + reg_loss
 
     def build_gradients(self):
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.0001)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.001)
 
         # create nodes to compute gradients update used in REINFORCE
         self.gradients = self.optimizer.compute_gradients(self.loss)
