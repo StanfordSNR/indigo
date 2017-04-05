@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
+import os
 import sys
 import time
 import argparse
 from sender import Sender
+from reinforce import Reinforce
 
 
 def main():
@@ -12,20 +14,22 @@ def main():
     parser.add_argument('port', type=int)
     args = parser.parse_args()
 
-    sender = Sender(args.ip, args.port)
+    state_dim = 500
+    action_cnt = 2
+    model_path = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(model_path, 'saved_models/rlcc-model')
 
-    # for test purposes
-    def test_sample_action(state):
-        time.sleep(1)
-        sys.stderr.write('Test: sampling action and sending 1 packet\n')
-        return 1
+    sender = Sender(args.ip, args.port)
+    policer = Reinforce(
+        train=False,
+        state_dim=state_dim,
+        action_cnt=action_cnt,
+        model_path=model_path)
 
     sender.setup(
-        train=True,
-        state_dim=10,
-        sample_action=test_sample_action,
-        max_steps=10,
-        delay_weight=0.8)
+        train=False,
+        state_dim=state_dim,
+        sample_action=policer.sample_action)
 
     try:
         sender.run()

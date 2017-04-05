@@ -6,26 +6,34 @@ import numpy as np
 
 class Reinforce(object):
     def __init__(self, **params):
+        self.train = params['train']
         self.state_dim = params['state_dim']
         self.action_cnt = params['action_cnt']
+        self.model_path = params['model_path']
 
         self.session = tf.Session()
 
-        # epsilon-greedy exploration probability
-        self.explore_prob = 0.5
-        self.init_explore_prob = 0.5
-        self.final_explore_prob = 0.0
-        self.anneal_steps = 100
+        if self.train:
+            # epsilon-greedy exploration probability
+            self.explore_prob = 0.5
+            self.init_explore_prob = 0.5
+            self.final_explore_prob = 0.0
+            self.anneal_steps = 100
 
-        self.train_iter = 0
-        self.reward_discount = 0.999
+            self.train_iter = 0
+            self.reward_discount = 0.99
 
-        # reward history for normalization
-        self.reward_len = 0
-        self.reward_mean = 0.0
-        self.reward_var = 1.0
+            # reward history for normalization
+            self.reward_len = 0
+            self.reward_mean = 0.0
+            self.reward_var = 1.0
 
-        self.build_tf_graph()
+            self.build_tf_graph()
+        else:
+            saver = tf.train.import_meta_graph(self.model_path + '.meta')
+            saver.restore(self.session, self.model_path)
+            self.state = tf.get_collection('state')[0]
+            self.predicted_action = tf.get_collection('predicted_action')[0]
 
     def build_tf_graph(self):
         self.build_policy_network()
@@ -67,7 +75,7 @@ class Reinforce(object):
         self.loss = ce_loss + reg_loss
 
     def build_gradients(self):
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.01)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.001)
 
         # create nodes to compute gradients update used in REINFORCE
         self.gradients = self.optimizer.compute_gradients(self.loss)
@@ -82,7 +90,7 @@ class Reinforce(object):
 
     def sample_action(self, state):
         # epsilon-greedy exploration
-        if np.random.random() < self.explore_prob:
+        if self.train and np.random.random() < self.explore_prob:
             action = np.random.randint(0, self.action_cnt)
         else:
             state = np.array([state])
@@ -138,3 +146,9 @@ class Reinforce(object):
 
         self.anneal_exploration()
         self.train_iter += 1
+
+    def save_model(self):
+        tf.add_to_collection('state', self.state)
+        tf.add_to_collection('predicted_action', self.predicted_action)
+        saver = tf.train.Saver()
+        saver.save(self.session, self.model_path)

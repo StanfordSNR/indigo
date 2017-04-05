@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import os
 import sys
 import argparse
 import numpy as np
@@ -12,19 +13,24 @@ class Trainer(object):
     def __init__(self, args):
         self.sender = Sender(args.ip, args.port)
 
-        self.state_dim = 1000
+        self.state_dim = 500
         self.action_cnt = 2
-        self.max_steps = 2000
+        self.max_steps = 3000
         self.reward_history = RingBuffer(100)
 
         if args.episodes is not None:
             self.max_episodes = args.episodes
         else:
-            self.max_episodes = 100
+            self.max_episodes = 1000
 
+        model_path = os.path.dirname(os.path.abspath(__file__))
+        model_path = os.path.join(model_path, 'saved_models/rlcc-model')
         if args.algorithm == 'reinforce':
-            self.learner = Reinforce(state_dim=self.state_dim,
-                                     action_cnt=self.action_cnt)
+            self.learner = Reinforce(
+                train=True,
+                state_dim=self.state_dim,
+                action_cnt=self.action_cnt,
+                model_path=model_path)
 
         self.sender.setup(
             train=True,
@@ -48,6 +54,8 @@ class Trainer(object):
             sys.stderr.write('Average reward for the last 100 episodes: %.3f\n'
                              % np.mean(self.reward_history.get()))
 
+        self.learner.save_model()
+
     def cleanup(self):
         self.sender.cleanup()
 
@@ -57,7 +65,7 @@ def main():
     parser.add_argument('ip', metavar='IP')
     parser.add_argument('port', type=int)
     parser.add_argument('--episodes', metavar='N', type=int,
-                        help='maximum episodes to train (default 1000)')
+                        help='maximum episodes to train (default 100)')
     parser.add_argument(
         '--algorithm', choices=['reinforce'], default='reinforce',
         help='reinforcement learning algorithm to train the sender'
