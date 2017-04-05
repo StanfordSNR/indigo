@@ -4,7 +4,7 @@ import sys
 import argparse
 import numpy as np
 from sender import Sender
-from rl.reinforce import Reinforce
+from reinforce import Reinforce
 from helpers import RingBuffer
 
 

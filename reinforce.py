@@ -15,7 +15,7 @@ class Reinforce(object):
         self.explore_prob = 0.5
         self.init_explore_prob = 0.5
         self.final_explore_prob = 0.0
-        self.anneal_steps = 1000
+        self.anneal_steps = 100
 
         self.train_iter = 0
         self.reward_discount = 0.999
@@ -67,7 +67,7 @@ class Reinforce(object):
         self.loss = ce_loss + reg_loss
 
     def build_gradients(self):
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.001)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.01)
 
         # create nodes to compute gradients update used in REINFORCE
         self.gradients = self.optimizer.compute_gradients(self.loss)
