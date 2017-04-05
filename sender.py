@@ -2,25 +2,7 @@ import sys
 import json
 import socket
 import numpy as np
-from helpers import curr_ts_ms
-
-
-class RingBuffer(object):
-    def __init__(self, length):
-        self.data = np.zeros(length)
-        self.index = 0
-
-    def append(self, x):
-        self.data[self.index] = x
-        self.index = (self.index + 1) % self.data.size
-
-    def get(self):
-        idx = (self.index + np.arange(self.data.size)) % self.data.size
-        return self.data[idx]
-
-    def reset(self):
-        self.data.fill(0)
-        self.index = 0
+from helpers import curr_ts_ms, RingBuffer
 
 
 class Sender(object):
@@ -78,12 +60,14 @@ class Sender(object):
                        np.log(max(0.03 * delay_percentile, 1e-5)), 0)
 
     def get_experience(self):
+        self.compute_reward()
         return self.state_buf, self.action_buf, self.reward
 
     def run(self):
-        t = 0
-        first_ack_ts = sys.maxint
-        last_ack_ts = 0
+        if self.train:
+            t = 0
+            first_ack_ts = sys.maxint
+            last_ack_ts = 0
 
         while True:
             state = self.get_curr_state()
@@ -116,7 +100,6 @@ class Sender(object):
 
         if self.train:
             self.duration = last_ack_ts - first_ack_ts
-            self.compute_reward()
 
     def cleanup(self):
         self.s.close()
