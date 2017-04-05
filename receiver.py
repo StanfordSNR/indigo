@@ -1,9 +1,6 @@
-#!/usr/bin/env python
-
 import sys
 import json
 import socket
-import argparse
 from helpers import curr_ts_ms
 
 
@@ -16,7 +13,7 @@ class Receiver(object):
         s = self.s
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(('0.0.0.0', self.port))
-        sys.stderr.write('Listening on port: %s\n' % self.port)
+        sys.stderr.write('Listening on port: %s\n' % s.getsockname()[1])
 
         ack = {}
         while True:
@@ -29,22 +26,3 @@ class Receiver(object):
 
     def cleanup(self):
         self.s.close()
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('port', type=int)
-    args = parser.parse_args()
-
-    receiver = Receiver(args.port)
-
-    try:
-        receiver.run()
-    except KeyboardInterrupt:
-        sys.exit(0)
-    finally:
-        receiver.cleanup()
-
-
-if __name__ == '__main__':
-    main()
