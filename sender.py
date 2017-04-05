@@ -18,10 +18,20 @@ class RingBuffer(object):
         idx = (self.index + np.arange(self.data.size)) % self.data.size
         return self.data[idx]
 
+    def reset(self):
+        self.data.fill(0)
+        self.index = 0
+
 
 class Sender(object):
     def __init__(self, ip, port):
         self.dest_addr = (ip, port)
+
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+        self.data = {}
+        self.data['payload'] = 'x' * 1400
 
     # required to be called before running
     def setup(self, **params):
@@ -45,6 +55,13 @@ class Sender(object):
         self.acked_bytes = 0
         self.total_delays = []
 
+    def reset(self):
+        self.delay_buf.reset()
+        self.state_buf = []
+        self.action_buf = []
+        self.acked_bytes = 0
+        self.total_delays = []
+
     def get_curr_state(self):
         return self.delay_buf.get()
 
@@ -64,13 +81,6 @@ class Sender(object):
         return self.state_buf, self.action_buf, self.reward
 
     def run(self):
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s = self.s
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-        data = {}
-        data['payload'] = 'x' * 1400
-
         t = 0
         first_ack_ts = sys.maxint
         last_ack_ts = 0
@@ -80,11 +90,11 @@ class Sender(object):
             action = self.sample_action(state)
 
             for i in xrange(action):
-                data['send_ts'] = curr_ts_ms()
-                serialized_data = json.dumps(data)
-                s.sendto(serialized_data, self.dest_addr)
+                self.data['send_ts'] = curr_ts_ms()
+                serialized_data = json.dumps(self.data)
+                self.s.sendto(serialized_data, self.dest_addr)
 
-            serialized_ack = s.recvfrom(1500)[0]
+            serialized_ack = self.s.recvfrom(1500)[0]
             ack = json.loads(serialized_ack)
             send_ts = ack['send_ts']
             ack_ts = ack['ack_ts']
