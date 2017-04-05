@@ -3,55 +3,53 @@
 import sys
 import argparse
 import numpy as np
-from collections import deque
 from sender import Sender
 from rl.reinforce import Reinforce
+from helpers import RingBuffer
 
 
 class Trainer(object):
     def __init__(self, args):
-        self.ip = args.ip
-        self.port = args.port
+        self.sender = Sender(args.ip, args.port)
 
         self.state_dim = 1000
         self.action_cnt = 2
         self.max_steps = 2000
-        self.reward_history = deque(maxlen=100)
+        self.reward_history = RingBuffer(100)
 
         if args.episodes is not None:
             self.max_episodes = args.episodes
         else:
-            self.max_episodes = 1000
+            self.max_episodes = 100
 
         if args.algorithm == 'reinforce':
             self.learner = Reinforce(state_dim=self.state_dim,
                                      action_cnt=self.action_cnt)
 
+        self.sender.setup(
+            train=True,
+            state_dim=self.state_dim,
+            sample_action=self.learner.sample_action,
+            max_steps=self.max_steps,
+            delay_weight=0.5)
+
     def run(self):
         for episode_i in xrange(1, self.max_episodes + 1):
             sys.stderr.write('\nEpisode %s is running...\n' % episode_i)
-            sender = Sender(self.ip, self.port)
-            sender.init_rl_params(
-                state_dim=self.state_dim,
-                max_steps=self.max_steps,
-                delay_weight=0.8,
-                sample_action=self.learner.sample_action)
 
-            try:
-                sender.run()
-            except KeyboardInterrupt:
-                sys.exit(0)
-            finally:
-                sender.cleanup()
-
-            experience = sender.get_experience()
+            self.sender.run()
+            experience = self.sender.get_experience()
             self.learner.update_model(experience)
+            self.sender.reset()
 
             reward = experience[2]
             self.reward_history.append(reward)
             sys.stderr.write('Reward for this episode: %.3f\n' % reward)
             sys.stderr.write('Average reward for the last 100 episodes: %.3f\n'
-                             % np.mean(self.reward_history))
+                             % np.mean(self.reward_history.get()))
+
+    def cleanup(self):
+        self.sender.cleanup()
 
 
 def main():
@@ -67,7 +65,12 @@ def main():
     args = parser.parse_args()
 
     trainer = Trainer(args)
-    trainer.run()
+    try:
+        trainer.run()
+    except KeyboardInterrupt:
+        sys.exit(0)
+    finally:
+        trainer.cleanup()
 
 
 if __name__ == '__main__':
