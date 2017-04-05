@@ -1,10 +1,6 @@
-#!/usr/bin/env python
-
 import sys
-import time
 import json
 import socket
-import argparse
 import numpy as np
 from helpers import curr_ts_ms
 
@@ -13,17 +9,28 @@ class Sender(object):
     def __init__(self, ip, port):
         self.dest_addr = (ip, port)
 
-    def init_rl_params(self, **rl_params):
-        self.state_dim = rl_params['state_dim']
-        self.sample_action = rl_params['sample_action']
-        self.max_steps = rl_params['max_steps']
-        self.delay_weight = rl_params['delay_weight']
+    # required to be called to run
+    def setup(self, **params):
+        self.train = params['train']
+        self.state_dim = params['state_dim']
+        self.sample_action = params['sample_action']
 
         self.delays = []
+
+        if self.train:
+            self.setup_train(params)
+
+    def setup_train(self, params):
+        self.max_steps = params['max_steps']
+        self.delay_weight = params['delay_weight']
+
         self.acked_bytes = 0
 
         self.state_buf = []
         self.action_buf = []
+
+        self.first_ack_ts = sys.maxint
+        self.last_ack_ts = 0
 
     def get_curr_state(self):
         if len(self.delays) < self.state_dim:
@@ -43,6 +50,9 @@ class Sender(object):
         self.reward -= self.delay_weight * max(
                        np.log(max(0.03 * delay_percentile, 1e-5)), 0)
 
+    def get_experience(self):
+        return self.state_buf, self.action_buf, self.reward
+
     def run(self):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s = self.s
@@ -51,21 +61,11 @@ class Sender(object):
         data = {}
         data['payload'] = 'x' * 1400
 
-        first_ack_ts = sys.maxint
-        last_ack_ts = 0
-
-        sys.stderr.write('[')
-        progress = 0
-        for t in xrange(self.max_steps):
-            if float(t) / self.max_steps > progress:
-                sys.stderr.write('-')
-                progress += 0.1
-
+        t = 0
+        while True:
+            t += 1
             state = self.get_curr_state()
-            self.state_buf.append(state)
-
             action = self.sample_action(state)
-            self.action_buf.append(action)
 
             for i in xrange(action):
                 data['send_ts'] = curr_ts_ms()
@@ -79,48 +79,19 @@ class Sender(object):
             delay = ack_ts - send_ts
             self.delays.append(delay)
 
-            self.acked_bytes += ack['acked_bytes']
-            first_ack_ts = min(ack_ts, first_ack_ts)
-            last_ack_ts = max(ack_ts, last_ack_ts)
+            if self.train:
+                self.state_buf.append(state)
+                self.action_buf.append(action)
+                self.acked_bytes += ack['acked_bytes']
+                self.first_ack_ts = min(ack_ts, self.first_ack_ts)
+                self.last_ack_ts = max(ack_ts, self.last_ack_ts)
 
-        sys.stderr.write(']\n')
-        self.duration = last_ack_ts - first_ack_ts
-        self.compute_reward()
+                if t >= self.max_steps:
+                    break
 
-    def get_experience(self):
-        return self.state_buf, self.action_buf, self.reward
+        if self.train:
+            self.duration = last_ack_ts - first_ack_ts
+            self.compute_reward()
 
     def cleanup(self):
         self.s.close()
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('ip', metavar='IP')
-    parser.add_argument('port', type=int)
-    args = parser.parse_args()
-
-    sender = Sender(args.ip, args.port)
-
-    # for test purposes
-    def test_sample_action(state):
-        time.sleep(1)
-        sys.stderr.write('Test: sampling action and sending 1 packet\n')
-        return 1
-
-    sender.init_rl_params(
-        state_dim=10,
-        max_steps=10,
-        delay_weight=0.8,
-        sample_action=test_sample_action)
-
-    try:
-        sender.run()
-    except KeyboardInterrupt:
-        sys.exit(0)
-    finally:
-        sender.cleanup()
-
-
-if __name__ == '__main__':
-    main()
