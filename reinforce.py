@@ -18,10 +18,10 @@ class Reinforce(object):
             self.explore_prob = 0.5
             self.init_explore_prob = 0.5
             self.final_explore_prob = 0.0
-            self.anneal_steps = 100
+            self.anneal_steps = 1000
 
             self.train_iter = 0
-            self.reward_discount = 0.99
+            self.reward_discount = 0.999
 
             # reward history for normalization
             self.reward_len = 0
@@ -49,7 +49,7 @@ class Reinforce(object):
                              initializer=tf.random_normal_initializer())
         b1 = tf.get_variable('b1', [20],
                              initializer=tf.constant_initializer(0.0))
-        h1 = tf.nn.relu(tf.matmul(self.state, W1) + b1)
+        h1 = tf.nn.tanh(tf.matmul(self.state, W1) + b1)
 
         W2 = tf.get_variable('W2', [20, self.action_cnt], initializer=
                              tf.random_normal_initializer(stddev=0.1))
@@ -97,7 +97,7 @@ class Reinforce(object):
             action = self.session.run(self.predicted_action,
                                       {self.state: state})[0][0]
 
-        return action + 1
+        return action
 
     def anneal_exploration(self):
         ratio = float(self.anneal_steps - self.train_iter) / self.anneal_steps
@@ -135,7 +135,7 @@ class Reinforce(object):
         # update variables in policy network
         for t in xrange(T - 1):
             state = np.array([state_buf[t]])
-            action = np.array([action_buf[t]]) - 1
+            action = np.array([action_buf[t]])
             discounted_reward = np.array([reward_buf[t]])
 
             self.session.run(self.train_op, {

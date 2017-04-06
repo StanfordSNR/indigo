@@ -14,8 +14,7 @@ class Trainer(object):
         self.sender = Sender(args.ip, args.port)
 
         self.state_dim = 500
-        self.action_cnt = 2
-        self.max_steps = 3000
+        self.action_cnt = 3
         self.reward_history = RingBuffer(100)
 
         if args.episodes is not None:
@@ -36,8 +35,8 @@ class Trainer(object):
             train=True,
             state_dim=self.state_dim,
             sample_action=self.learner.sample_action,
-            max_steps=self.max_steps,
-            delay_weight=0.5)
+            delay_weight=1,
+            loss_weight=3)
 
     def run(self):
         for episode_i in xrange(1, self.max_episodes + 1):

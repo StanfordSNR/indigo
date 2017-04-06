@@ -22,3 +22,11 @@ class RingBuffer(object):
     def reset(self):
         self.data.fill(0)
         self.index = 0
+
+
+class TimeoutError(Exception):
+    pass
+
+
+def timeout_handler(signum, frame):
+    raise TimeoutError()
