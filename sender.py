@@ -28,9 +28,6 @@ class Sender(object):
             self.setup_training(params)
 
     def setup_training(self, params):
-        self.delay_weight = params['delay_weight']
-        self.loss_weight = params['loss_weight']
-
         self.state_buf = []
         self.action_buf = []
 
@@ -63,18 +60,16 @@ class Sender(object):
 
     def compute_reward(self):
         avg_throughput = float(self.acked_bytes * 8) * 0.001 / self.duration
-        delay_percentile = float(np.percentile(self.total_delays, 95))
+        delay_percentile = float(np.percentile(self.total_delays, 50))
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
         sys.stderr.write('Average throughput: %.2f Mbps\n' % avg_throughput)
-        sys.stderr.write('95th percentile one-way delay: %d ms\n' %
+        sys.stderr.write('Median percentile one-way delay: %d ms\n' %
                          delay_percentile)
         sys.stderr.write('Loss rate: %.2f\n' % loss_rate)
 
-        self.reward = np.log(max(avg_throughput, 1e-5))
-        self.reward -= self.delay_weight * max(
-                       np.log(max(delay_percentile, 1e-5)), 0)
-        self.reward += self.loss_weight * np.log(1.0 - loss_rate)
+        self.reward = (1.0 - loss_rate) * avg_throughput / delay_percentile
+        self.reward *= 100
 
     def get_experience(self):
         self.compute_reward()
@@ -109,7 +104,7 @@ class Sender(object):
             first_ack_ts = sys.maxint
             last_ack_ts = 0
 
-        self.send(2)
+        self.send(20)
         while True:
             state = self.get_curr_state()
             action = self.sample_action(state)
