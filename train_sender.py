@@ -12,11 +12,11 @@ class Trainer(object):
     def __init__(self, args):
         self.sender = Sender(args.ip, args.port)
 
-        self.state_dim = 200
+        self.state_dim = 500
         self.action_cnt = 3
 
-        self.max_batches = 400
-        self.episodes_per_batch = 3
+        self.max_batches = 1000
+        self.episodes_per_batch = 1
 
         model_path = os.path.dirname(os.path.abspath(__file__))
         model_path = os.path.join(model_path, 'saved_models/rlcc-model')

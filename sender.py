@@ -125,7 +125,7 @@ class Sender(object):
                 last_ack_ts = max(ack_ts, last_ack_ts)
                 self.total_delays.append(delay)
 
-                if last_ack_ts - first_ack_ts > 5000:
+                if last_ack_ts - first_ack_ts > 10000:
                     break
 
         if self.training:

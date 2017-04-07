@@ -18,15 +18,20 @@ class Reinforce(object):
             self.explore_prob = 1.0
             self.init_explore_prob = 1.0
             self.final_explore_prob = 0.0
-            self.anneal_steps = 20
+            self.anneal_steps = 100
 
             self.train_iter = 0
             self.reward_discount = 0.99
-            self.learning_rate = 0.01
+            self.learning_rate = 0.001
 
             self.state_buf_batch = []
             self.action_buf_batch = []
             self.reward_buf_batch = []
+
+            # reward history for normalization
+            self.reward_len = 0
+            self.reward_mean = 0.0
+            self.reward_square_mean = 0.0
 
             self.build_tf_graph()
         else:
@@ -101,6 +106,21 @@ class Reinforce(object):
         for t in reversed(xrange(T - 1)):
             reward_buf[t] = self.reward_discount * reward_buf[t + 1]
 
+        # update reward history for normalization
+        reward_len_new = self.reward_len + T
+        ratio_new = float(T) / reward_len_new
+        ratio_old = float(self.reward_len) / reward_len_new
+
+        self.reward_len = reward_len_new
+        self.reward_mean = (self.reward_mean * ratio_old +
+                            np.mean(reward_buf) * ratio_new)
+        self.reward_square_mean = (self.reward_square_mean * ratio_old +
+                                   np.mean(np.square(reward_buf)) * ratio_new)
+
+        var = self.reward_square_mean - np.square(self.reward_mean)
+        reward_buf -= self.reward_mean
+        reward_buf /= np.sqrt(var)
+
         return reward_buf
 
     def store_episode(self, state_buf, action_buf, final_reward):
@@ -114,11 +134,6 @@ class Reinforce(object):
 
     def update_model(self):
         sys.stderr.write('Updating model...\n')
-
-        reward_mean = np.mean(self.reward_buf_batch)
-        reward_std = np.std(self.reward_buf_batch)
-        self.reward_buf_batch -= reward_mean
-        self.reward_buf_batch /= reward_std
 
         self.session.run(self.train_op, {
             self.state: self.state_buf_batch,
