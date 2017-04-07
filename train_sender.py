@@ -51,7 +51,7 @@ class Trainer(object):
             self.reward_history.append(reward)
             sys.stderr.write('Reward for this episode: %.3f\n' % reward)
             sys.stderr.write('Average reward for the last 100 episodes: %.3f\n'
-                             % np.mean(self.reward_history.get()))
+                             % np.mean(self.reward_history.get_real()))
 
         self.learner.save_model()
 
