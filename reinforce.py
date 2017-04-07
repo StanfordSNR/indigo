@@ -15,18 +15,18 @@ class Reinforce(object):
 
         if self.training:
             # epsilon-greedy exploration probability
-            self.explore_prob = 0.5
-            self.init_explore_prob = 0.5
+            self.explore_prob = 1.0
+            self.init_explore_prob = 1.0
             self.final_explore_prob = 0.0
-            self.anneal_steps = 1000
+            self.anneal_steps = 20
 
             self.train_iter = 0
             self.reward_discount = 0.99
+            self.learning_rate = 0.01
 
-            # reward history for normalization
-            self.reward_len = 0
-            self.reward_mean = 0.0
-            self.reward_square_mean = 0.0
+            self.state_buf_batch = []
+            self.action_buf_batch = []
+            self.reward_buf_batch = []
 
             self.build_tf_graph()
         else:
@@ -51,11 +51,12 @@ class Reinforce(object):
         h1 = tf.nn.tanh(tf.matmul(self.state, W1) + b1)
 
         W2 = tf.get_variable('W2', [20, self.action_cnt], initializer=
-                             tf.random_normal_initializer(stddev=0.1))
+                             tf.random_normal_initializer())
         b2 = tf.get_variable('b2', [self.action_cnt],
                              initializer=tf.constant_initializer(0.0))
         self.action_scores = tf.matmul(h1, W2) + b2
-        self.predicted_action = tf.multinomial(self.action_scores, 1)
+        self.predicted_action = tf.reshape(tf.multinomial(
+                                           self.action_scores, 1), [])
 
     def build_loss(self):
         self.taken_action = tf.placeholder(tf.int32, (None,))
@@ -74,17 +75,17 @@ class Reinforce(object):
 
         loss = ce_loss + reg_loss
 
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=0.001)
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate)
         self.train_op = optimizer.minimize(loss)
 
     def sample_action(self, state):
         # epsilon-greedy exploration
         if self.training and np.random.random() < self.explore_prob:
-            action = np.random.randint(0, self.action_cnt)
+            action = np.random.randint(0, 3)
         else:
             state = np.array([state])
             action = self.session.run(self.predicted_action,
-                                      {self.state: state})[0][0]
+                                      {self.state: state})
 
         return action
 
@@ -100,45 +101,37 @@ class Reinforce(object):
         for t in reversed(xrange(T - 1)):
             reward_buf[t] = self.reward_discount * reward_buf[t + 1]
 
-        # update reward history for normalization
-        reward_len_new = self.reward_len + T
-        ratio_new = float(T) / reward_len_new
-        ratio_old = float(self.reward_len) / reward_len_new
-
-        self.reward_len = reward_len_new
-        self.reward_mean = (self.reward_mean * ratio_old +
-                            np.mean(reward_buf) * ratio_new)
-        self.reward_square_mean = (self.reward_square_mean * ratio_old +
-                           np.mean(np.square(reward_buf)) * ratio_new)
-
-        var = self.reward_square_mean - np.square(self.reward_mean)
-        reward_buf -= self.reward_mean
-        reward_buf /= np.sqrt(var)
-
         return reward_buf
 
-    def update_model(self, experience):
-        sys.stderr.write('Updating model...\n')
-
-        state_buf, action_buf, final_reward = experience
+    def store_episode(self, state_buf, action_buf, final_reward):
         assert len(state_buf) == len(action_buf)
         T = len(state_buf)
-
         reward_buf = self.compute_discounted_rewards(final_reward, T)
-        # update variables in policy network
-        for t in xrange(T - 1):
-            state = np.array([state_buf[t]])
-            action = np.array([action_buf[t]])
-            discounted_reward = np.array([reward_buf[t]])
 
-            self.session.run(self.train_op, {
-                self.state: state,
-                self.taken_action: action,
-                self.discounted_reward: discounted_reward
-            })
+        self.state_buf_batch.extend(state_buf)
+        self.action_buf_batch.extend(action_buf)
+        self.reward_buf_batch.extend(reward_buf)
+
+    def update_model(self):
+        sys.stderr.write('Updating model...\n')
+
+        reward_mean = np.mean(self.reward_buf_batch)
+        reward_std = np.std(self.reward_buf_batch)
+        self.reward_buf_batch -= reward_mean
+        self.reward_buf_batch /= reward_std
+
+        self.session.run(self.train_op, {
+            self.state: self.state_buf_batch,
+            self.taken_action: self.action_buf_batch,
+            self.discounted_reward: self.reward_buf_batch
+        })
 
         self.anneal_exploration()
         self.train_iter += 1
+
+        self.state_buf_batch = []
+        self.action_buf_batch = []
+        self.reward_buf_batch = []
 
     def save_model(self):
         tf.add_to_collection('state', self.state)
