@@ -6,14 +6,14 @@ import numpy as np
 
 class Reinforce(object):
     def __init__(self, **params):
-        self.train = params['train']
+        self.training = params['training']
         self.state_dim = params['state_dim']
         self.action_cnt = params['action_cnt']
         self.model_path = params['model_path']
 
         self.session = tf.Session()
 
-        if self.train:
+        if self.training:
             # epsilon-greedy exploration probability
             self.explore_prob = 0.5
             self.init_explore_prob = 0.5
@@ -21,12 +21,12 @@ class Reinforce(object):
             self.anneal_steps = 1000
 
             self.train_iter = 0
-            self.reward_discount = 0.999
+            self.reward_discount = 0.99
 
             # reward history for normalization
             self.reward_len = 0
             self.reward_mean = 0.0
-            self.reward_var = 1.0
+            self.reward_square_mean = 0.0
 
             self.build_tf_graph()
         else:
@@ -38,7 +38,6 @@ class Reinforce(object):
     def build_tf_graph(self):
         self.build_policy_network()
         self.build_loss()
-        self.build_gradients()
 
         # initialize variables
         self.session.run(tf.global_variables_initializer())
@@ -60,10 +59,11 @@ class Reinforce(object):
 
     def build_loss(self):
         self.taken_action = tf.placeholder(tf.int32, (None,))
+        self.discounted_reward = tf.placeholder(tf.float32, (None,))
 
-        # create nodes to compute cross entropy and regularization loss
         ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
             labels=self.taken_action, logits=self.action_scores)
+        ce_loss *= self.discounted_reward  # core of policy gradient
         ce_loss = tf.reduce_mean(ce_loss)
 
         reg_penalty = 0.001
@@ -72,25 +72,14 @@ class Reinforce(object):
             reg_loss += tf.nn.l2_loss(x)
         reg_loss *= reg_penalty
 
-        self.loss = ce_loss + reg_loss
+        loss = ce_loss + reg_loss
 
-    def build_gradients(self):
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=0.001)
-
-        # create nodes to compute gradients update used in REINFORCE
-        self.gradients = self.optimizer.compute_gradients(self.loss)
-
-        self.discounted_reward = tf.placeholder(tf.float32, (None,))
-        for i, (grad, var) in enumerate(self.gradients):
-            assert grad is not None
-            self.gradients[i] = (-self.discounted_reward * grad, var)
-
-        # create nodes to apply gradients
-        self.train_op = self.optimizer.apply_gradients(self.gradients)
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=0.001)
+        self.train_op = optimizer.minimize(loss)
 
     def sample_action(self, state):
         # epsilon-greedy exploration
-        if self.train and np.random.random() < self.explore_prob:
+        if self.training and np.random.random() < self.explore_prob:
             action = np.random.randint(0, self.action_cnt)
         else:
             state = np.array([state])
@@ -105,14 +94,7 @@ class Reinforce(object):
         self.explore_prob = self.final_explore_prob + ratio * (
                             self.init_explore_prob - self.final_explore_prob)
 
-    def update_model(self, experience):
-        sys.stderr.write('Updating model...\n')
-
-        state_buf, action_buf, final_reward = experience
-        assert len(state_buf) == len(action_buf)
-        T = len(state_buf)
-
-        # compute discounted rewards
+    def compute_discounted_rewards(self, final_reward, T):
         reward_buf = np.zeros(T)
         reward_buf[T - 1] = final_reward
         for t in reversed(xrange(T - 1)):
@@ -126,12 +108,23 @@ class Reinforce(object):
         self.reward_len = reward_len_new
         self.reward_mean = (self.reward_mean * ratio_old +
                             np.mean(reward_buf) * ratio_new)
-        self.reward_var = (self.reward_var * ratio_old +
-                           np.var(reward_buf) * ratio_new)
+        self.reward_square_mean = (self.reward_square_mean * ratio_old +
+                           np.mean(np.square(reward_buf)) * ratio_new)
 
+        var = self.reward_square_mean - np.square(self.reward_mean)
         reward_buf -= self.reward_mean
-        reward_buf /= np.sqrt(self.reward_var)
+        reward_buf /= np.sqrt(var)
 
+        return reward_buf
+
+    def update_model(self, experience):
+        sys.stderr.write('Updating model...\n')
+
+        state_buf, action_buf, final_reward = experience
+        assert len(state_buf) == len(action_buf)
+        T = len(state_buf)
+
+        reward_buf = self.compute_discounted_rewards(final_reward, T)
         # update variables in policy network
         for t in xrange(T - 1):
             state = np.array([state_buf[t]])

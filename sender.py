@@ -18,16 +18,16 @@ class Sender(object):
 
     # required to be called before running
     def setup(self, **params):
-        self.train = params['train']
+        self.training = params['training']
         self.state_dim = params['state_dim']
         self.sample_action = params['sample_action']
 
         self.delay_buf = RingBuffer(self.state_dim)
 
-        if self.train:
-            self.setup_train(params)
+        if self.training:
+            self.setup_training(params)
 
-    def setup_train(self, params):
+    def setup_training(self, params):
         self.delay_weight = params['delay_weight']
         self.loss_weight = params['loss_weight']
 
@@ -86,7 +86,7 @@ class Sender(object):
             serialized_data = json.dumps(self.data)
             self.s.sendto(serialized_data, self.dest_addr)
 
-            if self.train:
+            if self.training:
                 self.sent_bytes += len(serialized_data)
 
     def recv(self):
@@ -105,7 +105,7 @@ class Sender(object):
         return json.loads(serialized_ack)
 
     def run(self):
-        if self.train:
+        if self.training:
             first_ack_ts = sys.maxint
             last_ack_ts = 0
 
@@ -121,7 +121,7 @@ class Sender(object):
             delay = ack_ts - send_ts
             self.delay_buf.append(delay)
 
-            if self.train:
+            if self.training:
                 self.state_buf.append(state)
                 self.action_buf.append(action)
 
@@ -133,7 +133,7 @@ class Sender(object):
                 if last_ack_ts - first_ack_ts > 5000:
                     break
 
-        if self.train:
+        if self.training:
             self.duration = last_ack_ts - first_ack_ts
 
     def cleanup(self):

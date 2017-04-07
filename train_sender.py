@@ -13,7 +13,7 @@ class Trainer(object):
     def __init__(self, args):
         self.sender = Sender(args.ip, args.port)
 
-        self.state_dim = 500
+        self.state_dim = 200
         self.action_cnt = 3
         self.reward_history = RingBuffer(100)
 
@@ -26,13 +26,13 @@ class Trainer(object):
         model_path = os.path.join(model_path, 'saved_models/rlcc-model')
         if args.algorithm == 'reinforce':
             self.learner = Reinforce(
-                train=True,
+                training=True,
                 state_dim=self.state_dim,
                 action_cnt=self.action_cnt,
                 model_path=model_path)
 
         self.sender.setup(
-            train=True,
+            training=True,
             state_dim=self.state_dim,
             sample_action=self.learner.sample_action,
             delay_weight=1,

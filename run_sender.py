@@ -21,13 +21,13 @@ def main():
 
     sender = Sender(args.ip, args.port)
     policer = Reinforce(
-        train=False,
+        training=False,
         state_dim=state_dim,
         action_cnt=action_cnt,
         model_path=model_path)
 
     sender.setup(
-        train=False,
+        training=False,
         state_dim=state_dim,
         sample_action=policer.sample_action)
 
