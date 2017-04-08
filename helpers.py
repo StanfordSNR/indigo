@@ -46,3 +46,25 @@ class TimeoutError(Exception):
 
 def timeout_handler(signum, frame):
     raise TimeoutError()
+
+
+class MeanVarHistory(object):
+    def __init__(self):
+        self.length = 0
+        self.mean = 0.0
+        self.square_mean = 0.0
+        self.var = self.square_mean - np.square(self.mean)
+
+    def append(self, x):
+        length_new = self.length + len(x)
+        ratio_old = float(self.length) / length_new
+        ratio_new = float(len(x)) / length_new
+
+        self.length = length_new
+        self.mean = self.mean * ratio_old + np.mean(x) * ratio_new
+        self.square_mean = (self.square_mean * ratio_old +
+                            np.mean(np.square(x)) * ratio_new)
+        self.var = self.square_mean - np.square(self.mean)
+
+    def get_mean_var(self):
+        return self.mean, self.var
