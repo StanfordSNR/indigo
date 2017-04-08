@@ -1,5 +1,12 @@
 import time
 import numpy as np
+import select
+
+
+READ_FLAGS = select.POLLIN | select.POLLPRI
+WRITE_FLAGS = select.POLLOUT
+ERR_FLAGS = select.POLLERR | select.POLLHUP | select.POLLNVAL
+ALL_FLAGS = READ_FLAGS | WRITE_FLAGS | ERR_FLAGS
 
 
 def curr_ts_ms():
