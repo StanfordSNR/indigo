@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
 import os
-import sys
-import time
 import argparse
 from sender import Sender
 from reinforce import Reinforce
@@ -14,12 +12,12 @@ def main():
     parser.add_argument('port', type=int)
     args = parser.parse_args()
 
-    state_dim = 500
-    action_cnt = 2
+    sender = Sender(args.ip, args.port)
+    state_dim = sender.state_dim()
+    action_cnt = sender.action_cnt()
+
     model_path = os.path.dirname(os.path.abspath(__file__))
     model_path = os.path.join(model_path, 'saved_models/rlcc-model')
-
-    sender = Sender(args.ip, args.port)
     policer = Reinforce(
         training=False,
         state_dim=state_dim,
@@ -28,15 +26,12 @@ def main():
 
     sender.setup(
         training=False,
-        state_dim=state_dim,
         sample_action=policer.sample_action)
 
     try:
         sender.run()
     except KeyboardInterrupt:
-        sys.exit(0)
-    finally:
-        sender.cleanup()
+        pass
 
 
 if __name__ == '__main__':

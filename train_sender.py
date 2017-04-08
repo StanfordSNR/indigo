@@ -12,11 +12,8 @@ class Trainer(object):
     def __init__(self, args):
         self.sender = Sender(args.ip, args.port)
 
-        self.state_dim = 500
-        self.action_cnt = 3
-
-        self.max_batches = 1000
-        self.episodes_per_batch = 1
+        self.state_dim = self.sender.state_dim()
+        self.action_cnt = self.sender.action_cnt()
 
         model_path = os.path.dirname(os.path.abspath(__file__))
         model_path = os.path.join(model_path, 'saved_models/rlcc-model')
@@ -29,13 +26,16 @@ class Trainer(object):
 
         self.sender.setup(
             training=True,
-            state_dim=self.state_dim,
             sample_action=self.learner.sample_action)
+
+        self.max_batches = 1000
+        self.episodes_per_batch = 1
 
     def run(self):
         for batch_i in xrange(1, self.max_batches + 1):
             sys.stderr.write('\nBatch %s/%s is running...\n\n' %
                              (batch_i, self.max_batches))
+
             for episode_i in xrange(1, self.episodes_per_batch + 1):
                 sys.stderr.write('Episode %s/%s is running...\n' %
                                  (episode_i, self.episodes_per_batch))
@@ -43,16 +43,13 @@ class Trainer(object):
                 self.sender.run()
                 state_buf, action_buf, reward = self.sender.get_experience()
                 self.learner.store_episode(state_buf, action_buf, reward)
-                self.sender.reset()
+                self.sender.reset_training()
 
                 sys.stderr.write('Reward for this episode: %.3f\n' % reward)
 
             self.learner.update_model()
 
         self.learner.save_model()
-
-    def cleanup(self):
-        self.sender.cleanup()
 
 
 def main():
@@ -65,9 +62,7 @@ def main():
     try:
         trainer.run()
     except KeyboardInterrupt:
-        sys.exit(0)
-    finally:
-        trainer.cleanup()
+        pass
 
 
 if __name__ == '__main__':
