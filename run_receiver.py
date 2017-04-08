@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import sys
 import argparse
 from receiver import Receiver
 
@@ -11,13 +10,10 @@ def main():
     args = parser.parse_args()
 
     receiver = Receiver(args.port)
-
     try:
         receiver.run()
     except KeyboardInterrupt:
-        sys.exit(0)
-    finally:
-        receiver.cleanup()
+        pass
 
 
 if __name__ == '__main__':

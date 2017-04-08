@@ -9,20 +9,21 @@ class Receiver(object):
         self.port = port
 
     def run(self):
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s = self.s
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(('0.0.0.0', self.port))
-        sys.stderr.write('Listening on port: %s\n' % s.getsockname()[1])
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(('0.0.0.0', self.port))
+            sys.stderr.write('Listening on port: %s\n' % sock.getsockname()[1])
 
-        ack = {}
-        while True:
-            serialized_data, addr = s.recvfrom(1500)
-            data = json.loads(serialized_data)
-            ack['send_ts'] = data['send_ts']
-            ack['ack_ts'] = curr_ts_ms()
-            ack['acked_bytes'] = len(serialized_data)
-            s.sendto(json.dumps(ack), addr)
+            ack = {}
+            while True:
+                serialized_data, addr = sock.recvfrom(1500)
+                data = json.loads(serialized_data)
 
-    def cleanup(self):
-        self.s.close()
+                ack['ack_seq_num'] = data['seq_num']
+                ack['ack_send_ts'] = data['send_ts']
+                ack['ack_recv_ts'] = curr_ts_ms()
+                ack['ack_bytes'] = len(serialized_data)
+                sock.sendto(json.dumps(ack), addr)
+        finally:
+            sock.close()
