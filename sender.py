@@ -23,7 +23,7 @@ class Sender(object):
         self.data = {}
         self.data['payload'] = 'x' * 1400
 
-        self.max_duration = 5000  # ms
+        self.max_steps = 500
 
         self.seq_num = 0
         self.next_ack = 0
@@ -43,6 +43,7 @@ class Sender(object):
         self.next_ack = self.seq_num
         self.cwnd = 10
         self.running = True
+        self.step_cnt = 0
 
         self.state_buf = []
         self.action_buf = []
@@ -93,7 +94,8 @@ class Sender(object):
             self.first_ack_ts = min(ack_ts, self.first_ack_ts)
             self.last_ack_ts = max(ack_ts, self.last_ack_ts)
 
-            if self.last_ack_ts - self.first_ack_ts > self.max_duration:
+            self.step_cnt += 1
+            if self.step_cnt >= self.max_steps:
                 self.running = False
 
         return np.array([delay])
