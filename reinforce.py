@@ -2,6 +2,7 @@ import sys
 import time
 import tensorflow as tf
 import numpy as np
+from helpers import MeanVarHistory
 
 
 class Reinforce(object):
@@ -22,16 +23,14 @@ class Reinforce(object):
 
             self.train_iter = 0
             self.reward_discount = 0.99
-            self.learning_rate = 0.01
+            self.learning_rate = 0.02
 
             self.state_buf_batch = []
             self.action_buf_batch = []
             self.reward_buf_batch = []
 
             # reward history for normalization
-            self.reward_len = 0
-            self.reward_mean = 0.0
-            self.reward_square_mean = 0.0
+            self.reward_history = MeanVarHistory()
 
             self.build_tf_graph()
         else:
@@ -49,11 +48,11 @@ class Reinforce(object):
 
     def build_policy(self):
         self.state = tf.placeholder(tf.float32, [None, self.state_dim])
-        W = tf.get_variable('W', [self.state_dim, self.action_cnt],
-                            initializer=tf.random_normal_initializer())
-        b = tf.get_variable('b', [self.action_cnt],
-                            initializer=tf.constant_initializer(0.0))
-        self.action_scores = tf.matmul(self.state, W) + b
+        self.W = tf.get_variable('W', [self.state_dim, self.action_cnt],
+                                 initializer=tf.random_normal_initializer())
+        self.b = tf.get_variable('b', [self.action_cnt],
+                                 initializer=tf.constant_initializer(0.0))
+        self.action_scores = tf.matmul(self.state, self.W) + self.b
 
         self.predicted_action = tf.reshape(tf.multinomial(
                                            self.action_scores, 1), [])
@@ -103,21 +102,10 @@ class Reinforce(object):
             reward_buf[t] = self.reward_discount * reward_buf[t + 1]
 
         # update reward history for normalization
-        reward_len_new = self.reward_len + T
-        ratio_new = float(T) / reward_len_new
-        ratio_old = float(self.reward_len) / reward_len_new
+        self.reward_history.append(reward_buf)
+        reward_mean, reward_var = self.reward_history.get_mean_var()
 
-        self.reward_len = reward_len_new
-        self.reward_mean = (self.reward_mean * ratio_old +
-                            np.mean(reward_buf) * ratio_new)
-        self.reward_square_mean = (self.reward_square_mean * ratio_old +
-                                   np.mean(np.square(reward_buf)) * ratio_new)
-
-        var = self.reward_square_mean - np.square(self.reward_mean)
-        reward_buf -= self.reward_mean
-        reward_buf /= np.sqrt(var)
-
-        return reward_buf
+        return (reward_buf - reward_mean) / np.sqrt(reward_var)
 
     def store_episode(self, state_buf, action_buf, final_reward):
         assert len(state_buf) == len(action_buf)
@@ -146,9 +134,12 @@ class Reinforce(object):
         self.reward_buf_batch = []
 
     def save_model(self):
+        saver = tf.train.Saver()
         tf.add_to_collection('state', self.state)
         tf.add_to_collection('predicted_action', self.predicted_action)
-        saver = tf.train.Saver()
+        tf.add_to_collection('W', self.W)
+        tf.add_to_collection('b', self.b)
+        tf.add_to_collection('action_scores', self.action_scores)
         saver.save(self.session, self.model_path)
 
         sys.stderr.write('\nModel saved to %s\n' % self.model_path)

@@ -28,7 +28,7 @@ class Trainer(object):
             training=True,
             sample_action=self.learner.sample_action)
 
-        self.max_batches = 100
+        self.max_batches = 50
         self.episodes_per_batch = 1
 
     def run(self):

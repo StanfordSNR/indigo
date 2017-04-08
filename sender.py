@@ -23,7 +23,7 @@ class Sender(object):
         self.data = {}
         self.data['payload'] = 'x' * 1400
 
-        self.max_steps = 500
+        self.max_steps = 2000
 
         self.seq_num = 0
         self.next_ack = 0
@@ -39,11 +39,12 @@ class Sender(object):
             self.reset_training()
 
     def reset_training(self):
+        self.step_cnt = 0
+
         self.seq_num += 1
         self.next_ack = self.seq_num
         self.cwnd = 10
         self.running = True
-        self.step_cnt = 0
 
         self.state_buf = []
         self.action_buf = []
@@ -104,8 +105,8 @@ class Sender(object):
         action -= 1  # shift action to changes to cwnd
         self.cwnd += action
 
-        if self.cwnd < 0:
-            self.cwnd = 0
+        if self.cwnd < 2:
+            self.cwnd = 2
 
         if self.debug:
             sys.stderr.write('cwnd %d\n' % self.cwnd)
@@ -121,7 +122,7 @@ class Sender(object):
                          delay_percentile)
         sys.stderr.write('Loss rate: %.2f\n' % loss_rate)
 
-        reward = (1.0 - loss_rate) * avg_throughput / delay_percentile
+        reward = avg_throughput / delay_percentile
         return reward * 100
 
     def get_experience(self):
@@ -181,7 +182,6 @@ class Sender(object):
 
             events = self.poller.poll(TIMEOUT)
 
-            # timed out, send a datagram to keep moving
             if not events:
                 self.send()
 
