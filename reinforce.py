@@ -18,11 +18,11 @@ class Reinforce(object):
             self.explore_prob = 1.0
             self.init_explore_prob = 1.0
             self.final_explore_prob = 0.0
-            self.anneal_steps = 100
+            self.anneal_steps = 50
 
             self.train_iter = 0
             self.reward_discount = 0.99
-            self.learning_rate = 0.001
+            self.learning_rate = 0.01
 
             self.state_buf_batch = []
             self.action_buf_batch = []
@@ -41,25 +41,20 @@ class Reinforce(object):
             self.predicted_action = tf.get_collection('predicted_action')[0]
 
     def build_tf_graph(self):
-        self.build_policy_network()
+        self.build_policy()
         self.build_loss()
 
         # initialize variables
         self.session.run(tf.global_variables_initializer())
 
-    def build_policy_network(self):
+    def build_policy(self):
         self.state = tf.placeholder(tf.float32, [None, self.state_dim])
-        W1 = tf.get_variable('W1', [self.state_dim, 20],
-                             initializer=tf.random_normal_initializer())
-        b1 = tf.get_variable('b1', [20],
-                             initializer=tf.constant_initializer(0.0))
-        h1 = tf.nn.tanh(tf.matmul(self.state, W1) + b1)
+        W = tf.get_variable('W', [self.state_dim, self.action_cnt],
+                            initializer=tf.random_normal_initializer())
+        b = tf.get_variable('b', [self.action_cnt],
+                            initializer=tf.constant_initializer(0.0))
+        self.action_scores = tf.matmul(self.state, W) + b
 
-        W2 = tf.get_variable('W2', [20, self.action_cnt], initializer=
-                             tf.random_normal_initializer())
-        b2 = tf.get_variable('b2', [self.action_cnt],
-                             initializer=tf.constant_initializer(0.0))
-        self.action_scores = tf.matmul(h1, W2) + b2
         self.predicted_action = tf.reshape(tf.multinomial(
                                            self.action_scores, 1), [])
 
@@ -80,17 +75,18 @@ class Reinforce(object):
 
         loss = ce_loss + reg_loss
 
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate)
+        optimizer = tf.train.GradientDescentOptimizer(
+                    learning_rate=self.learning_rate)
         self.train_op = optimizer.minimize(loss)
 
     def sample_action(self, state):
         # epsilon-greedy exploration
         if self.training and np.random.random() < self.explore_prob:
-            action = np.random.randint(0, 3)
+            action = np.random.randint(0, self.action_cnt)
         else:
-            state = np.array([state])
+            norm_state = np.array([state]) / 125.0 - 1
             action = self.session.run(self.predicted_action,
-                                      {self.state: state})
+                                      {self.state: norm_state})
 
         return action
 
@@ -135,8 +131,9 @@ class Reinforce(object):
     def update_model(self):
         sys.stderr.write('Updating model...\n')
 
+        norm_state_buf_batch = np.array(self.state_buf_batch) / 125.0 - 1
         self.session.run(self.train_op, {
-            self.state: self.state_buf_batch,
+            self.state: norm_state_buf_batch,
             self.taken_action: self.action_buf_batch,
             self.discounted_reward: self.reward_buf_batch
         })
@@ -153,3 +150,5 @@ class Reinforce(object):
         tf.add_to_collection('predicted_action', self.predicted_action)
         saver = tf.train.Saver()
         saver.save(self.session, self.model_path)
+
+        sys.stderr.write('\nModel saved to %s\n' % self.model_path)
