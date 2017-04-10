@@ -53,9 +53,15 @@ class MeanVarHistory(object):
         self.length = 0
         self.mean = 0.0
         self.square_mean = 0.0
-        self.var = self.square_mean - np.square(self.mean)
+        self.var = 1.0
 
     def append(self, x):
+        """Append x to history.
+
+        Args:
+            x: a list or numpy array.
+        """
+        # x: a list or numpy array
         length_new = self.length + len(x)
         ratio_old = float(self.length) / length_new
         ratio_new = float(len(x)) / length_new
@@ -66,5 +72,28 @@ class MeanVarHistory(object):
                             np.mean(np.square(x)) * ratio_new)
         self.var = self.square_mean - np.square(self.mean)
 
-    def get_mean_var(self):
-        return self.mean, self.var
+    def get_mean(self):
+        return self.mean
+
+    def get_var(self):
+        return self.var if self.var > 0 else 1e-4
+
+    def get_std(self):
+        return np.sqrt(self.get_var())
+
+    def normalize_copy(self, x):
+        """Normalize x and returns a copy.
+
+        Args:
+            x: a list or numpy array.
+        """
+        return [(v - self.mean) / self.get_std() for v in x]
+
+    def normalize_inplace(self, x):
+        """Normalize x in place.
+
+        Args:
+            x: a numpy array with float dtype.
+        """
+        x -= self.mean
+        x /= self.get_std()
