@@ -12,7 +12,7 @@ def main():
     parser.add_argument('port', type=int)
     args = parser.parse_args()
 
-    sender = Sender(args.ip, args.port)
+    sender = Sender(args.ip, args.port, training=False)
     state_dim = sender.state_dim()
     action_cnt = sender.action_cnt()
 
@@ -24,9 +24,7 @@ def main():
         action_cnt=action_cnt,
         model_path=model_path)
 
-    sender.setup(
-        training=False,
-        sample_action=policer.sample_action)
+    sender.set_sample_action(policer.sample_action)
 
     try:
         sender.run()

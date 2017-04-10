@@ -9,10 +9,12 @@ from helpers import curr_ts_ms, RingBuffer
 
 
 class Sender(object):
-    def __init__(self, ip, port, debug=False):
-        self.debug = debug
+    def __init__(self, ip, port, training, debug=False):
         self.dest_addr = (ip, port)
+        self.training = training
+        self.debug = debug
 
+        # UDP socket and poller
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.setblocking(0)
@@ -20,34 +22,42 @@ class Sender(object):
         self.poller = select.poll()
         self.poller.register(self.sock, h.ALL_FLAGS)
 
+        # UDP datagram template
         self.data = {}
         self.data['payload'] = 'x' * 1400
 
-        self.max_steps = 2000
-
+        # congestion control related
         self.seq_num = 0
         self.next_ack = 0
-        self.cwnd = 10
-        self.running = True
+        self.cwnd = 2
 
-    # required to be called before running
-    def setup(self, training, sample_action):
-        self.training = training
-        self.sample_action = sample_action
+        # set to false at the end of an episode while training
+        self.running = True
 
         if self.training:
-            self.reset_training()
+            self.max_running_time = 5000  # ms
+
+            # statistics variables to compute rewards
+            self.sent_bytes = 0
+            self.acked_bytes = 0
+            self.first_ack_ts = float('inf')
+            self.last_ack_ts = 0
+            self.total_delays = []
+
+            # buffers for states and actions in a single episode
+            self.state_buf = []
+            self.action_buf = []
+
+    def set_sample_action(self, sample_action):
+        """Required to be called before running."""
+        self.sample_action = sample_action
 
     def reset_training(self):
-        self.step_cnt = 0
-
         self.seq_num += 1
         self.next_ack = self.seq_num
-        self.cwnd = 10
-        self.running = True
+        self.cwnd = 2
 
-        self.state_buf = []
-        self.action_buf = []
+        self.running = True
 
         self.sent_bytes = 0
         self.acked_bytes = 0
@@ -55,11 +65,18 @@ class Sender(object):
         self.last_ack_ts = 0
         self.total_delays = []
 
+        self.state_buf = []
+        self.action_buf = []
+
         self.drain_packets()
 
     def drain_packets(self):
+        """Drain all the packets left in the channel."""
+
         TIMEOUT = 1000  # ms
-        self.poller.modify(self.sock, h.READ_FLAGS | h.ERR_FLAGS)
+        READ_ERR_FLAGS = h.READ_FLAGS | h.ERR_FLAGS
+
+        self.poller.modify(self.sock, READ_ERR_FLAGS)
 
         while True:
             events = self.poller.poll(TIMEOUT)
@@ -95,14 +112,13 @@ class Sender(object):
             self.first_ack_ts = min(ack_ts, self.first_ack_ts)
             self.last_ack_ts = max(ack_ts, self.last_ack_ts)
 
-            self.step_cnt += 1
-            if self.step_cnt >= self.max_steps:
+            if self.last_ack_ts - self.first_ack_ts > self.max_running_time:
                 self.running = False
 
         return np.array([delay])
 
     def take_action(self, action):
-        action -= 1  # shift action to changes to cwnd
+        action -= 1
         self.cwnd += action
 
         if self.cwnd < 2:
@@ -116,14 +132,15 @@ class Sender(object):
         avg_throughput = float(self.acked_bytes * 8) * 0.001 / duration
         delay_percentile = float(np.percentile(self.total_delays, 90))
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
+        reward = 100 * (1.0 - loss_rate) * avg_throughput / delay_percentile
 
         sys.stderr.write('Average throughput: %.2f Mbps\n' % avg_throughput)
         sys.stderr.write('90th percentile one-way delay: %d ms\n' %
                          delay_percentile)
         sys.stderr.write('Loss rate: %.2f\n' % loss_rate)
+        sys.stderr.write('Reward: %.3f\n' % reward)
 
-        reward = avg_throughput / delay_percentile
-        return reward * 100
+        return reward
 
     def get_experience(self):
         reward = self.compute_reward()
@@ -182,7 +199,7 @@ class Sender(object):
 
             events = self.poller.poll(TIMEOUT)
 
-            if not events:
+            if not events:  # timed out
                 self.send()
 
             for fd, flag in events:

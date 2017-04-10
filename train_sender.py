@@ -10,7 +10,7 @@ from reinforce import Reinforce
 
 class Trainer(object):
     def __init__(self, args):
-        self.sender = Sender(args.ip, args.port)
+        self.sender = Sender(args.ip, args.port, training=True)
 
         self.state_dim = self.sender.state_dim()
         self.action_cnt = self.sender.action_cnt()
@@ -22,13 +22,12 @@ class Trainer(object):
             training=True,
             state_dim=self.state_dim,
             action_cnt=self.action_cnt,
-            model_path=model_path)
+            model_path=model_path,
+            debug=True)
 
-        self.sender.setup(
-            training=True,
-            sample_action=self.learner.sample_action)
+        self.sender.set_sample_action(self.learner.sample_action)
 
-        self.max_batches = 50
+        self.max_batches = 100
         self.episodes_per_batch = 1
 
     def run(self):
@@ -44,8 +43,6 @@ class Trainer(object):
                 state_buf, action_buf, reward = self.sender.get_experience()
                 self.learner.store_episode(state_buf, action_buf, reward)
                 self.sender.reset_training()
-
-                sys.stderr.write('Reward for this episode: %.3f\n' % reward)
 
             self.learner.update_model()
 
