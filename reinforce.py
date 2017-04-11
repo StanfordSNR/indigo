@@ -15,8 +15,6 @@ class Reinforce(object):
 
         self.session = tf.Session()
 
-        self.max_delay = 250
-
         if self.debug:
             np.set_printoptions(precision=3)
             np.set_printoptions(suppress=True)
@@ -28,7 +26,6 @@ class Reinforce(object):
             self.final_explore_prob = 0.0
             self.decay_steps = 100
             self.train_iter = 0
-            self.delay_visited_times = np.zeros(2)
 
             # reward calculation
             self.reward_discount = 0.99
@@ -78,7 +75,7 @@ class Reinforce(object):
         self.discounted_reward = tf.placeholder(tf.float32, [None,])
 
         # regularization loss
-        reg_penalty = 0.01
+        reg_penalty = 0.001
         reg_loss = 0.0
         for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
             reg_loss += tf.nn.l2_loss(x)
@@ -90,7 +87,7 @@ class Reinforce(object):
 
         # total loss
         loss = ce_loss + reg_loss
-        loss *= self.discounted_reward  # core idea of policy gradient
+        loss *= self.discounted_reward  # magic of policy gradient
         loss = tf.reduce_mean(loss)
 
         if self.debug:
@@ -101,40 +98,24 @@ class Reinforce(object):
         global_step = tf.Variable(0, trainable=False)
         starter_learning_rate = 1.0
         learning_rate = tf.train.exponential_decay(
-                starter_learning_rate, global_step, 10, 0.9, staircase=True)
+                starter_learning_rate, global_step, 100, 0.9, staircase=True)
         optimizer = tf.train.GradientDescentOptimizer(
                 learning_rate=learning_rate)
         self.train_op = optimizer.minimize(loss, global_step=global_step)
 
-    def normalize_state_inplace(self, state):
-         # rescale to [-1, 1]
-        state /= self.max_delay / 2.0
-        state -= 1.0
-        state[state > 1] = 1
-
     def sample_action(self, state):
-        assert self.action_cnt == 3
-
-        if self.training:
-            delay= min(int(state[0]), self.max_delay)
-            if delay < self.max_delay / 2.0:
-                self.delay_visited_times[0] += 1
-            else:
-                self.delay_visited_times[1] += 1
-
         # epsilon-greedy exploration
         if self.training and np.random.random() < self.explore_prob:
-            if self.delay_visited_times[0] * 2 < self.delay_visited_times[1]:
-                action = 0
-            elif self.delay_visited_times[0] > 2 * self.delay_visited_times[1]:
-                action = 2
+            delay = np.argmax(state)
+            if delay <= 1:
+                return 2
+            elif delay >= 6:
+                return 0
             else:
-                action = np.random.randint(0, self.action_cnt)
+                return 1
         else:
-            norm_state = np.array([state], dtype=np.float64)
-            self.normalize_state_inplace(norm_state)
             action = self.session.run(self.predicted_action,
-                                      {self.state: norm_state})
+                    {self.state: np.array([state], dtype=np.float32)})
 
         return action
 
@@ -167,11 +148,8 @@ class Reinforce(object):
     def update_model(self):
         sys.stderr.write('Updating model...\n')
 
-        norm_state_buf_batch = np.array(self.state_buf_batch, dtype=np.float64)
-        self.normalize_state_inplace(norm_state_buf_batch)
-
         self.session.run(self.train_op, {
-            self.state: norm_state_buf_batch,
+            self.state: np.array(self.state_buf_batch, dtype=np.float32),
             self.taken_action: self.action_buf_batch,
             self.discounted_reward: self.reward_buf_batch
         })
@@ -181,7 +159,7 @@ class Reinforce(object):
             print 'b:', self.session.run(self.b)
             print 'regularization loss:', self.session.run(self.reg_loss)
             print 'total loss:', self.session.run(self.loss, {
-                self.state: norm_state_buf_batch,
+                self.state: np.array(self.state_buf_batch, dtype=np.float32),
                 self.taken_action: self.action_buf_batch,
                 self.discounted_reward: self.reward_buf_batch
             })
