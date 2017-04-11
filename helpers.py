@@ -53,7 +53,7 @@ class MeanVarHistory(object):
         self.length = 0
         self.mean = 0.0
         self.square_mean = 0.0
-        self.var = 1.0
+        self.var = 0.0
 
     def append(self, x):
         """Append x to history.
@@ -76,7 +76,7 @@ class MeanVarHistory(object):
         return self.mean
 
     def get_var(self):
-        return self.var if self.var > 0 else 1e-4
+        return self.var if self.var > 0 else 1e-10
 
     def get_std(self):
         return np.sqrt(self.get_var())

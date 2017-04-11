@@ -12,16 +12,13 @@ class Trainer(object):
     def __init__(self, args):
         self.sender = Sender(args.ip, args.port, training=True)
 
-        self.state_dim = self.sender.state_dim()
-        self.action_cnt = self.sender.action_cnt()
-
         model_path = os.path.dirname(os.path.abspath(__file__))
         model_path = os.path.join(model_path, 'saved_models/rlcc-model')
 
         self.learner = Reinforce(
             training=True,
-            state_dim=self.state_dim,
-            action_cnt=self.action_cnt,
+            state_dim=self.sender.state_dim,
+            action_cnt=self.sender.action_cnt,
             model_path=model_path,
             debug=True)
 

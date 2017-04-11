@@ -34,6 +34,9 @@ class Sender(object):
         # set to false at the end of an episode while training
         self.running = True
 
+        self.state_dim = 21
+        self.action_cnt = 3
+
         if self.training:
             self.max_running_time = 5000  # ms
 
@@ -94,20 +97,14 @@ class Sender(object):
                 if flag & h.READ_FLAGS:
                     self.sock.recvfrom(1500)
 
-    def state_dim(self):
-        return 1
-
-    def action_cnt(self):
-        return 3
-
     def update_state(self, ack):
         send_ts = ack['ack_send_ts']
         ack_ts = ack['ack_recv_ts']
-        delay = ack_ts - send_ts
+        curr_delay = ack_ts - send_ts
 
         if self.training:
             self.acked_bytes += ack['ack_bytes']
-            self.total_delays.append(delay)
+            self.total_delays.append(curr_delay)
 
             self.first_ack_ts = min(ack_ts, self.first_ack_ts)
             self.last_ack_ts = max(ack_ts, self.last_ack_ts)
@@ -115,7 +112,10 @@ class Sender(object):
             if self.last_ack_ts - self.first_ack_ts > self.max_running_time:
                 self.running = False
 
-        return np.array([delay])
+        curr_delay = max(20, min(229, curr_delay))
+        state = np.zeros(self.state_dim)
+        state[(curr_delay - 20) / 10] = 1
+        return state
 
     def take_action(self, action):
         action -= 1
@@ -130,15 +130,20 @@ class Sender(object):
     def compute_reward(self):
         duration = self.last_ack_ts - self.first_ack_ts
         avg_throughput = float(self.acked_bytes * 8) * 0.001 / duration
-        delay_percentile = float(np.percentile(self.total_delays, 90))
+        delay_percentile = float(np.percentile(self.total_delays, 95))
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
-        reward = 100 * (1.0 - loss_rate) * avg_throughput / delay_percentile
 
-        if avg_throughput <= 3.0:
-            reward += 10 * np.log(avg_throughput / 3.0)
+        avg_throughput = max(0.0, min(12.0, avg_throughput))
+        delay_percentile = max(20.0, min(229.0, delay_percentile))
+
+        reward = 1.0
+        reward += np.log(avg_throughput / 12.0)
+        reward += np.log((229.0 - delay_percentile) / 209.0)
+        reward += np.log(1.0 - loss_rate)
+        reward *= 10.0
 
         sys.stderr.write('Average throughput: %.2f Mbps\n' % avg_throughput)
-        sys.stderr.write('90th percentile one-way delay: %d ms\n' %
+        sys.stderr.write('95th percentile one-way delay: %d ms\n' %
                          delay_percentile)
         sys.stderr.write('Loss rate: %.2f\n' % loss_rate)
         sys.stderr.write('Reward: %.3f\n' % reward)
