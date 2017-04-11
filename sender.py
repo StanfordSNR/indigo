@@ -134,6 +134,9 @@ class Sender(object):
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
         reward = 100 * (1.0 - loss_rate) * avg_throughput / delay_percentile
 
+        if avg_throughput <= 3.0:
+            reward += 10 * np.log(avg_throughput / 3.0)
+
         sys.stderr.write('Average throughput: %.2f Mbps\n' % avg_throughput)
         sys.stderr.write('90th percentile one-way delay: %d ms\n' %
                          delay_percentile)
