@@ -5,7 +5,7 @@ import signal
 import select
 import numpy as np
 import helpers as h
-from helpers import curr_ts_ms, RingBuffer
+from helpers import curr_ts_ms
 
 
 class Sender(object):

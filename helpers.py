@@ -13,39 +13,36 @@ def curr_ts_ms():
     return int(time.time() * 1000)
 
 
-class RingBuffer(object):
-    def __init__(self, length):
-        self.length = length
-        self.data = np.zeros(length)
-        self.index = 0
-        self.real_length = 0
-
-    def append(self, x):
-        self.data[self.index] = x
-        self.index = (self.index + 1) % self.length
-        if self.real_length < self.length:
-            self.real_length += 1
-
-    def get(self):
-        idx = (self.index + np.arange(self.length)) % self.length
-        return self.data[idx]
-
-    def get_real(self):
-        idx = (self.index - self.real_length
-               + np.arange(self.real_length)) % self.length
-        return self.data[idx]
-
-    def reset(self):
-        self.data.fill(0)
-        self.index = 0
-
-
 class TimeoutError(Exception):
     pass
 
 
 def timeout_handler(signum, frame):
     raise TimeoutError()
+
+
+class RingBuffer(object):
+    def __init__(self, length):
+        self.full_len = length
+        self.real_len = 0
+        self.index = 0
+        self.data = np.zeros(length)
+
+    def append(self, x):
+        self.data[self.index] = x
+        self.index = (self.index + 1) % self.full_len
+        if self.real_len < self.full_len:
+            self.real_len += 1
+
+    def get(self):
+        idx = (self.index - self.real_len
+               + np.arange(self.real_len)) % self.full_len
+        return self.data[idx]
+
+    def reset(self):
+        self.real_len = 0
+        self.index = 0
+        self.data.fill(0)
 
 
 class MeanVarHistory(object):
@@ -97,3 +94,9 @@ class MeanVarHistory(object):
         """
         x -= self.mean
         x /= self.get_std()
+
+    def reset(self):
+        self.length = 0
+        self.mean = 0.0
+        self.square_mean = 0.0
+        self.var = 0.0
