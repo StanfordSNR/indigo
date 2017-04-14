@@ -9,7 +9,7 @@ from helpers import curr_ts_ms
 
 
 class Sender(object):
-    def __init__(self, ip, port, training, debug=False):
+    def __init__(self, ip, port, training=False, debug=False):
         self.dest_addr = (ip, port)
         self.training = training
         self.debug = debug
@@ -26,19 +26,22 @@ class Sender(object):
         self.data = {}
         self.data['payload'] = 'x' * 1400
 
+        # dimension of state space and action space
+        self.state_dim = 1
+        self.action_cnt = 3
+
         # congestion control related
         self.seq_num = 0
         self.next_ack = 0
-        self.cwnd = 2
+        self.cwnd = 16.0
 
-        # set to false at the end of an episode while training
-        self.running = True
-
-        self.state_dim = 21
-        self.action_cnt = 3
+        # features in state vector
+        self.base_delay = sys.maxint
 
         if self.training:
-            self.max_running_time = 5000  # ms
+            self.running = True
+            self.step_cnt = 0
+            self.max_running_steps = 2000
 
             # statistics variables to compute rewards
             self.sent_bytes = 0
@@ -56,11 +59,16 @@ class Sender(object):
         self.sample_action = sample_action
 
     def reset_training(self):
+        assert self.training
+
         self.seq_num += 1
         self.next_ack = self.seq_num
-        self.cwnd = 2
+        self.cwnd = 16.0
+
+        self.base_delay = sys.maxint
 
         self.running = True
+        self.step_cnt = 0
 
         self.sent_bytes = 0
         self.acked_bytes = 0
@@ -100,7 +108,11 @@ class Sender(object):
     def update_state(self, ack):
         send_ts = ack['ack_send_ts']
         ack_ts = ack['ack_recv_ts']
+
+        # queuing delay
         curr_delay = ack_ts - send_ts
+        self.base_delay = min(self.base_delay, curr_delay)
+        queuing_delay = curr_delay - self.base_delay
 
         if self.training:
             self.acked_bytes += ack['ack_bytes']
@@ -109,23 +121,20 @@ class Sender(object):
             self.first_ack_ts = min(ack_ts, self.first_ack_ts)
             self.last_ack_ts = max(ack_ts, self.last_ack_ts)
 
-            if self.last_ack_ts - self.first_ack_ts > self.max_running_time:
+            self.step_cnt += 1
+            if self.step_cnt >= self.max_running_steps:
                 self.running = False
 
-        curr_delay = max(20, min(229, curr_delay))
-        state = np.zeros(self.state_dim)
-        state[(curr_delay - 20) / 10] = 1
-        return state
+        return [queuing_delay]
 
     def take_action(self, action):
-        action -= 1
-        self.cwnd += action
+        self.cwnd += action - 1
 
-        if self.cwnd < 2:
-            self.cwnd = 2
+        if self.cwnd < 2.0:
+            self.cwnd = 2.0
 
         if self.debug:
-            sys.stderr.write('cwnd %d\n' % self.cwnd)
+            sys.stderr.write('cwnd %.1f\n' % self.cwnd)
 
     def compute_reward(self):
         duration = self.last_ack_ts - self.first_ack_ts
@@ -134,12 +143,12 @@ class Sender(object):
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
         avg_throughput = max(0.0, min(12.0, avg_throughput))
-        delay_percentile = max(20.0, min(229.0, delay_percentile))
+        delay_percentile = max(20.0, min(220.0, delay_percentile))
 
         reward = 1.0
-        reward += np.log(avg_throughput / 12.0)
-        reward += np.log((229.0 - delay_percentile) / 209.0)
-        reward += np.log(1.0 - loss_rate)
+        reward += np.log(max(1e-5, avg_throughput / 12.0))
+        reward += np.log(max(1e-5, (220.0 - delay_percentile) / 200.0))
+        reward += np.log(max(1e-5, 1.0 - loss_rate))
         reward *= 10.0
 
         sys.stderr.write('Average throughput: %.2f Mbps\n' % avg_throughput)
@@ -151,6 +160,8 @@ class Sender(object):
         return reward
 
     def get_experience(self):
+        assert self.training
+
         reward = self.compute_reward()
         return self.state_buf, self.action_buf, reward
 
@@ -195,7 +206,7 @@ class Sender(object):
         self.poller.modify(self.sock, h.ALL_FLAGS)
         curr_flags = h.ALL_FLAGS
 
-        while self.running:
+        while not self.training or self.running:
             if self.window_is_open():
                 if curr_flags != h.ALL_FLAGS:
                     self.poller.modify(self.sock, h.ALL_FLAGS)
