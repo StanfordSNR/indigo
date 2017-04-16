@@ -7,6 +7,7 @@ import numpy as np
 from sender import Sender
 from dagger import Dagger
 from reinforce import Reinforce
+from helpers import make_sure_path_exists
 
 
 class Trainer(object):
@@ -14,9 +15,12 @@ class Trainer(object):
         self.sender = Sender(args.ip, args.port, training=True)
         self.algorithm = args.algorithm
 
+        curr_file_path = os.path.dirname(os.path.abspath(__file__))
+        saved_models_path = os.path.join(curr_file_path, 'saved_models')
+        make_sure_path_exists(saved_models_path)
+
         if self.algorithm == 'dagger':
-            model_path = os.path.dirname(os.path.abspath(__file__))
-            model_path = os.path.join(model_path, 'saved_models/dagger')
+            model_path = os.path.join(saved_models_path, 'dagger')
 
             self.learner = Dagger(
                 state_dim=self.sender.state_dim,
@@ -26,8 +30,7 @@ class Trainer(object):
                 restore_vars=None,
                 debug=True)
         elif self.algorithm == 'reinforce':
-            model_path = os.path.dirname(os.path.abspath(__file__))
-            model_path = os.path.join(model_path, 'saved_models/reinforce')
+            model_path = os.path.join(saved_models_path, 'reinforce')
 
             self.learner = Reinforce(
                 state_dim=self.sender.state_dim,

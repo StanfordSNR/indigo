@@ -1,4 +1,6 @@
+import os
 import time
+import errno
 import numpy as np
 import select
 
@@ -19,6 +21,14 @@ class TimeoutError(Exception):
 
 def timeout_handler(signum, frame):
     raise TimeoutError()
+
+
+def make_sure_path_exists(path):
+    try:
+        os.makedirs(path)
+    except OSError as exception:
+        if exception.errno != errno.EEXIST:
+            raise
 
 
 class RingBuffer(object):

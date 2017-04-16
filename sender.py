@@ -33,7 +33,7 @@ class Sender(object):
         # congestion control related
         self.seq_num = 0
         self.next_ack = 0
-        self.cwnd = 16.0
+        self.cwnd = 10.0
 
         # features in state vector
         self.base_delay = sys.maxint
@@ -63,7 +63,7 @@ class Sender(object):
 
         self.seq_num += 1
         self.next_ack = self.seq_num
-        self.cwnd = 16.0
+        self.cwnd = 10.0
 
         self.base_delay = sys.maxint
 
@@ -130,8 +130,8 @@ class Sender(object):
     def take_action(self, action):
         self.cwnd += action - 1
 
-        if self.cwnd < 2.0:
-            self.cwnd = 2.0
+        if self.cwnd < 5.0:
+            self.cwnd = 5.0
 
         if self.debug:
             sys.stderr.write('cwnd %.1f\n' % self.cwnd)
@@ -145,7 +145,7 @@ class Sender(object):
         avg_throughput = max(0.0, min(12.0, avg_throughput))
         delay_percentile = max(20.0, min(220.0, delay_percentile))
 
-        reward = 1.0
+        reward = 3.0
         reward += np.log(max(1e-5, avg_throughput / 12.0))
         reward += np.log(max(1e-5, (220.0 - delay_percentile) / 200.0))
         reward += np.log(max(1e-5, 1.0 - loss_rate))
