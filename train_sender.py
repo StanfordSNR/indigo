@@ -5,26 +5,41 @@ import sys
 import argparse
 import numpy as np
 from sender import Sender
+from dagger import Dagger
 from reinforce import Reinforce
 
 
 class Trainer(object):
     def __init__(self, args):
         self.sender = Sender(args.ip, args.port, training=True)
+        self.algorithm = args.algorithm
 
-        model_path = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.join(model_path, 'saved_models/rlcc-model')
+        if self.algorithm == 'dagger':
+            model_path = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(model_path, 'saved_models/dagger')
 
-        self.learner = Reinforce(
-            training=True,
-            state_dim=self.sender.state_dim,
-            action_cnt=self.sender.action_cnt,
-            model_path=model_path,
-            debug=True)
+            self.learner = Dagger(
+                state_dim=self.sender.state_dim,
+                action_cnt=self.sender.action_cnt,
+                training=True,
+                save_vars=model_path,
+                restore_vars=None,
+                debug=True)
+        elif self.algorithm == 'reinforce':
+            model_path = os.path.dirname(os.path.abspath(__file__))
+            model_path = os.path.join(model_path, 'saved_models/reinforce')
+
+            self.learner = Reinforce(
+                state_dim=self.sender.state_dim,
+                action_cnt=self.sender.action_cnt,
+                training=True,
+                save_vars=model_path,
+                restore_vars=None,
+                debug=True)
 
         self.sender.set_sample_action(self.learner.sample_action)
 
-        self.max_batches = 100
+        self.max_batches = 1000
         self.episodes_per_batch = 1
 
     def run(self):
@@ -38,7 +53,12 @@ class Trainer(object):
 
                 self.sender.run()
                 state_buf, action_buf, reward = self.sender.get_experience()
-                self.learner.store_episode(state_buf, action_buf, reward)
+
+                if self.algorithm == 'dagger':
+                    self.learner.store_episode(state_buf)
+                elif self.algorithm == 'reinforce':
+                    self.learner.store_episode(state_buf, action_buf, reward)
+
                 self.sender.reset_training()
 
             self.learner.update_model()
@@ -50,6 +70,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('ip', metavar='IP')
     parser.add_argument('port', type=int)
+    parser.add_argument('--algorithm', choices=['dagger', 'reinforce'],
+                        required=True)
     args = parser.parse_args()
 
     trainer = Trainer(args)
