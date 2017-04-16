@@ -35,11 +35,15 @@ class Dagger(object):
             self.session.run(tf.global_variables_initializer())
         else:
             # restore saved variables
-            saver = tf.train.Saver()
+            saver = tf.train.Saver([self.W, self.b])
             saver.restore(self.session, self.restore_vars)
             if self.debug:
                 print 'Restored W:', self.session.run(self.W)
                 print 'Restored b:', self.session.run(self.b)
+
+            # init the remaining vars, especially those created by optimizer
+            uninit_vars = set(tf.global_variables()) - set([self.W, self.b])
+            self.session.run(tf.variables_initializer(uninit_vars))
 
     def build_tf_graph(self):
         self.build_policy()
@@ -57,9 +61,6 @@ class Dagger(object):
                                  initializer=tf.constant_initializer(0.0))
         self.action_scores = tf.matmul(self.state, self.W) + self.b
         self.predicted_action = tf.argmax(self.action_scores, 1)
-
-        #self.predicted_action = tf.reshape(
-        #        tf.multinomial(self.action_scores, 1), [])
 
     def build_loss(self):
         self.expert_action = tf.placeholder(tf.int32, [None,])
@@ -79,7 +80,7 @@ class Dagger(object):
         self.loss = self.ce_loss + self.reg_loss
         self.loss = tf.reduce_mean(self.loss)
 
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=0.1, decay=0.9)
+        optimizer = tf.train.AdamOptimizer(learning_rate=0.1)
         self.train_op = optimizer.minimize(self.loss)
 
     def normalize_state(self, state):

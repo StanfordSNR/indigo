@@ -18,25 +18,24 @@ class Trainer(object):
         saved_models_path = os.path.join(curr_file_path, 'saved_models')
         make_sure_path_exists(saved_models_path)
 
-        if self.algorithm == 'dagger':
-            model_path = os.path.join(saved_models_path, 'dagger')
+        dagger_path = os.path.join(saved_models_path, 'dagger')
+        reinforce_path = os.path.join(saved_models_path, 'reinforce')
 
+        if self.algorithm == 'dagger':
             self.learner = Dagger(
                 state_dim=self.sender.state_dim,
                 action_cnt=self.sender.action_cnt,
                 training=True,
-                save_vars=model_path,
+                save_vars=dagger_path,
                 restore_vars=None,
                 debug=True)
         elif self.algorithm == 'reinforce':
-            model_path = os.path.join(saved_models_path, 'reinforce')
-
             self.learner = Reinforce(
                 state_dim=self.sender.state_dim,
                 action_cnt=self.sender.action_cnt,
                 training=True,
-                save_vars=model_path,
-                restore_vars=None,
+                save_vars=reinforce_path,
+                restore_vars=dagger_path,
                 debug=True)
 
         self.sender.set_sample_action(self.learner.sample_action)
