@@ -3,25 +3,41 @@
 import os
 import argparse
 from sender import Sender
+from dagger import Dagger
 from reinforce import Reinforce
+from helpers import make_sure_path_exists
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('ip', metavar='IP')
     parser.add_argument('port', type=int)
+    parser.add_argument('--algorithm', choices=['dagger', 'reinforce'],
+                        required=True)
     args = parser.parse_args()
 
-    sender = Sender(args.ip, args.port, training=False)
+    sender = Sender(args.ip, args.port)
 
-    model_path = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(model_path, 'saved_models/rlcc-model')
+    curr_file_path = os.path.dirname(os.path.abspath(__file__))
+    saved_models_path = os.path.join(curr_file_path, 'saved_models')
+    make_sure_path_exists(saved_models_path)
 
-    policer = Reinforce(
-        training=False,
-        state_dim=sender.state_dim,
-        action_cnt=sender.action_cnt,
-        model_path=model_path)
+    if args.algorithm == 'dagger':
+        model_path = os.path.join(saved_models_path, 'dagger')
+
+        policer = Dagger(
+            state_dim=sender.state_dim,
+            action_cnt=sender.action_cnt,
+            training=False,
+            restore_vars=model_path)
+    elif args.algorithm == 'reinforce':
+        model_path = os.path.join(saved_models_path, 'reinforce')
+
+        policer = Reinforce(
+            state_dim=sender.state_dim,
+            action_cnt=sender.action_cnt,
+            training=False,
+            restore_vars=model_path)
 
     sender.set_sample_action(policer.sample_action)
 

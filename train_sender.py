@@ -3,7 +3,6 @@
 import os
 import sys
 import argparse
-import numpy as np
 from sender import Sender
 from dagger import Dagger
 from reinforce import Reinforce
