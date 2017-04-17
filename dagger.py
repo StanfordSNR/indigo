@@ -60,7 +60,8 @@ class Dagger(object):
         self.b = tf.get_variable('b', [self.action_cnt],
                                  initializer=tf.constant_initializer(0.0))
         self.action_scores = tf.matmul(self.state, self.W) + self.b
-        self.predicted_action = tf.argmax(self.action_scores, 1)
+        self.predicted_action = tf.reshape(
+                tf.argmax(self.action_scores, 1), [])
 
     def build_loss(self):
         self.expert_action = tf.placeholder(tf.int32, [None,])
@@ -100,16 +101,12 @@ class Dagger(object):
         return action
 
     def sample_expert_action(self, state):
+        assert self.action_cnt == 9
         queuing_delay = state[0]
 
-        if queuing_delay <= 30:
-            action = 2
-        elif queuing_delay >= 100:
-            action = 0
-        else:
-            action = 1
-
-        return action
+        for action in xrange(9):
+            if queuing_delay >= 10 * (8 - action):
+                return action
 
     def store_episode(self, state_buf):
         assert self.training

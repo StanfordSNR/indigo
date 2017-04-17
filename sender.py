@@ -27,16 +27,22 @@ class Sender(object):
         self.data['payload'] = 'x' * 1400
 
         # dimension of state space and action space
-        self.state_dim = 1
-        self.action_cnt = 3
+        self.state_dim = 3
+        self.action_cnt = 9
+        self.action_mapping = [-1.0, -0.5, -0.25, -0.125, 0.0,
+                               0.125, 0.25, 0.5, 1.0]
 
         # congestion control related
         self.seq_num = 0
         self.next_ack = 0
-        self.cwnd = 10.0
+        self.cwnd = 5.0
 
-        # features in state vector
+        # features (in state vector) related
         self.base_delay = sys.maxint
+        self.send_ewma = 0.0
+        self.ack_ewma = 0.0
+        self.prev_send_ts = None
+        self.prev_ack_ts = None
 
         if self.training:
             self.running = True
@@ -63,9 +69,13 @@ class Sender(object):
 
         self.seq_num += 1
         self.next_ack = self.seq_num
-        self.cwnd = 10.0
+        self.cwnd = 5.0
 
         self.base_delay = sys.maxint
+        self.send_ewma = 0.0
+        self.ack_ewma = 0.0
+        self.prev_send_ts = None
+        self.prev_ack_ts = None
 
         self.running = True
         self.step_cnt = 0
@@ -114,6 +124,21 @@ class Sender(object):
         self.base_delay = min(self.base_delay, curr_delay)
         queuing_delay = curr_delay - self.base_delay
 
+        # EWMA of interarrival time between two send_ts and two ack_ts
+        if self.prev_send_ts is None:
+            assert self.prev_ack_ts is None
+            self.prev_send_ts = send_ts
+            self.prev_ack_ts = ack_ts
+
+        send_ts_diff = send_ts - self.prev_send_ts
+        ack_ts_diff = ack_ts - self.prev_ack_ts
+        self.prev_send_ts = send_ts
+        self.prev_ack_ts = ack_ts
+
+        alpha = 0.125
+        self.send_ewma = (1 - alpha) * self.send_ewma + alpha * send_ts_diff
+        self.ack_ewma = (1 - alpha) * self.ack_ewma + alpha * ack_ts_diff
+
         if self.training:
             self.acked_bytes += ack['ack_bytes']
             self.total_delays.append(curr_delay)
@@ -125,16 +150,16 @@ class Sender(object):
             if self.step_cnt >= self.max_running_steps:
                 self.running = False
 
-        return [queuing_delay]
+        return [queuing_delay, self.send_ewma, self.ack_ewma]
 
     def take_action(self, action):
-        self.cwnd += action - 1
+        self.cwnd += self.action_mapping[action]
 
         if self.cwnd < 5.0:
             self.cwnd = 5.0
 
         if self.debug:
-            sys.stderr.write('cwnd %.1f\n' % self.cwnd)
+            sys.stderr.write('cwnd %.2f\n' % self.cwnd)
 
     def compute_reward(self):
         duration = self.last_ack_ts - self.first_ack_ts
