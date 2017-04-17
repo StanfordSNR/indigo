@@ -1,6 +1,7 @@
 import sys
 import numpy as np
 import tensorflow as tf
+from helpers import make_sure_path_exists
 
 
 class Dagger(object):
@@ -35,14 +36,13 @@ class Dagger(object):
             self.session.run(tf.global_variables_initializer())
         else:
             # restore saved variables
-            saver = tf.train.Saver([self.W, self.b])
+            saver = tf.train.Saver(self.trainable_vars)
             saver.restore(self.session, self.restore_vars)
             if self.debug:
-                print 'Restored W:', self.session.run(self.W)
-                print 'Restored b:', self.session.run(self.b)
+                print 'Restored W1,b1,W2,b2:\n', self.session.run(self.trainable_vars)
 
             # init the remaining vars, especially those created by optimizer
-            uninit_vars = set(tf.global_variables()) - set([self.W, self.b])
+            uninit_vars = set(tf.global_variables()) - set(self.trainable_vars)
             self.session.run(tf.variables_initializer(uninit_vars))
 
     def build_tf_graph(self):
@@ -51,17 +51,36 @@ class Dagger(object):
         if self.training:
             self.build_loss()
 
+        if self.debug:
+            summary_path = 'tensorflow_summary'
+            make_sure_path_exists(summary_path)
+            self.summary_writer = tf.summary.FileWriter(
+                    summary_path, graph=self.session.graph)
+
+            tf.summary.scalar('reg_loss', self.reg_loss)
+            tf.summary.scalar('loss', self.loss)
+            self.summary_op = tf.summary.merge_all()
+
     def build_policy(self):
         self.state = tf.placeholder(tf.float32, [None, self.state_dim])
 
         # softmax classification
-        self.W = tf.get_variable('W', [self.state_dim, self.action_cnt],
-                                 initializer=tf.random_normal_initializer())
-        self.b = tf.get_variable('b', [self.action_cnt],
-                                 initializer=tf.constant_initializer(0.0))
-        self.action_scores = tf.matmul(self.state, self.W) + self.b
+        h1_dim = 20
+        W1 = tf.get_variable('W1', [self.state_dim, h1_dim],
+                             initializer=tf.random_normal_initializer())
+        b1 = tf.get_variable('b1', [h1_dim],
+                             initializer=tf.constant_initializer(0.0))
+        h1 = tf.nn.tanh(tf.matmul(self.state, W1) + b1)
+
+        W2 = tf.get_variable('W2', [h1_dim, self.action_cnt],
+                             initializer=tf.random_normal_initializer())
+        b2 = tf.get_variable('b2', [self.action_cnt],
+                             initializer=tf.constant_initializer(0.0))
+        self.action_scores = tf.matmul(h1, W2) + b2
         self.predicted_action = tf.reshape(
                 tf.argmax(self.action_scores, 1), [])
+
+        self.trainable_vars = [W1, b1, W2, b2]
 
     def build_loss(self):
         self.expert_action = tf.placeholder(tf.int32, [None,])
@@ -125,14 +144,20 @@ class Dagger(object):
         sys.stderr.write('Updating model...\n')
 
         norm_state_buf = self.normalize_state(self.state_buf_batch)
-        self.session.run(self.train_op, {
-            self.state: norm_state_buf,
-            self.expert_action: self.action_buf_batch
-        })
 
-        if self.debug:
-            print 'W:', self.session.run(self.W)
-            print 'b:', self.session.run(self.b)
+        if not self.debug:
+            self.session.run(self.train_op, {
+                self.state: norm_state_buf,
+                self.expert_action: self.action_buf_batch
+            })
+        else:
+            _, summary = self.session.run([self.train_op, self.summary_op], {
+                self.state: norm_state_buf,
+                self.expert_action: self.action_buf_batch
+            })
+
+            self.summary_writer.add_summary(summary, self.train_iter)
+
             print 'regularization loss:', self.session.run(self.reg_loss)
             print 'total loss:', self.session.run(self.loss, {
                 self.state: norm_state_buf,
@@ -146,6 +171,9 @@ class Dagger(object):
         assert self.training
         assert self.save_vars is not None
 
-        saver = tf.train.Saver([self.W, self.b])
+        saver = tf.train.Saver(self.trainable_vars)
         saver.save(self.session, self.save_vars)
         sys.stderr.write('\nModel saved to %s\n' % self.save_vars)
+
+        if self.debug:
+            print 'Saved W1,b1,W2,b2:\n', self.session.run(self.trainable_vars)
