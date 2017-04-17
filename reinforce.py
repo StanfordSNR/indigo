@@ -40,7 +40,7 @@ class Reinforce(object):
             self.explore_prob = 0.5
             self.init_explore_prob = 0.5
             self.final_explore_prob = 0.0
-            self.decay_steps = 1000
+            self.decay_steps = 2000
             self.decay_iter = 0
 
         if self.restore_vars is None:
@@ -99,7 +99,7 @@ class Reinforce(object):
 
         self.loss = tf.reduce_mean(self.loss)
 
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=0.1)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
         self.train_op = self.optimizer.minimize(self.loss)
 
     def normalize_state(self, state):

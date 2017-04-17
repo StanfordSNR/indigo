@@ -80,7 +80,7 @@ class Dagger(object):
         self.loss = self.ce_loss + self.reg_loss
         self.loss = tf.reduce_mean(self.loss)
 
-        optimizer = tf.train.AdamOptimizer(learning_rate=0.1)
+        optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
         self.train_op = optimizer.minimize(self.loss)
 
     def normalize_state(self, state):
