@@ -28,14 +28,13 @@ class Sender(object):
 
         # dimension of state space and action space
         self.state_dim = 3
-        self.action_cnt = 9
-        self.action_mapping = [-1.0, -0.5, -0.25, -0.125, 0.0,
-                               0.125, 0.25, 0.5, 1.0]
+        self.action_cnt = 5
+        self.action_mapping = [-0.5, -0.25, 0.0, 0.25, 0.5]
 
         # congestion control related
         self.seq_num = 0
         self.next_ack = 0
-        self.cwnd = 5.0
+        self.cwnd = 10.0
 
         # features (in state vector) related
         self.base_delay = sys.maxint
@@ -69,7 +68,7 @@ class Sender(object):
 
         self.seq_num += 1
         self.next_ack = self.seq_num
-        self.cwnd = 5.0
+        self.cwnd = 10.0
 
         self.base_delay = sys.maxint
         self.send_ewma = 0.0
@@ -168,11 +167,11 @@ class Sender(object):
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
         avg_throughput = max(0.0, min(12.0, avg_throughput))
-        delay_percentile = max(20.0, min(220.0, delay_percentile))
+        delay_percentile = max(20.0, min(230.0, delay_percentile))
 
         reward = 3.0
         reward += np.log(max(1e-5, avg_throughput / 12.0))
-        reward += np.log(max(1e-5, (220.0 - delay_percentile) / 200.0))
+        reward += np.log(max(1e-5, (230.0 - delay_percentile) / 210.0))
         reward += np.log(max(1e-5, 1.0 - loss_rate))
         reward *= 10.0
 

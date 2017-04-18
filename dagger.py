@@ -26,10 +26,10 @@ class Dagger(object):
         if not self.training:  # production
             assert self.save_vars is None
             assert self.restore_vars is not None
-
-        # buffers for each batch
-        self.state_buf_batch = []
-        self.action_buf_batch = []
+        else:
+            # buffers for each batch
+            self.state_buf_batch = []
+            self.action_buf_batch = []
 
         if self.restore_vars is None:
             # initialize variables
@@ -39,7 +39,8 @@ class Dagger(object):
             saver = tf.train.Saver(self.trainable_vars)
             saver.restore(self.session, self.restore_vars)
             if self.debug:
-                print 'Restored W1,b1,W2,b2:\n', self.session.run(self.trainable_vars)
+                print 'Restored variables:'
+                print self.session.run(self.trainable_vars)
 
             # init the remaining vars, especially those created by optimizer
             uninit_vars = set(tf.global_variables()) - set(self.trainable_vars)
@@ -52,13 +53,13 @@ class Dagger(object):
             self.build_loss()
 
         if self.debug:
-            summary_path = 'tensorflow_summary'
+            summary_path = 'dagger_summary'
             make_sure_path_exists(summary_path)
             self.summary_writer = tf.summary.FileWriter(
                     summary_path, graph=self.session.graph)
 
             tf.summary.scalar('reg_loss', self.reg_loss)
-            tf.summary.scalar('loss', self.loss)
+            tf.summary.scalar('total_loss', self.loss)
             self.summary_op = tf.summary.merge_all()
 
     def build_policy(self):
@@ -104,13 +105,35 @@ class Dagger(object):
         self.train_op = optimizer.minimize(self.loss)
 
     def normalize_state(self, state):
-        norm_state = np.array(state, dtype=np.float32) / 100.0 - 1.0
+        norm_state = np.array(state, dtype=np.float32)
+
+        # queuing_delay, mostly in [0, 210]
+        queuing_delays = norm_state[:,0]
+        queuing_delays /= 105.0
+        queuing_delays -= 1.0
+
+        # send_ewma and ack_ewma, mostly in [0, 16]
+        for i in [1, 2]:
+            ewmas = norm_state[:,i]
+            ewmas /= 8.0
+            ewmas -= 1.0
+
+        # make sure all features lie in [-1.0, 1.0]
         norm_state[norm_state > 1.0] = 1.0
         norm_state[norm_state < -1.0] = -1.0
         return norm_state
 
+    def sample_expert_action(self, state):
+        queuing_delay = state[0]
+
+        for action in xrange(5):
+            if queuing_delay >= 10 * (4 - action):
+                return action
+
+        return action
+
     def sample_action(self, state):
-        if self.train_iter > 0:
+        if not self.training or self.train_iter > 0:
             norm_state = self.normalize_state([state])
             action = self.session.run(self.predicted_action,
                                       {self.state: norm_state})
@@ -118,14 +141,6 @@ class Dagger(object):
             action = self.sample_expert_action(state)
 
         return action
-
-    def sample_expert_action(self, state):
-        assert self.action_cnt == 9
-        queuing_delay = state[0]
-
-        for action in xrange(9):
-            if queuing_delay >= 10 * (8 - action):
-                return action
 
     def store_episode(self, state_buf):
         assert self.training
@@ -158,12 +173,6 @@ class Dagger(object):
 
             self.summary_writer.add_summary(summary, self.train_iter)
 
-            print 'regularization loss:', self.session.run(self.reg_loss)
-            print 'total loss:', self.session.run(self.loss, {
-                self.state: norm_state_buf,
-                self.expert_action: self.action_buf_batch
-            })
-
         self.state_buf_batch = []
         self.action_buf_batch = []
 
@@ -176,4 +185,5 @@ class Dagger(object):
         sys.stderr.write('\nModel saved to %s\n' % self.save_vars)
 
         if self.debug:
-            print 'Saved W1,b1,W2,b2:\n', self.session.run(self.trainable_vars)
+            print 'Saved variables:'
+            print self.session.run(self.trainable_vars)

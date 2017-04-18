@@ -1,7 +1,7 @@
 import sys
 import numpy as np
 import tensorflow as tf
-from helpers import MeanVarHistory
+from helpers import MeanVarHistory, make_sure_path_exists
 
 
 class Reinforce(object):
@@ -17,6 +17,7 @@ class Reinforce(object):
         # start tensorflow session and build tensorflow graph
         self.session = tf.Session()
         self.build_tf_graph()
+        self.train_iter = 0
 
         if self.debug:
             np.set_printoptions(precision=3)
@@ -25,8 +26,7 @@ class Reinforce(object):
         if not self.training:  # production
             assert self.save_vars is None
             assert self.restore_vars is not None
-
-        if self.training:
+        else:
             # buffers for each batch
             self.state_buf_batch = []
             self.action_buf_batch = []
@@ -48,14 +48,14 @@ class Reinforce(object):
             self.session.run(tf.global_variables_initializer())
         else:
             # restore saved variables
-            saver = tf.train.Saver([self.W, self.b])
+            saver = tf.train.Saver(self.trainable_vars)
             saver.restore(self.session, self.restore_vars)
             if self.debug:
-                print 'Restored W:', self.session.run(self.W)
-                print 'Restored b:', self.session.run(self.b)
+                print 'Restored variables:'
+                print self.session.run(self.trainable_vars)
 
             # init the remaining vars, especially those created by optimizer
-            uninit_vars = set(tf.global_variables()) - set([self.W, self.b])
+            uninit_vars = set(tf.global_variables()) - set(self.trainable_vars)
             self.session.run(tf.variables_initializer(uninit_vars))
 
     def build_tf_graph(self):
@@ -64,17 +64,36 @@ class Reinforce(object):
         if self.training:
             self.build_loss()
 
+        if self.debug:
+            summary_path = 'reinforce_summary'
+            make_sure_path_exists(summary_path)
+            self.summary_writer = tf.summary.FileWriter(
+                    summary_path, graph=self.session.graph)
+
+            tf.summary.scalar('reg_loss', self.reg_loss)
+            tf.summary.scalar('policy_loss', self.policy_loss)
+            self.summary_op = tf.summary.merge_all()
+
     def build_policy(self):
         self.state = tf.placeholder(tf.float32, [None, self.state_dim])
 
         # softmax classification
-        self.W = tf.get_variable('W', [self.state_dim, self.action_cnt],
-                                 initializer=tf.random_normal_initializer())
-        self.b = tf.get_variable('b', [self.action_cnt],
-                                 initializer=tf.constant_initializer(0.0))
-        self.action_scores = tf.matmul(self.state, self.W) + self.b
+        h1_dim = 20
+        W1 = tf.get_variable('W1', [self.state_dim, h1_dim],
+                             initializer=tf.random_normal_initializer())
+        b1 = tf.get_variable('b1', [h1_dim],
+                             initializer=tf.constant_initializer(0.0))
+        h1 = tf.nn.tanh(tf.matmul(self.state, W1) + b1)
+
+        W2 = tf.get_variable('W2', [h1_dim, self.action_cnt],
+                             initializer=tf.random_normal_initializer())
+        b2 = tf.get_variable('b2', [self.action_cnt],
+                             initializer=tf.constant_initializer(0.0))
+        self.action_scores = tf.matmul(h1, W2) + b2
         self.predicted_action = tf.reshape(
                 tf.multinomial(self.action_scores, 1), [])
+
+        self.trainable_vars = [W1, b1, W2, b2]
 
     def build_loss(self):
         self.taken_action = tf.placeholder(tf.int32, [None,])
@@ -89,6 +108,7 @@ class Reinforce(object):
         # cross entropy loss
         self.ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=self.taken_action, logits=self.action_scores)
+        self.policy_loss = tf.reduce_mean(self.ce_loss)
 
         # total loss
         self.loss = self.ce_loss + self.reg_loss
@@ -104,6 +124,19 @@ class Reinforce(object):
 
     def normalize_state(self, state):
         norm_state = np.array(state, dtype=np.float32) / 100.0 - 1.0
+
+        # queuing_delay, mostly in [0, 210]
+        queuing_delays = norm_state[:,0]
+        queuing_delays /= 105.0
+        queuing_delays -= 1.0
+
+        # send_ewma and ack_ewma, mostly in [0, 16]
+        for i in [1, 2]:
+            ewmas = norm_state[:,i]
+            ewmas /= 8.0
+            ewmas -= 1.0
+
+        # make sure all features lie in [-1.0, 1.0]
         norm_state[norm_state > 1.0] = 1.0
         norm_state[norm_state < -1.0] = -1.0
         return norm_state
@@ -114,8 +147,7 @@ class Reinforce(object):
         if not self.training:
             action = self.session.run(self.predicted_action,
                                       {self.state: norm_state})
-
-        if self.training:
+        else:
             if np.random.random() < self.explore_prob:
                 # epsilon-greedy exploration
                 action = np.random.randint(0, self.action_cnt)
@@ -157,24 +189,25 @@ class Reinforce(object):
     def update_model(self):
         assert self.training
 
+        self.train_iter += 1
         sys.stderr.write('Updating model...\n')
 
         norm_state_buf = self.normalize_state(self.state_buf_batch)
-        self.session.run(self.train_op, {
-            self.state: norm_state_buf,
-            self.taken_action: self.action_buf_batch,
-            self.discounted_reward: self.reward_buf_batch
-        })
 
-        if self.debug:
-            print 'W:', self.session.run(self.W)
-            print 'b:', self.session.run(self.b)
-            print 'regularization loss:', self.session.run(self.reg_loss)
-            print 'total loss:', self.session.run(self.loss, {
+        if not self.debug:
+            self.session.run(self.train_op, {
                 self.state: norm_state_buf,
                 self.taken_action: self.action_buf_batch,
                 self.discounted_reward: self.reward_buf_batch
             })
+        else:
+            _, summary = self.session.run([self.train_op, self.summary_op], {
+                self.state: norm_state_buf,
+                self.taken_action: self.action_buf_batch,
+                self.discounted_reward: self.reward_buf_batch
+            })
+
+            self.summary_writer.add_summary(summary, self.train_iter)
 
         self.state_buf_batch = []
         self.action_buf_batch = []
@@ -184,6 +217,10 @@ class Reinforce(object):
         assert self.training
         assert self.save_vars is not None
 
-        saver = tf.train.Saver([self.W, self.b])
+        saver = tf.train.Saver(self.trainable_vars)
         saver.save(self.session, self.save_vars)
         sys.stderr.write('\nModel saved to %s\n' % self.save_vars)
+
+        if self.debug:
+            print 'Saved variables:'
+            print self.session.run(self.trainable_vars)
