@@ -1,8 +1,9 @@
 import os
 import time
 import errno
-import numpy as np
 import select
+import socket
+import numpy as np
 
 
 READ_FLAGS = select.POLLIN | select.POLLPRI
@@ -31,6 +32,16 @@ def make_sure_path_exists(path):
             raise
 
 
+def get_open_udp_port():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    s = bind(('', 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
 class RingBuffer(object):
     def __init__(self, length):
         self.full_len = length
@@ -45,8 +56,8 @@ class RingBuffer(object):
             self.real_len += 1
 
     def get(self):
-        idx = (self.index - self.real_len
-               + np.arange(self.real_len)) % self.full_len
+        idx = (self.index - self.real_len +
+               np.arange(self.real_len)) % self.full_len
         return self.data[idx]
 
     def reset(self):
