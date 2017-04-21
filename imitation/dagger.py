@@ -1,10 +1,11 @@
 import sys
 import numpy as np
 import tensorflow as tf
-from helpers import MeanVarHistory, make_sure_path_exists
+import project_root
+from helpers.helpers import make_sure_path_exists
 
 
-class Reinforce(object):
+class Dagger(object):
     def __init__(self, state_dim, action_cnt, training=False,
                  save_vars=None, restore_vars=None, debug=False):
         self.state_dim = state_dim
@@ -31,18 +32,6 @@ class Reinforce(object):
             self.state_buf_batch = []
             self.action_buf_batch = []
 
-            # reward calculation
-            self.reward_buf_batch = []
-            self.reward_discount = 1.0
-            self.reward_history = MeanVarHistory()
-
-            # epsilon-greedy exploration with decaying probability
-            self.explore_prob = 0.5
-            self.init_explore_prob = 0.5
-            self.final_explore_prob = 0.0
-            self.decay_steps = 2000
-            self.decay_iter = 0
-
         if self.restore_vars is None:
             # initialize variables
             self.session.run(tf.global_variables_initializer())
@@ -65,13 +54,13 @@ class Reinforce(object):
             self.build_loss()
 
         if self.debug:
-            summary_path = 'reinforce_summary'
+            summary_path = 'dagger_summary'
             make_sure_path_exists(summary_path)
             self.summary_writer = tf.summary.FileWriter(
                     summary_path, graph=self.session.graph)
 
             tf.summary.scalar('reg_loss', self.reg_loss)
-            tf.summary.scalar('policy_loss', self.policy_loss)
+            tf.summary.scalar('total_loss', self.loss)
             self.summary_op = tf.summary.merge_all()
 
     def build_policy(self):
@@ -91,12 +80,12 @@ class Reinforce(object):
                              initializer=tf.constant_initializer(0.0))
         self.action_scores = tf.matmul(h1, W2) + b2
         self.predicted_action = tf.reshape(
-                tf.multinomial(self.action_scores, 1), [])
+                tf.argmax(self.action_scores, 1), [])
 
         self.trainable_vars = [W1, b1, W2, b2]
 
     def build_loss(self):
-        self.taken_action = tf.placeholder(tf.int32, [None,])
+        self.expert_action = tf.placeholder(tf.int32, [None, ])
 
         # regularization loss
         reg_penalty = 0.01
@@ -107,32 +96,26 @@ class Reinforce(object):
 
         # cross entropy loss
         self.ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                labels=self.taken_action, logits=self.action_scores)
-        self.policy_loss = tf.reduce_mean(self.ce_loss)
+                labels=self.expert_action, logits=self.action_scores)
 
         # total loss
         self.loss = self.ce_loss + self.reg_loss
-
-        # magic of policy gradient
-        self.discounted_reward = tf.placeholder(tf.float32, [None,])
-        self.loss *= self.discounted_reward
-
         self.loss = tf.reduce_mean(self.loss)
 
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
-        self.train_op = self.optimizer.minimize(self.loss)
+        optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
+        self.train_op = optimizer.minimize(self.loss)
 
     def normalize_state(self, state):
-        norm_state = np.array(state, dtype=np.float32) / 100.0 - 1.0
+        norm_state = np.array(state, dtype=np.float32)
 
         # queuing_delay, mostly in [0, 210]
-        queuing_delays = norm_state[:,0]
+        queuing_delays = norm_state[:, 0]
         queuing_delays /= 105.0
         queuing_delays -= 1.0
 
         # send_ewma and ack_ewma, mostly in [0, 16]
         for i in [1, 2]:
-            ewmas = norm_state[:,i]
+            ewmas = norm_state[:, i]
             ewmas /= 8.0
             ewmas -= 1.0
 
@@ -141,50 +124,34 @@ class Reinforce(object):
         norm_state[norm_state < -1.0] = -1.0
         return norm_state
 
-    def sample_action(self, state):
-        norm_state = self.normalize_state([state])
+    def sample_expert_action(self, state):
+        queuing_delay = state[0]
 
-        if not self.training:
-            action = self.session.run(self.predicted_action,
-                                      {self.state: norm_state})
-        else:
-            if np.random.random() < self.explore_prob:
-                # epsilon-greedy exploration
-                action = np.random.randint(0, self.action_cnt)
-            else:
-                action = self.session.run(self.predicted_action,
-                                          {self.state: norm_state})
+        for action in xrange(5):
+            if queuing_delay >= 10 * (4 - action):
+                return action
 
         return action
 
-    def decay_exploration(self):
-        self.decay_iter += 1
-        ratio = float(self.decay_steps - self.decay_iter) / self.decay_steps
-        ratio = max(ratio, 0)
-        self.explore_prob = self.final_explore_prob + ratio * (
-                            self.init_explore_prob - self.final_explore_prob)
+    def sample_action(self, state):
+        if not self.training or self.train_iter > 0:
+            norm_state = self.normalize_state([state])
+            action = self.session.run(self.predicted_action,
+                                      {self.state: norm_state})
+        else:
+            action = self.sample_expert_action(state)
 
-    def compute_discounted_rewards(self, final_reward, T):
-        reward_buf = np.zeros(T)
-        reward_buf[T - 1] = final_reward
-        for t in reversed(xrange(T - 1)):
-            reward_buf[t] = self.reward_discount * reward_buf[t + 1]
+        return action
 
-        self.reward_history.append(reward_buf)
-        self.reward_history.normalize_inplace(reward_buf)
-
-        return reward_buf
-
-    def store_episode(self, state_buf, action_buf, final_reward):
+    def store_episode(self, state_buf):
         assert self.training
-        assert len(state_buf) == len(action_buf)
 
         self.state_buf_batch.extend(state_buf)
-        self.action_buf_batch.extend(action_buf)
 
-        reward_buf = self.compute_discounted_rewards(
-                final_reward, len(state_buf))
-        self.reward_buf_batch.extend(reward_buf)
+        # label states with expert actions
+        for state in state_buf:
+            expert_action = self.sample_expert_action(state)
+            self.action_buf_batch.append(expert_action)
 
     def update_model(self):
         assert self.training
@@ -197,21 +164,18 @@ class Reinforce(object):
         if not self.debug:
             self.session.run(self.train_op, {
                 self.state: norm_state_buf,
-                self.taken_action: self.action_buf_batch,
-                self.discounted_reward: self.reward_buf_batch
+                self.expert_action: self.action_buf_batch
             })
         else:
             _, summary = self.session.run([self.train_op, self.summary_op], {
                 self.state: norm_state_buf,
-                self.taken_action: self.action_buf_batch,
-                self.discounted_reward: self.reward_buf_batch
+                self.expert_action: self.action_buf_batch
             })
 
             self.summary_writer.add_summary(summary, self.train_iter)
 
         self.state_buf_batch = []
         self.action_buf_batch = []
-        self.reward_buf_batch = []
 
     def save_model(self):
         assert self.training

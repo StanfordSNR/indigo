@@ -1,7 +1,8 @@
 import sys
 import json
 import socket
-from helpers import curr_ts_ms
+import project_root
+from helpers.helpers import curr_ts_ms
 
 
 class Receiver(object):
