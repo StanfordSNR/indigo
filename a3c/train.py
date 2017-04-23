@@ -4,8 +4,10 @@ import os
 import sys
 import signal
 import argparse
+import project_root
 from os import path
 from subprocess import Popen, call
+from helpers.helpers import get_open_udp_port
 
 
 def retrieve_hostnames(args):
@@ -23,20 +25,40 @@ def retrieve_hostnames(args):
 def run(args):
     hostnames = retrieve_hostnames(args)
 
+    worker_src = path.join(args.rlcc_dir, 'a3c', 'worker.py')
+    receiver_src = path.join(args.rlcc_dir, 'env', 'run_receiver.py')
+    uplink_trace = path.join(args.rlcc_dir, 'env', '12mbps.trace')
+    downlink_trace = uplink_trace
+
     procs = [None] * len(hostnames)
     for i in xrange(len(hostnames)):
-        if i == 0:
-            cmd = ['python', args.worker_src,
-                   '--ps', args.ps, '--workers', args.workers,
-                   '--job-name', 'ps', '--task-index', '0']
-        else:
-            cmd = ['python', args.worker_src,
-                   '--ps', args.ps, '--workers', args.workers,
-                   '--job-name', 'worker', '--task-index', str(i - 1)]
+        ssh_cmd = ['ssh', hostnames[i]]
 
-        worker_cmd = ['ssh', hostnames[i]] + cmd
-        sys.stderr.write('$ %s\n' % ' '.join(worker_cmd))
-        procs[i] = Popen(worker_cmd, preexec_fn=os.setsid)
+        if i == 0:
+            cmd = ssh_cmd
+            cmd += ['python', worker_src,
+                    '--ps', args.ps, '--workers', args.workers,
+                    '--job-name', 'ps', '--task-index', '0']
+            sys.stderr.write('$ %s\n' % ' '.join(cmd))
+            procs[i] = Popen(cmd, preexec_fn=os.setsid)
+        else:
+            # run receiver
+            cmd = ssh_cmd + ['python', receiver_src, str(get_open_udp_port())]
+            sys.stderr.write('$ %s\n' % ' '.join(cmd))
+            Popen(cmd)
+
+            # run worker that trains sender
+            cmd = ssh_cmd
+            cmd += ['mm-delay', '20',
+                    'mm-link', uplink_trace, downlink_trace,
+                    '--uplink-queue=droptail',
+                    '--uplink-queue-args=packets=200',
+                    '--', 'sh', '-c']
+            cmd += ['python', worker_src,
+                    '--ps', args.ps, '--workers', args.workers,
+                    '--job-name', 'worker', '--task-index', str(i - 1)]
+            sys.stderr.write('$ %s\n' % ' '.join(cmd))
+            procs[i] = Popen(cmd, preexec_fn=os.setsid)
 
     try:
         procs[0].communicate()
@@ -46,7 +68,9 @@ def run(args):
         sys.stderr.write('\nCleaning up...\n')
 
         for hostname in hostnames:
-            kill_cmd = ['ssh', hostname, 'pkill', '-f', args.worker_src]
+            pkill_cmd = ('pkill -f %s; pkill -f mm-delay; pkill -f mm-link; '
+                         'pkill -f mm-loss' % args.rlcc_dir)
+            kill_cmd = ['ssh', hostname, pkill_cmd]
             sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
             call(kill_cmd)
 
@@ -66,9 +90,8 @@ def main():
                         help='comma-separated list of IP:port of workers')
     parser.add_argument('--username', default='ubuntu',
                         help='username ahead of IP')
-    parser.add_argument('--worker-src',
-                        default='/home/ubuntu/RLCC/a3c/worker.py',
-                        help='absolute path to RLCC/a3c/worker.py')
+    parser.add_argument('--rlcc-dir', default='/home/ubuntu/RLCC/',
+                        help='absolute path to RLCC/')
     args = parser.parse_args()
 
     # run workers
