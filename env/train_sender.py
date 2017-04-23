@@ -4,9 +4,9 @@ import os
 import sys
 import argparse
 from sender import Sender
-from dagger import Dagger
-from reinforce import Reinforce
-from helpers import make_sure_path_exists
+from dagger.dagger import Dagger
+from reinforce.reinforce import Reinforce
+from helpers.helpers import make_sure_path_exists
 
 
 class Trainer(object):
@@ -35,7 +35,7 @@ class Trainer(object):
                 action_cnt=self.sender.action_cnt,
                 training=True,
                 save_vars=reinforce_path,
-                restore_vars=dagger_path,
+                restore_vars=None,
                 debug=True)
 
         self.sender.set_sample_action(self.learner.sample_action)
