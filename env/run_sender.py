@@ -2,21 +2,21 @@
 
 import os
 import argparse
+import project_root
 from sender import Sender
-from dagger import Dagger
-from reinforce import Reinforce
-from helpers import make_sure_path_exists
+from dagger.dagger import Dagger
+from reinforce.reinforce import Reinforce
+from helpers.helpers import make_sure_path_exists
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('ip', metavar='IP')
     parser.add_argument('port', type=int)
     parser.add_argument('--algorithm', choices=['dagger', 'reinforce'],
                         required=True)
     args = parser.parse_args()
 
-    sender = Sender(args.ip, args.port)
+    sender = Sender(args.port)
 
     curr_file_path = os.path.dirname(os.path.abspath(__file__))
     saved_models_path = os.path.join(curr_file_path, 'saved_models')
@@ -44,7 +44,7 @@ def main():
     try:
         sender.run()
     except KeyboardInterrupt:
-        pass
+        sender.clean_up()
 
 
 if __name__ == '__main__':

@@ -1,7 +1,6 @@
 import sys
 import json
 import socket
-import signal
 import select
 import numpy as np
 import project_root
@@ -10,32 +9,57 @@ from helpers.helpers import curr_ts_ms
 
 
 class Sender(object):
-    def __init__(self, ip, port, training=False, debug=False):
-        self.dest_addr = (ip, port)
+    def __init__(self, port=0, training=False, debug=False):
         self.training = training
         self.debug = debug
 
         # UDP socket and poller
+        self.peer_addr = None
+
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.setblocking(0)
+        self.sock.bind(('0.0.0.0', port))
+        sys.stderr.write('Listening on port %s\n' % self.sock.getsockname()[1])
 
         self.poller = select.poll()
         self.poller.register(self.sock, h.ALL_FLAGS)
+
+        # handshake with peer receiver
+        self.handshake()
+        self.sock.setblocking(0)
 
         # UDP datagram template
         self.data = {}
         self.data['payload'] = 'x' * 1400
 
-        # dimension of state space and action space
-        self.state_dim = 3
-        self.action_cnt = 5
-        self.action_mapping = [-0.5, -0.25, 0.0, 0.25, 0.5]
-
         # congestion control related
         self.seq_num = 0
         self.next_ack = 0
         self.cwnd = 10.0
+
+        # learning related
+        self.setup_learning()
+
+    def clean_up(self):
+        self.sock.close()
+        sys.stderr.write('\nCleaned up\n')
+
+    def handshake(self):
+        while True:
+            msg, addr = self.sock.recvfrom(1500)
+
+            if msg == 'Hello from receiver' and self.peer_addr is None:
+                self.peer_addr = addr
+                self.sock.sendto('Hello from sender', self.peer_addr)
+                sys.stderr.write(
+                        'Handshake success! Peer address is %s:%s\n' % addr)
+                return
+
+    def setup_learning(self):
+        # dimension of state space and action space
+        self.state_dim = 3
+        self.action_cnt = 5
+        self.action_mapping = [-0.5, -0.25, 0.0, 0.25, 0.5]
 
         # features (in state vector) related
         self.base_delay = sys.maxint
@@ -109,7 +133,6 @@ class Sender(object):
                 assert self.sock.fileno() == fd
 
                 if flag & h.ERR_FLAGS:
-                    self.sock.close()
                     sys.exit('Channel closed or error occurred')
 
                 if flag & h.READ_FLAGS:
@@ -199,7 +222,7 @@ class Sender(object):
         self.data['send_ts'] = curr_ts_ms()
 
         serialized_data = json.dumps(self.data)
-        self.sock.sendto(serialized_data, self.dest_addr)
+        self.sock.sendto(serialized_data, self.peer_addr)
 
         if self.training:
             self.sent_bytes += len(serialized_data)
@@ -208,8 +231,15 @@ class Sender(object):
             sys.stderr.write('Sent seq_num %d\n' % self.data['seq_num'])
 
     def recv(self):
-        serialized_ack = self.sock.recvfrom(1500)[0]
-        ack = json.loads(serialized_ack)
+        serialized_ack, addr = self.sock.recvfrom(1500)
+
+        if addr != self.peer_addr:
+            return
+
+        try:
+            ack = json.loads(serialized_ack)
+        except ValueError:
+            return
 
         self.next_ack = max(self.next_ack, ack['ack_seq_num'] + 1)
 
@@ -250,7 +280,6 @@ class Sender(object):
                 assert self.sock.fileno() == fd
 
                 if flag & h.ERR_FLAGS:
-                    self.sock.close()
                     sys.exit('Error occurred to the channel')
 
                 if flag & h.READ_FLAGS:
