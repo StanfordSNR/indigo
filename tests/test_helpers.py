@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 
-import os
-import sys
-import numpy as np
 import project_root
+import numpy as np
 from helpers.helpers import RingBuffer, MeanVarHistory
 
 

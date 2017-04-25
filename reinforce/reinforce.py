@@ -69,7 +69,7 @@ class Reinforce(object):
             summary_path = 'reinforce_summary'
             make_sure_path_exists(summary_path)
             self.summary_writer = tf.summary.FileWriter(
-                    summary_path, graph=self.session.graph)
+                summary_path, graph=self.session.graph)
 
             tf.summary.scalar('reg_loss', self.reg_loss)
             tf.summary.scalar('policy_loss', self.policy_loss)
@@ -92,7 +92,7 @@ class Reinforce(object):
                              initializer=tf.constant_initializer(0.0))
         self.action_scores = tf.matmul(h1, W2) + b2
         self.predicted_action = tf.reshape(
-                tf.multinomial(self.action_scores, 1), [])
+            tf.multinomial(self.action_scores, 1), [])
 
         self.trainable_vars = [W1, b1, W2, b2]
 
@@ -108,7 +108,7 @@ class Reinforce(object):
 
         # cross entropy loss
         self.ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                labels=self.taken_action, logits=self.action_scores)
+            labels=self.taken_action, logits=self.action_scores)
         self.policy_loss = tf.reduce_mean(self.ce_loss)
 
         # total loss
@@ -163,7 +163,7 @@ class Reinforce(object):
         ratio = float(self.decay_steps - self.decay_iter) / self.decay_steps
         ratio = max(ratio, 0)
         self.explore_prob = self.final_explore_prob + ratio * (
-                            self.init_explore_prob - self.final_explore_prob)
+            self.init_explore_prob - self.final_explore_prob)
 
     def compute_discounted_rewards(self, final_reward, T):
         reward_buf = np.zeros(T)
@@ -184,7 +184,7 @@ class Reinforce(object):
         self.action_buf_batch.extend(action_buf)
 
         reward_buf = self.compute_discounted_rewards(
-                final_reward, len(state_buf))
+            final_reward, len(state_buf))
         self.reward_buf_batch.extend(reward_buf)
 
     def update_model(self):

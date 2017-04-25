@@ -24,8 +24,8 @@ class Receiver(object):
         self.sock.setblocking(1)
 
     def clean_up(self):
+        sys.stderr.write('\nCleaning up...\n')
         self.sock.close()
-        sys.stderr.write('\nCleaned up\n')
 
     def construct_ack_from_data(self, serialized_data):
         try:
@@ -80,8 +80,8 @@ class Receiver(object):
                         if ack is not None:
                             self.sock.sendto(ack, self.peer_addr)
 
-                    sys.stderr.write(
-                        'Handshake success! Peer address is %s:%s\n' % addr)
+                    sys.stderr.write('Handshake success! '
+                                     'Sender\'s address is %s:%s\n' % addr)
                     return
 
     def run(self):

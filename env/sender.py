@@ -41,8 +41,8 @@ class Sender(object):
         self.setup_learning()
 
     def clean_up(self):
+        sys.stderr.write('\nCleaning up...\n')
         self.sock.close()
-        sys.stderr.write('\nCleaned up\n')
 
     def handshake(self):
         while True:
@@ -51,8 +51,8 @@ class Sender(object):
             if msg == 'Hello from receiver' and self.peer_addr is None:
                 self.peer_addr = addr
                 self.sock.sendto('Hello from sender', self.peer_addr)
-                sys.stderr.write(
-                        'Handshake success! Peer address is %s:%s\n' % addr)
+                sys.stderr.write('Handshake success! '
+                                 'Receiver\'s address is %s:%s\n' % addr)
                 return
 
     def setup_learning(self):
@@ -90,6 +90,7 @@ class Sender(object):
 
     def reset_training(self):
         assert self.training
+        sys.stderr.write('Resetting sender...\n')
 
         self.seq_num += 1
         self.next_ack = self.seq_num

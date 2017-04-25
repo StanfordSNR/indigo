@@ -57,7 +57,7 @@ class Dagger(object):
             summary_path = 'dagger_summary'
             make_sure_path_exists(summary_path)
             self.summary_writer = tf.summary.FileWriter(
-                    summary_path, graph=self.session.graph)
+                summary_path, graph=self.session.graph)
 
             tf.summary.scalar('reg_loss', self.reg_loss)
             tf.summary.scalar('total_loss', self.loss)
@@ -80,7 +80,7 @@ class Dagger(object):
                              initializer=tf.constant_initializer(0.0))
         self.action_scores = tf.matmul(h1, W2) + b2
         self.predicted_action = tf.reshape(
-                tf.argmax(self.action_scores, 1), [])
+            tf.argmax(self.action_scores, 1), [])
 
         self.trainable_vars = [W1, b1, W2, b2]
 
@@ -96,7 +96,7 @@ class Dagger(object):
 
         # cross entropy loss
         self.ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                labels=self.expert_action, logits=self.action_scores)
+            labels=self.expert_action, logits=self.action_scores)
 
         # total loss
         self.loss = self.ce_loss + self.reg_loss

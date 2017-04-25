@@ -1,12 +1,9 @@
 #!/usr/bin/env python
 
 import sys
-import signal
 import argparse
-import numpy as np
-import tensorflow as tf
 import project_root
-from os import path
+import tensorflow as tf
 from a3c import A3C
 from env.sender import Sender
 
@@ -38,6 +35,7 @@ class Worker(object):
 
         for i in xrange(1, self.max_episodes):
             self.sender.run()
+
             state_buf, action_buf, reward = self.sender.get_experience()
             self.learner.update_model(state_buf, action_buf, reward)
 
@@ -48,9 +46,9 @@ class Worker(object):
         worker_hosts = self.worker_hosts.split(',')
 
         cluster = tf.train.ClusterSpec(
-                {'ps': ps_hosts, 'worker': worker_hosts})
+            {'ps': ps_hosts, 'worker': worker_hosts})
         server = tf.train.Server(
-                cluster, job_name=self.job_name, task_index=self.task_index)
+            cluster, job_name=self.job_name, task_index=self.task_index)
 
         if self.job_name == 'ps':
             server.join()
@@ -62,11 +60,11 @@ class Worker(object):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-            '--ps-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
-            help='comma-separated list of hostname:port of parameter servers')
+        '--ps-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
+        help='comma-separated list of hostname:port of parameter servers')
     parser.add_argument(
-            '--worker-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
-            help='comma-separated list of hostname:port of workers')
+        '--worker-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
+        help='comma-separated list of hostname:port of workers')
     parser.add_argument('--job-name', choices=['ps', 'worker'],
                         required=True, help='ps or worker')
     parser.add_argument('--task-index', metavar='N', type=int, required=True,

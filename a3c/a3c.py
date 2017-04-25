@@ -19,7 +19,7 @@ class A3C(object):
         self.device = '/job:worker/task:%s' % task_index
 
     def update_model(self, state_buf, action_buf, reward):
-        sys.stderr.write('Running update_model...\n')
+        sys.stderr.write('Updating model...\n')
 
     def sample_action(self, state):
         return np.random.randint(0, self.action_cnt)
