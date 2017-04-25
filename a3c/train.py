@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 import signal
 import argparse
 import project_root
@@ -13,22 +14,27 @@ from helpers.helpers import get_open_udp_port
 def run(args):
     # run parameter servers
     for i in xrange(len(args['ps_list'])):
-        cmd = ['ssh', args['ps_list'][i]]
-        cmd += ['python', args['worker_src'],
-                '--ps-hosts', args['ps_hosts'],
-                '--worker-hosts', args['worker_hosts'],
-                '--job-name', 'ps',
-                '--task-index', str(i)]
+        ssh_cmd = ['ssh', args['ps_list'][i]]
+
+        cmd = ['python', args['worker_src'],
+               '--ps-hosts', args['ps_hosts'],
+               '--worker-hosts', args['worker_hosts'],
+               '--job-name', 'ps',
+               '--task-index', str(i)]
+        cmd = ssh_cmd + cmd
 
         sys.stderr.write('$ %s\n' % ' '.join(cmd))
         args['ps_procs'].append(Popen(cmd, preexec_fn=os.setsid))
 
     # run workers
+    port_list = []
     for i in xrange(len(args['worker_list'])):
         ssh_cmd = ['ssh', args['worker_list'][i]]
 
         # run worker to train sender
         port = str(get_open_udp_port())
+        port_list.append(port)
+
         cmd = ['python', args['worker_src'],
                '--ps-hosts', args['ps_hosts'],
                '--worker-hosts', args['worker_hosts'],
@@ -40,11 +46,18 @@ def run(args):
         sys.stderr.write('$ %s\n' % ' '.join(cmd))
         args['worker_procs'].append(Popen(cmd, preexec_fn=os.setsid))
 
-        # run receiver
+    # wait for senders to run
+    time.sleep(3)
+
+    # run receivers
+    for i in xrange(len(args['worker_list'])):
+        ssh_cmd = ['ssh', args['worker_list'][i]]
+
         mm_cmd = ['mm-delay', '20',
                   'mm-link', args['uplink_trace'], args['downlink_trace'],
                   '--downlink-queue=droptail',
                   '--downlink-queue-args=packets=200']
+        port = port_list[i]
         recv_cmd = ['python', args['receiver_src'], '$MAHIMAHI_BASE', port]
 
         cmd = "%s -- sh -c '%s'" % (' '.join(mm_cmd), ' '.join(recv_cmd))
@@ -58,7 +71,9 @@ def run(args):
 
 
 def clean_up(args):
-    hostname_list = args['ps_list'] + args['worker_list']
+    sys.stderr.write('\nCleaning up...\n')
+
+    hostname_list = args['worker_list'] + args['ps_list']
     for hostname in hostname_list:
         pkill_cmd = ('pkill -f %s; pkill -f mm-delay; pkill -f mm-link; '
                      'pkill -f mm-loss' % args['rlcc_dir'])
@@ -74,8 +89,6 @@ def clean_up(args):
         except OSError as e:
             sys.stderr.write('%s\n' % e)
 
-    sys.stderr.write('\nCleaned up\n')
-
 
 def construct_args(prog_args):
     args = {}  # dictionary of arguments
@@ -83,7 +96,7 @@ def construct_args(prog_args):
     args['rlcc_dir'] = prog_args.rlcc_dir
     args['worker_src'] = path.join(args['rlcc_dir'], 'a3c', 'worker.py')
     args['receiver_src'] = path.join(
-            args['rlcc_dir'], 'env', 'run_receiver.py')
+        args['rlcc_dir'], 'env', 'run_receiver.py')
     args['uplink_trace'] = path.join(args['rlcc_dir'], 'env', '12mbps.trace')
     args['downlink_trace'] = args['uplink_trace']
 
@@ -111,17 +124,17 @@ def construct_args(prog_args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-            '--ps-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
-            help='comma-separated list of hostname:port of parameter servers')
+        '--ps-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
+        help='comma-separated list of hostname:port of parameter servers')
     parser.add_argument(
-            '--worker-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
-            help='comma-separated list of hostname:port of workers')
+        '--worker-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
+        help='comma-separated list of hostname:port of workers')
     parser.add_argument(
-            '--username', required=True,
-            help='username used in ssh connection')
+        '--username', required=True,
+        help='username used in ssh connection')
     parser.add_argument(
-            '--rlcc-dir', metavar='DIR', required=True,
-            help='absolute path to RLCC/')
+        '--rlcc-dir', metavar='DIR', required=True,
+        help='absolute path to RLCC/')
     prog_args = parser.parse_args()
     args = construct_args(prog_args)
 
