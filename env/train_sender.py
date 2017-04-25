@@ -60,7 +60,7 @@ class Trainer(object):
                 elif self.algorithm == 'reinforce':
                     self.learner.store_episode(state_buf, action_buf, reward)
 
-                self.sender.reset_training()
+                self.sender.reset()
 
             self.learner.update_model()
 

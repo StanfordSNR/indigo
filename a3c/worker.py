@@ -22,13 +22,12 @@ class Worker(object):
         self.sender = Sender(self.port, training=True)
 
         self.learner = A3C(
+            cluster=self.cluster,
+            server=self.server,
+            device='/job:worker/task:%d' % self.task_index,
             state_dim=self.sender.state_dim,
             action_cnt=self.sender.action_cnt,
-            task_index=self.task_index,
-            session=self.session,
-            training=True,
             save_vars=None,
-            restore_vars=None,
             debug=True)
 
         self.sender.set_sample_action(self.learner.sample_action)
@@ -39,21 +38,20 @@ class Worker(object):
             state_buf, action_buf, reward = self.sender.get_experience()
             self.learner.update_model(state_buf, action_buf, reward)
 
-            self.sender.reset_training()
+            self.sender.reset()
 
     def run(self):
         ps_hosts = self.ps_hosts.split(',')
         worker_hosts = self.worker_hosts.split(',')
 
-        cluster = tf.train.ClusterSpec(
+        self.cluster = tf.train.ClusterSpec(
             {'ps': ps_hosts, 'worker': worker_hosts})
-        server = tf.train.Server(
-            cluster, job_name=self.job_name, task_index=self.task_index)
+        self.server = tf.train.Server(
+            self.cluster, job_name=self.job_name, task_index=self.task_index)
 
         if self.job_name == 'ps':
-            server.join()
+            self.server.join()
         elif self.job_name == 'worker':
-            self.session = tf.Session(server.target)
             self.work()
 
 

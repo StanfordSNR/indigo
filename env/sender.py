@@ -88,7 +88,7 @@ class Sender(object):
         """Required to be called before running."""
         self.sample_action = sample_action
 
-    def reset_training(self):
+    def reset(self):
         assert self.training
         sys.stderr.write('Resetting sender...\n')
 
