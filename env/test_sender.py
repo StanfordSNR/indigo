@@ -19,11 +19,10 @@ def main():
     parser.add_argument('port', type=int)
     args = parser.parse_args()
 
-    sender = Sender(args.port, debug=False)
-    policy = Policy(sender.state_dim, sender.action_cnt)
-    sender.set_sample_action(policy.sample_action)
-
     try:
+        sender = Sender(args.port, debug=False)  # waiting for handshake
+        policy = Policy(sender.state_dim, sender.action_cnt)
+        sender.set_sample_action(policy.sample_action)
         sender.run()
     except KeyboardInterrupt:
         sender.clean_up()

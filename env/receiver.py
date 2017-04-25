@@ -18,6 +18,11 @@ class Receiver(object):
         self.poller = select.poll()
         self.poller.register(self.sock, h.ALL_FLAGS)
 
+        # handshake with peer sender
+        self.sock.setblocking(0)
+        self.handshake()
+        self.sock.setblocking(1)
+
     def clean_up(self):
         self.sock.close()
         sys.stderr.write('\nCleaned up\n')
@@ -80,11 +85,6 @@ class Receiver(object):
                     return
 
     def run(self):
-        # handshake with peer sender
-        self.sock.setblocking(0)
-        self.handshake()
-        self.sock.setblocking(1)
-
         # handshake succeeded and receive data now
         while True:
             serialized_data, addr = self.sock.recvfrom(1500)

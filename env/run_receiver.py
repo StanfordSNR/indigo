@@ -10,9 +10,8 @@ def main():
     parser.add_argument('port', type=int)
     args = parser.parse_args()
 
-    receiver = Receiver(args.ip, args.port)
-
     try:
+        receiver = Receiver(args.ip, args.port)  # handshake happens here
         receiver.run()
     except KeyboardInterrupt:
         receiver.clean_up()
