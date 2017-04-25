@@ -1,11 +1,17 @@
 #!/usr/bin/env python
 
 import argparse
+import numpy as np
 from sender import Sender
 
 
-def sample_action(state):
-    return 1
+class Policy(object):
+    def __init__(self, state_dim, action_cnt):
+        self.state_dim = state_dim
+        self.action_cnt = action_cnt
+
+    def sample_action(self, state):
+        return np.random.randint(0, self.action_cnt)
 
 
 def main():
@@ -13,9 +19,9 @@ def main():
     parser.add_argument('port', type=int)
     args = parser.parse_args()
 
-    sender = Sender(args.port)
-
-    sender.set_sample_action(sample_action)
+    sender = Sender(args.port, debug=False)
+    policy = Policy(sender.state_dim, sender.action_cnt)
+    sender.set_sample_action(policy.sample_action)
 
     try:
         sender.run()
