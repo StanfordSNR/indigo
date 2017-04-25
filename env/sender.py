@@ -24,10 +24,6 @@ class Sender(object):
         self.poller = select.poll()
         self.poller.register(self.sock, h.ALL_FLAGS)
 
-        # handshake with peer receiver
-        self.handshake()
-        self.sock.setblocking(0)
-
         # UDP datagram template
         self.data = {}
         self.data['payload'] = 'x' * 1400
@@ -255,6 +251,11 @@ class Sender(object):
             sys.stderr.write('Received ack_seq_num %d\n' % ack['ack_seq_num'])
 
     def run(self):
+        # handshake with peer receiver
+        self.handshake()
+        self.sock.setblocking(0)
+
+        # handshake succeeded and send data now
         TIMEOUT = 500  # ms
         READ_ERR_FLAGS = h.READ_FLAGS | h.ERR_FLAGS
 
