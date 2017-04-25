@@ -73,8 +73,8 @@ def run(args):
 def clean_up(args):
     sys.stderr.write('\nCleaning up...\n')
 
-    hostname_list = args['worker_list'] + args['ps_list']
-    for hostname in hostname_list:
+    hostname_set = set(args['worker_list'] + args['ps_list'])
+    for hostname in hostname_set:
         pkill_cmd = ('pkill -f %s; pkill -f mm-delay; pkill -f mm-link; '
                      'pkill -f mm-loss' % args['rlcc_dir'])
         kill_cmd = ['ssh', hostname, pkill_cmd]
