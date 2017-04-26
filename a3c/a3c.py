@@ -4,16 +4,15 @@ import tensorflow as tf
 
 
 class A3C(object):
-    def __init__(self, cluster, server, device, state_dim, action_cnt,
-                 save_vars=None, debug=False):
+    def __init__(self, cluster, server, worker_device,
+                 state_dim, action_cnt, debug=False):
         # distributed tensorflow related
         self.cluster = cluster
         self.server = server
-        self.device = device
+        self.worker_device = worker_device
 
         self.state_dim = state_dim
         self.action_cnt = action_cnt
-        self.save_vars = save_vars
         self.debug = debug
 
         # start tensorflow session and build tensorflow graph
@@ -29,7 +28,15 @@ class A3C(object):
             np.set_printoptions(suppress=True)
 
     def build_tf_graph(self):
-        self.trainable_vars = []
+        with tf.device(tf.train.replica_device_setter(
+                worker_device=self.worker_device,
+                cluster=cluster)):
+            with tf.variable_scope('global'):
+                pass
+
+        with tf.device(self.worker_device):
+            with tf.variable_scope('local'):
+                pass
 
     def sample_action(self, state):
         return np.random.randint(0, self.action_cnt)
@@ -37,14 +44,3 @@ class A3C(object):
     def update_model(self, state_buf, action_buf, reward):
         self.train_iter += 1
         sys.stderr.write('Updating model...\n')
-
-    def save_model(self):
-        assert self.save_vars is not None
-
-        saver = tf.train.Saver(self.trainable_vars)
-        saver.save(self.session, self.save_vars)
-        sys.stderr.write('\nModel saved to %s\n' % self.save_vars)
-
-        if self.debug:
-            print 'Saved variables:'
-            print self.session.run(self.trainable_vars)

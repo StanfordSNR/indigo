@@ -24,10 +24,9 @@ class Worker(object):
         self.learner = A3C(
             cluster=self.cluster,
             server=self.server,
-            device='/job:worker/task:%d' % self.task_index,
+            worker_device='/job:worker/task:%d' % self.task_index,
             state_dim=self.sender.state_dim,
             action_cnt=self.sender.action_cnt,
-            save_vars=None,
             debug=True)
 
         self.sender.set_sample_action(self.learner.sample_action)
