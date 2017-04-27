@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
 import argparse
+import project_root
 import numpy as np
-from sender import Sender
+from env.sender import Sender
 
 
 class Policy(object):
@@ -19,15 +20,17 @@ def main():
     parser.add_argument('port', type=int)
     args = parser.parse_args()
 
+    sender = Sender(args.port, debug=False)
+    policy = Policy(sender.state_dim, sender.action_cnt)
+    sender.set_sample_action(policy.sample_action)
+
     try:
-        sender = Sender(args.port, debug=False)  # waiting for handshake
-        policy = Policy(sender.state_dim, sender.action_cnt)
-        sender.set_sample_action(policy.sample_action)
+        sender.handshake()
         sender.run()
     except KeyboardInterrupt:
         pass
     finally:
-        sender.clean_up()
+        sender.cleanup()
 
 
 if __name__ == '__main__':

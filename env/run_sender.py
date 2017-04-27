@@ -42,9 +42,10 @@ def main():
     sender.set_sample_action(policer.sample_action)
 
     try:
+        sender.handshake()
         sender.run()
     except KeyboardInterrupt:
-        sender.clean_up()
+        sender.cleanup()
 
 
 if __name__ == '__main__':

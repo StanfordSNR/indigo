@@ -44,6 +44,8 @@ class Trainer(object):
         self.episodes_per_batch = 1
 
     def run(self):
+        self.sender.handshake()
+
         for batch_i in xrange(1, self.max_batches + 1):
             sys.stderr.write('\nBatch %s/%s is running...\n\n' %
                              (batch_i, self.max_batches))
@@ -66,8 +68,8 @@ class Trainer(object):
 
         self.learner.save_model()
 
-    def clean_up(self):
-        self.sender.clean_up()
+    def cleanup(self):
+        self.sender.cleanup()
 
 
 def main():
@@ -83,7 +85,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        trainer.clean_up()
+        trainer.cleanup()
 
 
 if __name__ == '__main__':
