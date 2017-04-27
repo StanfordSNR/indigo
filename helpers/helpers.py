@@ -16,14 +16,6 @@ def curr_ts_ms():
     return int(time.time() * 1000)
 
 
-class TimeoutError(Exception):
-    pass
-
-
-def timeout_handler(signum, frame):
-    raise TimeoutError()
-
-
 def make_sure_path_exists(path):
     try:
         os.makedirs(path)

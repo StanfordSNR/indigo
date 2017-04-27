@@ -11,7 +11,7 @@ from helpers.helpers import make_sure_path_exists
 
 class Trainer(object):
     def __init__(self, args):
-        self.sender = Sender(args.ip, args.port, train=True)
+        self.sender = Sender(args.port, train=True)
         self.algorithm = args.algorithm
 
         curr_file_path = os.path.dirname(os.path.abspath(__file__))
@@ -66,10 +66,12 @@ class Trainer(object):
 
         self.learner.save_model()
 
+    def clean_up(self):
+        self.sender.clean_up()
+
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('ip', metavar='IP')
     parser.add_argument('port', type=int)
     parser.add_argument('--algorithm', choices=['dagger', 'reinforce'],
                         required=True)
@@ -79,7 +81,7 @@ def main():
     try:
         trainer.run()
     except KeyboardInterrupt:
-        pass
+        trainer.clean_up()
 
 
 if __name__ == '__main__':
