@@ -18,13 +18,8 @@ class Receiver(object):
         self.poller = select.poll()
         self.poller.register(self.sock, h.ALL_FLAGS)
 
-        # handshake with peer sender
-        self.sock.setblocking(0)
-        self.handshake()
-        self.sock.setblocking(1)
-
-    def clean_up(self):
-        sys.stderr.write('\nCleaning up...\n')
+    def cleanup(self):
+        sys.stderr.write('\nCleaning up receiver...\n')
         self.sock.close()
 
     def construct_ack_from_data(self, serialized_data):
@@ -41,6 +36,13 @@ class Receiver(object):
         return json.dumps(ack)
 
     def handshake(self):
+        """Handshake with peer sender that must be called.
+
+        UDP socket must be set as blocking before return.
+        """
+
+        self.sock.setblocking(0)
+
         TIMEOUT = 1000  # ms
         READ_ERR_FLAGS = h.READ_FLAGS | h.ERR_FLAGS
 
@@ -56,6 +58,7 @@ class Receiver(object):
                 retry_times += 1
                 if retry_times > 3:
                     sys.stderr.write('Handshake failed after three retries\n')
+                    self.sock.setblocking(1)
                     return
                 else:
                     sys.stderr.write('Handshake timed out and retrying...\n')
@@ -82,6 +85,7 @@ class Receiver(object):
 
                     sys.stderr.write('Handshake success! '
                                      'Sender\'s address is %s:%s\n' % addr)
+                    self.sock.setblocking(1)
                     return
 
     def run(self):

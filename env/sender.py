@@ -24,10 +24,6 @@ class Sender(object):
         self.poller = select.poll()
         self.poller.register(self.sock, h.ALL_FLAGS)
 
-        # handshake with peer receiver
-        self.handshake()
-        self.sock.setblocking(0)
-
         # UDP datagram template
         self.data = {}
         self.data['payload'] = 'x' * 1400
@@ -40,11 +36,16 @@ class Sender(object):
         # learning related
         self.setup_learning()
 
-    def clean_up(self):
-        sys.stderr.write('\nCleaning up...\n')
+    def cleanup(self):
+        sys.stderr.write('\nCleaning up sender...\n')
         self.sock.close()
 
     def handshake(self):
+        """Handshake with peer receiver that must be called.
+
+        UDP socket must be set as non-blocking before return.
+        """
+
         while True:
             msg, addr = self.sock.recvfrom(1500)
 
@@ -53,6 +54,8 @@ class Sender(object):
                 self.sock.sendto('Hello from sender', self.peer_addr)
                 sys.stderr.write('Handshake success! '
                                  'Receiver\'s address is %s:%s\n' % addr)
+
+                self.sock.setblocking(0)
                 return
 
     def setup_learning(self):
@@ -86,6 +89,7 @@ class Sender(object):
 
     def set_sample_action(self, sample_action):
         """Required to be called before running."""
+
         self.sample_action = sample_action
 
     def reset(self):
