@@ -66,7 +66,8 @@ def main():
                         required=True, help='ps or worker')
     parser.add_argument('--task-index', metavar='N', type=int, required=True,
                         help='index of task')
-    parser.add_argument('--port', type=int, help='port of sender to train')
+    parser.add_argument('--port', type=int, default=0,
+                        help='port of sender to train')
     args = parser.parse_args()
 
     sys.stderr.write('Starting job %s task %d\n' %

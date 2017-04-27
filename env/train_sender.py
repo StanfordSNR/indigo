@@ -81,6 +81,8 @@ def main():
     try:
         trainer.run()
     except KeyboardInterrupt:
+        pass
+    finally:
         trainer.clean_up()
 
 

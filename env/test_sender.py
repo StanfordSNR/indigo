@@ -25,6 +25,8 @@ def main():
         sender.set_sample_action(policy.sample_action)
         sender.run()
     except KeyboardInterrupt:
+        pass
+    finally:
         sender.clean_up()
 
 

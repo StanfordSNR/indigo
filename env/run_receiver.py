@@ -14,6 +14,8 @@ def main():
         receiver = Receiver(args.ip, args.port)  # handshake happens here
         receiver.run()
     except KeyboardInterrupt:
+        pass
+    finally:
         receiver.clean_up()
 
 
