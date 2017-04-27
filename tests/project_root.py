@@ -1,4 +1,5 @@
 import os
 import sys
 from os import path
-sys.path.append(path.abspath(path.join(path.dirname(__file__), os.pardir)))
+DIR = path.abspath(path.join(path.dirname(path.abspath(__file__)), os.pardir))
+sys.path.append(DIR)
