@@ -11,7 +11,7 @@ from helpers.helpers import make_sure_path_exists
 
 class Trainer(object):
     def __init__(self, args):
-        self.sender = Sender(args.ip, args.port, training=True)
+        self.sender = Sender(args.ip, args.port, train=True)
         self.algorithm = args.algorithm
 
         curr_file_path = os.path.dirname(os.path.abspath(__file__))
@@ -25,7 +25,7 @@ class Trainer(object):
             self.learner = Dagger(
                 state_dim=self.sender.state_dim,
                 action_cnt=self.sender.action_cnt,
-                training=True,
+                train=True,
                 save_vars=dagger_path,
                 restore_vars=None,
                 debug=True)
@@ -33,7 +33,7 @@ class Trainer(object):
             self.learner = Reinforce(
                 state_dim=self.sender.state_dim,
                 action_cnt=self.sender.action_cnt,
-                training=True,
+                train=True,
                 save_vars=reinforce_path,
                 restore_vars=None,
                 debug=True)

@@ -28,7 +28,7 @@ def main():
         policer = Dagger(
             state_dim=sender.state_dim,
             action_cnt=sender.action_cnt,
-            training=False,
+            train=False,
             restore_vars=model_path)
     elif args.algorithm == 'reinforce':
         model_path = os.path.join(saved_models_path, 'reinforce')
@@ -36,7 +36,7 @@ def main():
         policer = Reinforce(
             state_dim=sender.state_dim,
             action_cnt=sender.action_cnt,
-            training=False,
+            train=False,
             restore_vars=model_path)
 
     sender.set_sample_action(policer.sample_action)

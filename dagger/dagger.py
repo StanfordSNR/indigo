@@ -6,11 +6,11 @@ from helpers.helpers import make_sure_path_exists
 
 
 class Dagger(object):
-    def __init__(self, state_dim, action_cnt, training=False,
+    def __init__(self, state_dim, action_cnt, train=False,
                  save_vars=None, restore_vars=None, debug=False):
         self.state_dim = state_dim
         self.action_cnt = action_cnt
-        self.training = training
+        self.train = train
         self.save_vars = save_vars
         self.restore_vars = restore_vars
         self.debug = debug
@@ -24,7 +24,7 @@ class Dagger(object):
             np.set_printoptions(precision=3)
             np.set_printoptions(suppress=True)
 
-        if not self.training:  # production
+        if not self.train:  # production
             assert self.save_vars is None
             assert self.restore_vars is not None
         else:
@@ -50,7 +50,7 @@ class Dagger(object):
     def build_tf_graph(self):
         self.build_policy()
 
-        if self.training:
+        if self.train:
             self.build_loss()
 
         if self.debug:
@@ -85,7 +85,7 @@ class Dagger(object):
         self.trainable_vars = [W1, b1, W2, b2]
 
     def build_loss(self):
-        self.expert_action = tf.placeholder(tf.int32, [None, ])
+        self.expert_action = tf.placeholder(tf.int32, [None])
 
         # regularization loss
         reg_penalty = 0.01
@@ -134,7 +134,7 @@ class Dagger(object):
         return action
 
     def sample_action(self, state):
-        if not self.training or self.train_iter > 0:
+        if not self.train or self.train_iter > 0:
             norm_state = self.normalize_state([state])
             action = self.session.run(self.predicted_action,
                                       {self.state: norm_state})
@@ -144,7 +144,7 @@ class Dagger(object):
         return action
 
     def store_episode(self, state_buf):
-        assert self.training
+        assert self.train
 
         self.state_buf_batch.extend(state_buf)
 
@@ -154,7 +154,7 @@ class Dagger(object):
             self.action_buf_batch.append(expert_action)
 
     def update_model(self):
-        assert self.training
+        assert self.train
 
         self.train_iter += 1
         sys.stderr.write('Updating model...\n')
@@ -178,7 +178,7 @@ class Dagger(object):
         self.action_buf_batch = []
 
     def save_model(self):
-        assert self.training
+        assert self.train
         assert self.save_vars is not None
 
         saver = tf.train.Saver(self.trainable_vars)

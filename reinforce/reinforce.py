@@ -6,11 +6,11 @@ from helpers.helpers import MeanVarHistory, make_sure_path_exists
 
 
 class Reinforce(object):
-    def __init__(self, state_dim, action_cnt, training=False,
+    def __init__(self, state_dim, action_cnt, train=False,
                  save_vars=None, restore_vars=None, debug=False):
         self.state_dim = state_dim
         self.action_cnt = action_cnt
-        self.training = training
+        self.train = train
         self.save_vars = save_vars
         self.restore_vars = restore_vars
         self.debug = debug
@@ -24,7 +24,7 @@ class Reinforce(object):
             np.set_printoptions(precision=3)
             np.set_printoptions(suppress=True)
 
-        if not self.training:  # production
+        if not self.train:  # production
             assert self.save_vars is None
             assert self.restore_vars is not None
         else:
@@ -62,7 +62,7 @@ class Reinforce(object):
     def build_tf_graph(self):
         self.build_policy()
 
-        if self.training:
+        if self.train:
             self.build_loss()
 
         if self.debug:
@@ -97,7 +97,7 @@ class Reinforce(object):
         self.trainable_vars = [W1, b1, W2, b2]
 
     def build_loss(self):
-        self.taken_action = tf.placeholder(tf.int32, [None, ])
+        self.taken_action = tf.placeholder(tf.int32, [None])
 
         # regularization loss
         reg_penalty = 0.01
@@ -115,7 +115,7 @@ class Reinforce(object):
         self.loss = self.ce_loss + self.reg_loss
 
         # magic of policy gradient
-        self.discounted_reward = tf.placeholder(tf.float32, [None, ])
+        self.discounted_reward = tf.placeholder(tf.float32, [None])
         self.loss *= self.discounted_reward
 
         self.loss = tf.reduce_mean(self.loss)
@@ -145,7 +145,7 @@ class Reinforce(object):
     def sample_action(self, state):
         norm_state = self.normalize_state([state])
 
-        if not self.training:
+        if not self.train:
             action = self.session.run(self.predicted_action,
                                       {self.state: norm_state})
         else:
@@ -177,7 +177,7 @@ class Reinforce(object):
         return reward_buf
 
     def store_episode(self, state_buf, action_buf, final_reward):
-        assert self.training
+        assert self.train
         assert len(state_buf) == len(action_buf)
 
         self.state_buf_batch.extend(state_buf)
@@ -188,7 +188,7 @@ class Reinforce(object):
         self.reward_buf_batch.extend(reward_buf)
 
     def update_model(self):
-        assert self.training
+        assert self.train
 
         self.train_iter += 1
         sys.stderr.write('Updating model...\n')
@@ -215,7 +215,7 @@ class Reinforce(object):
         self.reward_buf_batch = []
 
     def save_model(self):
-        assert self.training
+        assert self.train
         assert self.save_vars is not None
 
         saver = tf.train.Saver(self.trainable_vars)

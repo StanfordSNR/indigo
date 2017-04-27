@@ -19,7 +19,7 @@ class Worker(object):
         self.max_episodes = 2000
 
     def work(self):
-        self.sender = Sender(self.port, training=True)
+        self.sender = Sender(self.port, train=True)
 
         self.learner = A3C(
             cluster=self.cluster,

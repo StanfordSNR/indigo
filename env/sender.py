@@ -9,8 +9,8 @@ from helpers.helpers import curr_ts_ms
 
 
 class Sender(object):
-    def __init__(self, port=0, training=False, debug=False):
-        self.training = training
+    def __init__(self, port=0, train=False, debug=False):
+        self.train = train
         self.debug = debug
 
         # UDP socket and poller
@@ -68,7 +68,7 @@ class Sender(object):
         self.prev_send_ts = None
         self.prev_ack_ts = None
 
-        if self.training:
+        if self.train:
             self.running = True
             self.step_cnt = 0
             self.max_running_steps = 2000
@@ -89,7 +89,7 @@ class Sender(object):
         self.sample_action = sample_action
 
     def reset(self):
-        assert self.training
+        assert self.train
         sys.stderr.write('Resetting sender...\n')
 
         self.seq_num += 1
@@ -163,7 +163,7 @@ class Sender(object):
         self.send_ewma = (1 - alpha) * self.send_ewma + alpha * send_ts_diff
         self.ack_ewma = (1 - alpha) * self.ack_ewma + alpha * ack_ts_diff
 
-        if self.training:
+        if self.train:
             self.acked_bytes += ack['ack_bytes']
             self.total_delays.append(curr_delay)
 
@@ -209,7 +209,7 @@ class Sender(object):
         return reward
 
     def get_experience(self):
-        assert self.training
+        assert self.train
 
         reward = self.compute_reward()
         return self.state_buf, self.action_buf, reward
@@ -225,7 +225,7 @@ class Sender(object):
         serialized_data = json.dumps(self.data)
         self.sock.sendto(serialized_data, self.peer_addr)
 
-        if self.training:
+        if self.train:
             self.sent_bytes += len(serialized_data)
 
         if self.debug:
@@ -248,7 +248,7 @@ class Sender(object):
         action = self.sample_action(state)
         self.take_action(action)
 
-        if self.training:
+        if self.train:
             self.state_buf.append(state)
             self.action_buf.append(action)
 
@@ -263,7 +263,7 @@ class Sender(object):
         self.poller.modify(self.sock, h.ALL_FLAGS)
         curr_flags = h.ALL_FLAGS
 
-        while not self.training or self.running:
+        while not self.train or self.running:
             if self.window_is_open():
                 if curr_flags != h.ALL_FLAGS:
                     self.poller.modify(self.sock, h.ALL_FLAGS)
