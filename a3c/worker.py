@@ -16,7 +16,7 @@ class Worker(object):
         self.task_index = args.task_index
         self.port = args.port
 
-        self.max_episodes = 2000
+        self.max_global_steps = 1000
 
     def work(self):
         self.sender = Sender(self.port, train=True)
@@ -31,13 +31,16 @@ class Worker(object):
 
         self.sender.set_sample_action(self.learner.sample_action)
 
-        for i in xrange(1, self.max_episodes):
+        global_step = 0
+        while global_step < self.max_global_steps:
             self.sender.run()
-
             state_buf, action_buf, reward = self.sender.get_experience()
+
             self.learner.update_model(state_buf, action_buf, reward)
 
             self.sender.reset()
+
+            global_step = learner.session.run(learner.global_step)
 
     def run(self):
         ps_hosts = self.ps_hosts.split(',')
