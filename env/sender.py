@@ -19,7 +19,8 @@ class Sender(object):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind(('0.0.0.0', port))
-        sys.stderr.write('Listening on port %s\n' % self.sock.getsockname()[1])
+        sys.stderr.write('[sender] Listening on port %s\n' %
+                         self.sock.getsockname()[1])
 
         self.poller = select.poll()
         self.poller.register(self.sock, ALL_FLAGS)
@@ -73,7 +74,7 @@ class Sender(object):
             if msg == 'Hello from receiver' and self.peer_addr is None:
                 self.peer_addr = addr
                 self.sock.sendto('Hello from sender', self.peer_addr)
-                sys.stderr.write('Handshake success! '
+                sys.stderr.write('[sender]: Handshake success! '
                                  'Receiver\'s address is %s:%s\n' % addr)
                 break
 
@@ -88,7 +89,6 @@ class Sender(object):
         """Reset the sender. Must be called in every training iteration."""
 
         assert self.train
-        sys.stderr.write('Resetting sender...\n')
 
         self.seq_num += 1
         self.next_ack = self.seq_num

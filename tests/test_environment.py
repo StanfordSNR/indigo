@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
+import sys
 import project_root
 import numpy as np
 from os import path
 from env.environment import Environment
 
 
-class Policy(object):
+class Learner(object):
     def __init__(self, env):
         self.env = env
 
@@ -17,8 +18,23 @@ class Policy(object):
     def sample_action(self, state):
         return np.random.randint(0, self.action_cnt)
 
+    def cleanup(self):
+        self.env.cleanup()
+
     def run(self):
-        self.env.run()
+        for episode_i in xrange(1, 4):
+            sys.stderr.write('\nEpisode %d\n' % episode_i)
+
+            # run env, get an episode of experience and reset env
+            self.env.run()
+            experience = self.env.get_experience()
+            self.env.reset()
+
+            # update model
+            self.update_model(experience)
+
+    def update_model(self, experience):
+        sys.stderr.write('Updating model...\n')
 
 
 def main():
@@ -32,13 +48,13 @@ def main():
     env = Environment(mahimahi_cmd)
     env.setup()
 
-    policy = Policy(env)
+    learner = Learner(env)
     try:
-        policy.run()
+        learner.run()
     except KeyboardInterrupt:
         pass
     finally:
-        env.cleanup()
+        learner.cleanup()
 
 
 if __name__ == '__main__':

@@ -48,16 +48,17 @@ class Receiver(object):
 
         while True:
             self.sock.sendto('Hello from receiver', self.peer_addr)
-
             events = self.poller.poll(TIMEOUT)
 
             if not events:  # timed out
                 retry_times += 1
                 if retry_times > 3:
-                    sys.stderr.write('Handshake failed after three retries\n')
+                    sys.stderr.write(
+                        '[receiver] Handshake failed after three retries\n')
                     return
                 else:
-                    sys.stderr.write('Handshake timed out and retrying...\n')
+                    sys.stderr.write(
+                        '[receiver] Handshake timed out and retrying...\n')
                     continue
 
             for fd, flag in events:
@@ -69,19 +70,14 @@ class Receiver(object):
                 if flag & READ_FLAGS:
                     msg, addr = self.sock.recvfrom(1500)
 
-                    if addr != self.peer_addr:
-                        continue
-
-                    if msg != 'Hello from sender':
-                        # 'Hello from sender' was presumably lost
-                        # received subsequent data from peer sender
-                        ack = self.construct_ack_from_data(msg)
-                        if ack is not None:
-                            self.sock.sendto(ack, self.peer_addr)
-
-                    sys.stderr.write('Handshake success! '
-                                     'Sender\'s address is %s:%s\n' % addr)
-                    return
+                    if addr == self.peer_addr:
+                        if msg != 'Hello from sender':
+                            # 'Hello from sender' was presumably lost
+                            # received subsequent data from peer sender
+                            ack = self.construct_ack_from_data(msg)
+                            if ack is not None:
+                                self.sock.sendto(ack, self.peer_addr)
+                        return
 
     def run(self):
         self.sock.setblocking(1)  # blocking UDP socket
@@ -89,11 +85,7 @@ class Receiver(object):
         while True:
             serialized_data, addr = self.sock.recvfrom(1500)
 
-            if addr != self.peer_addr:
-                continue
-
-            ack = self.construct_ack_from_data(serialized_data)
-            if ack is not None:
-                self.sock.sendto(ack, self.peer_addr)
-            else:
-                continue
+            if addr == self.peer_addr:
+                ack = self.construct_ack_from_data(serialized_data)
+                if ack is not None:
+                    self.sock.sendto(ack, self.peer_addr)
