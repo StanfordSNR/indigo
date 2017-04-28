@@ -11,6 +11,7 @@ def main():
     args = parser.parse_args()
 
     receiver = Receiver(args.ip, args.port)
+
     try:
         receiver.handshake()
         receiver.run()

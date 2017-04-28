@@ -3,8 +3,8 @@ import json
 import socket
 import select
 import project_root
-import helpers.helpers as h
-from helpers.helpers import curr_ts_ms
+from helpers.helpers import (
+    curr_ts_ms, READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, ALL_FLAGS)
 
 
 class Receiver(object):
@@ -16,13 +16,14 @@ class Receiver(object):
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         self.poller = select.poll()
-        self.poller.register(self.sock, h.ALL_FLAGS)
+        self.poller.register(self.sock, ALL_FLAGS)
 
     def cleanup(self):
-        sys.stderr.write('\nCleaning up receiver...\n')
         self.sock.close()
 
     def construct_ack_from_data(self, serialized_data):
+        """Construct a serialized ACK that acks a serialized datagram."""
+
         try:
             data = json.loads(serialized_data)
         except ValueError:
@@ -36,15 +37,11 @@ class Receiver(object):
         return json.dumps(ack)
 
     def handshake(self):
-        """Handshake with peer sender that must be called.
+        """Handshake with peer sender. Must be called before run()."""
 
-        UDP socket must be set as blocking before return.
-        """
-
-        self.sock.setblocking(0)
+        self.sock.setblocking(0)  # non-blocking UDP socket
 
         TIMEOUT = 1000  # ms
-        READ_ERR_FLAGS = h.READ_FLAGS | h.ERR_FLAGS
 
         retry_times = 0
         self.poller.modify(self.sock, READ_ERR_FLAGS)
@@ -58,7 +55,6 @@ class Receiver(object):
                 retry_times += 1
                 if retry_times > 3:
                     sys.stderr.write('Handshake failed after three retries\n')
-                    self.sock.setblocking(1)
                     return
                 else:
                     sys.stderr.write('Handshake timed out and retrying...\n')
@@ -67,10 +63,10 @@ class Receiver(object):
             for fd, flag in events:
                 assert self.sock.fileno() == fd
 
-                if flag & h.ERR_FLAGS:
+                if flag & ERR_FLAGS:
                     sys.exit('Channel closed or error occurred')
 
-                if flag & h.READ_FLAGS:
+                if flag & READ_FLAGS:
                     msg, addr = self.sock.recvfrom(1500)
 
                     if addr != self.peer_addr:
@@ -85,11 +81,11 @@ class Receiver(object):
 
                     sys.stderr.write('Handshake success! '
                                      'Sender\'s address is %s:%s\n' % addr)
-                    self.sock.setblocking(1)
                     return
 
     def run(self):
-        # handshake succeeded and receive data now
+        self.sock.setblocking(1)  # blocking UDP socket
+
         while True:
             serialized_data, addr = self.sock.recvfrom(1500)
 

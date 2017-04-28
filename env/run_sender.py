@@ -45,6 +45,8 @@ def main():
         sender.handshake()
         sender.run()
     except KeyboardInterrupt:
+        pass
+    finally:
         sender.cleanup()
 
 

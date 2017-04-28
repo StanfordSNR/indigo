@@ -4,8 +4,8 @@ import socket
 import select
 import numpy as np
 import project_root
-import helpers.helpers as h
-from helpers.helpers import curr_ts_ms
+from helpers.helpers import (
+    curr_ts_ms, READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, WRITE_FLAGS, ALL_FLAGS)
 
 
 class Sender(object):
@@ -22,7 +22,7 @@ class Sender(object):
         sys.stderr.write('Listening on port %s\n' % self.sock.getsockname()[1])
 
         self.poller = select.poll()
-        self.poller.register(self.sock, h.ALL_FLAGS)
+        self.poller.register(self.sock, ALL_FLAGS)
 
         # UDP datagram template
         self.data = {}
@@ -33,32 +33,6 @@ class Sender(object):
         self.next_ack = 0
         self.cwnd = 10.0
 
-        # learning related
-        self.setup_learning()
-
-    def cleanup(self):
-        sys.stderr.write('\nCleaning up sender...\n')
-        self.sock.close()
-
-    def handshake(self):
-        """Handshake with peer receiver that must be called.
-
-        UDP socket must be set as non-blocking before return.
-        """
-
-        while True:
-            msg, addr = self.sock.recvfrom(1500)
-
-            if msg == 'Hello from receiver' and self.peer_addr is None:
-                self.peer_addr = addr
-                self.sock.sendto('Hello from sender', self.peer_addr)
-                sys.stderr.write('Handshake success! '
-                                 'Receiver\'s address is %s:%s\n' % addr)
-
-                self.sock.setblocking(0)
-                return
-
-    def setup_learning(self):
         # dimension of state space and action space
         self.state_dim = 3
         self.action_cnt = 5
@@ -74,7 +48,7 @@ class Sender(object):
         if self.train:
             self.running = True
             self.step_cnt = 0
-            self.max_running_steps = 2000
+            self.episode_len = 2000
 
             # statistics variables to compute rewards
             self.sent_bytes = 0
@@ -87,12 +61,32 @@ class Sender(object):
             self.state_buf = []
             self.action_buf = []
 
+    def cleanup(self):
+        self.sock.close()
+
+    def handshake(self):
+        """Handshake with peer receiver. Must be called before run()."""
+
+        while True:
+            msg, addr = self.sock.recvfrom(1500)
+
+            if msg == 'Hello from receiver' and self.peer_addr is None:
+                self.peer_addr = addr
+                self.sock.sendto('Hello from sender', self.peer_addr)
+                sys.stderr.write('Handshake success! '
+                                 'Receiver\'s address is %s:%s\n' % addr)
+                break
+
+        self.sock.setblocking(0)  # non-blocking UDP socket
+
     def set_sample_action(self, sample_action):
-        """Required to be called before running."""
+        """Set the policy. Must be called before run()."""
 
         self.sample_action = sample_action
 
     def reset(self):
+        """Reset the sender. Must be called in every training iteration."""
+
         assert self.train
         sys.stderr.write('Resetting sender...\n')
 
@@ -124,8 +118,6 @@ class Sender(object):
         """Drain all the packets left in the channel."""
 
         TIMEOUT = 1000  # ms
-        READ_ERR_FLAGS = h.READ_FLAGS | h.ERR_FLAGS
-
         self.poller.modify(self.sock, READ_ERR_FLAGS)
 
         while True:
@@ -137,10 +129,10 @@ class Sender(object):
             for fd, flag in events:
                 assert self.sock.fileno() == fd
 
-                if flag & h.ERR_FLAGS:
+                if flag & ERR_FLAGS:
                     sys.exit('Channel closed or error occurred')
 
-                if flag & h.READ_FLAGS:
+                if flag & READ_FLAGS:
                     self.sock.recvfrom(1500)
 
     def update_state(self, ack):
@@ -175,7 +167,7 @@ class Sender(object):
             self.last_ack_ts = max(ack_ts, self.last_ack_ts)
 
             self.step_cnt += 1
-            if self.step_cnt >= self.max_running_steps:
+            if self.step_cnt >= self.episode_len:
                 self.running = False
 
         return [queuing_delay, self.send_ewma, self.ack_ewma]
@@ -260,18 +252,16 @@ class Sender(object):
             sys.stderr.write('Received ack_seq_num %d\n' % ack['ack_seq_num'])
 
     def run(self):
-        # handshake succeeded and send data now
         TIMEOUT = 500  # ms
-        READ_ERR_FLAGS = h.READ_FLAGS | h.ERR_FLAGS
 
-        self.poller.modify(self.sock, h.ALL_FLAGS)
-        curr_flags = h.ALL_FLAGS
+        self.poller.modify(self.sock, ALL_FLAGS)
+        curr_flags = ALL_FLAGS
 
         while not self.train or self.running:
             if self.window_is_open():
-                if curr_flags != h.ALL_FLAGS:
-                    self.poller.modify(self.sock, h.ALL_FLAGS)
-                    curr_flags = h.ALL_FLAGS
+                if curr_flags != ALL_FLAGS:
+                    self.poller.modify(self.sock, ALL_FLAGS)
+                    curr_flags = ALL_FLAGS
             else:
                 if curr_flags != READ_ERR_FLAGS:
                     self.poller.modify(self.sock, READ_ERR_FLAGS)
@@ -285,12 +275,12 @@ class Sender(object):
             for fd, flag in events:
                 assert self.sock.fileno() == fd
 
-                if flag & h.ERR_FLAGS:
+                if flag & ERR_FLAGS:
                     sys.exit('Error occurred to the channel')
 
-                if flag & h.READ_FLAGS:
+                if flag & READ_FLAGS:
                     self.recv()
 
-                if flag & h.WRITE_FLAGS:
+                if flag & WRITE_FLAGS:
                     while self.window_is_open():
                         self.send()
