@@ -10,7 +10,10 @@ class ActorCriticNetwork(object):
 
         actor_h1 = layers.relu(self.states, 10)
         self.action_scores = layers.linear(actor_h1, action_cnt)
-        self.predicted_actions = tf.argmax(self.action_scores, 1)
+
+        logits = self.action_scores - tf.reduce_max(
+            self.action_scores, [1], keep_dims=True)
+        self.predicted_actions = tf.reshape(tf.multinomial(logits, 1), [-1])
 
         critic_h1 = layers.relu(self.states, 10)
         self.state_values = tf.reshape(layers.linear(critic_h1, 1), [-1])
@@ -116,10 +119,10 @@ class A3C(object):
         queuing_delays /= 105.0
         queuing_delays -= 1.0
 
-        # send_ewma and ack_ewma, mostly in [0, 16]
+        # send_ewma and ack_ewma, mostly in [0, 32]
         for i in [1, 2]:
             ewmas = norm_states[:, i]
-            ewmas /= 8.0
+            ewmas /= 16.0
             ewmas -= 1.0
 
         # make sure all features lie in [-1.0, 1.0]
