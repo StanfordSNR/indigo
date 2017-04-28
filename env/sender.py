@@ -29,15 +29,15 @@ class Sender(object):
         self.data = {}
         self.data['payload'] = 'x' * 1400
 
-        # congestion control related
-        self.seq_num = 0
-        self.next_ack = 0
-        self.cwnd = 10.0
-
         # dimension of state space and action space
         self.state_dim = 3
         self.action_cnt = 5
         self.action_mapping = [-0.5, -0.25, 0.0, 0.25, 0.5]
+
+        # congestion control related
+        self.seq_num = 0
+        self.next_ack = 0
+        self.cwnd = 10.0
 
         # features (in state vector) related
         self.base_delay = sys.maxint
@@ -47,9 +47,8 @@ class Sender(object):
         self.prev_ack_ts = None
 
         if self.train:
-            self.running = True
-            self.step_cnt = 0
-            self.episode_len = 2000
+            self.max_step_cnt = 2000
+            self.max_runtime = 5000
 
             # statistics variables to compute rewards
             self.sent_bytes = 0
@@ -99,9 +98,6 @@ class Sender(object):
         self.ack_ewma = 0.0
         self.prev_send_ts = None
         self.prev_ack_ts = None
-
-        self.running = True
-        self.step_cnt = 0
 
         self.sent_bytes = 0
         self.acked_bytes = 0
@@ -167,7 +163,10 @@ class Sender(object):
             self.last_ack_ts = max(ack_ts, self.last_ack_ts)
 
             self.step_cnt += 1
-            if self.step_cnt >= self.episode_len:
+            if self.step_cnt >= self.max_step_cnt:
+                self.running = False
+
+            if curr_ts_ms() - self.runtime_start > self.max_runtime:
                 self.running = False
 
         return [queuing_delay, self.send_ewma, self.ack_ewma]
@@ -256,6 +255,10 @@ class Sender(object):
 
         self.poller.modify(self.sock, ALL_FLAGS)
         curr_flags = ALL_FLAGS
+
+        self.running = True
+        self.step_cnt = 0
+        self.runtime_start = curr_ts_ms()
 
         while not self.train or self.running:
             if self.window_is_open():
