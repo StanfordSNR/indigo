@@ -12,78 +12,42 @@ from helpers.helpers import get_open_udp_port
 
 
 def run(args):
-    # run parameter servers
-    for i in xrange(len(args['ps_list'])):
-        ssh_cmd = ['ssh', args['ps_list'][i]]
+    # run parameter servers and workers
+    for job_name in ['ps', 'worker']:
+        host_list = args[job_name + '_list']
+        procs = args[job_name + '_procs']
 
-        cmd = ['python', args['worker_src'],
-               '--ps-hosts', args['ps_hosts'],
-               '--worker-hosts', args['worker_hosts'],
-               '--job-name', 'ps',
-               '--task-index', str(i)]
-        cmd = ssh_cmd + cmd
+        for i in xrange(len(host_list)):
+            ssh_cmd = ['ssh', host_list[i]]
 
-        sys.stderr.write('$ %s\n' % ' '.join(cmd))
-        args['ps_procs'].append(Popen(cmd, preexec_fn=os.setsid))
+            cmd = ['python', args['worker_src'],
+                   '--ps-hosts', args['ps_hosts'],
+                   '--worker-hosts', args['worker_hosts'],
+                   '--job-name', job_name,
+                   '--task-index', str(i)]
+            cmd = ssh_cmd + cmd
 
-    # run workers
-    port_list = []
-    for i in xrange(len(args['worker_list'])):
-        ssh_cmd = ['ssh', args['worker_list'][i]]
+            sys.stderr.write('$ %s\n' % ' '.join(cmd))
+            procs.append(Popen(cmd, preexec_fn=os.setsid))
 
-        # run worker to train sender
-        port = str(get_open_udp_port())
-        port_list.append(port)
-
-        cmd = ['python', args['worker_src'],
-               '--ps-hosts', args['ps_hosts'],
-               '--worker-hosts', args['worker_hosts'],
-               '--job-name', 'worker',
-               '--task-index', str(i),
-               '--port', port]
-        cmd = ssh_cmd + cmd
-
-        sys.stderr.write('$ %s\n' % ' '.join(cmd))
-        args['worker_procs'].append(Popen(cmd, preexec_fn=os.setsid))
-
-    # wait for senders to run
-    time.sleep(3)
-
-    # run receivers
-    for i in xrange(len(args['worker_list'])):
-        ssh_cmd = ['ssh', args['worker_list'][i]]
-
-        mm_cmd = ['mm-delay', '20',
-                  'mm-link', args['uplink_trace'], args['downlink_trace'],
-                  '--downlink-queue=droptail',
-                  '--downlink-queue-args=packets=200']
-        port = port_list[i]
-        recv_cmd = ['python', args['receiver_src'], '$MAHIMAHI_BASE', port]
-
-        cmd = "%s -- sh -c '%s'" % (' '.join(mm_cmd), ' '.join(recv_cmd))
-        cmd = ssh_cmd + [cmd]
-
-        sys.stderr.write('$ %s\n' % ' '.join(cmd))
-        args['receiver_procs'].append(Popen(cmd, preexec_fn=os.setsid))
-
+    # ps will block forever
     for ps_proc in args['ps_procs']:
         ps_proc.communicate()
 
 
 def cleanup(args):
-    sys.stderr.write('\nCleaning up...\n')
+    sys.stderr.write('\ntrainer.py: cleaning up...\n')
 
-    hostname_set = set(args['worker_list'] + args['ps_list'])
-    for hostname in hostname_set:
+    host_set = set(args['ps_list'] + args['worker_list'])
+    for host in host_set:
         pkill_cmd = ('pkill -f %s; pkill -f mm-delay; pkill -f mm-link; '
                      'pkill -f mm-loss' % args['rlcc_dir'])
-        kill_cmd = ['ssh', hostname, pkill_cmd]
+        kill_cmd = ['ssh', host, pkill_cmd]
         sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
         call(kill_cmd)
 
-    # clean up
-    procs = args['ps_procs'] + args['worker_procs'] + args['receiver_procs']
-    for proc in procs:
+    all_procs = args['ps_procs'] + args['worker_procs']
+    for proc in all_procs:
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         except OSError as e:
@@ -91,16 +55,14 @@ def cleanup(args):
 
 
 def construct_args(prog_args):
-    args = {}  # dictionary of arguments
+    # construct a dictionary of arguments
+    args = {}
+
     # file paths
     args['rlcc_dir'] = prog_args.rlcc_dir
     args['worker_src'] = path.join(args['rlcc_dir'], 'a3c', 'worker.py')
-    args['receiver_src'] = path.join(
-        args['rlcc_dir'], 'env', 'run_receiver.py')
-    args['uplink_trace'] = path.join(args['rlcc_dir'], 'env', '12mbps.trace')
-    args['downlink_trace'] = args['uplink_trace']
 
-    # host names and processes
+    # hostnames and processes
     args['ps_hosts'] = prog_args.ps_hosts
     args['worker_hosts'] = prog_args.worker_hosts
 
@@ -116,7 +78,6 @@ def construct_args(prog_args):
 
     args['ps_procs'] = []
     args['worker_procs'] = []
-    args['receiver_procs'] = []
 
     return args
 
@@ -134,7 +95,7 @@ def main():
         help='username used in ssh connection')
     parser.add_argument(
         '--rlcc-dir', metavar='DIR', required=True,
-        help='absolute path to RLCC/')
+        help='absolute path to RLCC/ on all the ps and worker hosts')
     prog_args = parser.parse_args()
     args = construct_args(prog_args)
 
