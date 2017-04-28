@@ -22,16 +22,20 @@ class ActorCriticNetwork(object):
 
 
 class A3C(object):
-    def __init__(self, cluster, server, worker_device,
-                 state_dim, action_cnt, debug=False):
+    def __init__(self, cluster, server, worker_device, env):
         # distributed tensorflow related
         self.cluster = cluster
         self.server = server
         self.worker_device = worker_device
+        self.env = env
 
-        self.state_dim = state_dim
-        self.action_cnt = action_cnt
-        self.debug = debug
+        self.state_dim = env.state_dim
+        self.action_cnt = env.action_cnt
+
+        self.max_global_step = 1000
+
+        # must call env.set_sample_action() before env.run()
+        env.set_sample_action(self.sample_action)
 
         # start tensorflow session and build tensorflow graph
         self.session = tf.Session(server.target)
@@ -40,9 +44,8 @@ class A3C(object):
         # initialize variables
         self.session.run(tf.global_variables_initializer())
 
-        if self.debug:
-            np.set_printoptions(precision=3)
-            np.set_printoptions(suppress=True)
+    def cleanup(self):
+        self.env.cleanup()
 
     def build_tf_graph(self):
         with tf.device(tf.train.replica_device_setter(
@@ -90,7 +93,7 @@ class A3C(object):
         grads, _ = tf.clip_by_global_norm(grads, 40.0)
 
         # sync local network to global network
-        self.sync = tf.group(*[v1.assign(v2) for v1, v2 in zip(
+        self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             pi.trainable_vars, self.global_network.trainable_vars)])
 
         # calculate gradients and apply to global network
@@ -104,5 +107,12 @@ class A3C(object):
     def sample_action(self, state):
         return np.random.randint(0, self.action_cnt)
 
-    def update_model(self, state_buf, action_buf, reward):
-        sys.stderr.write('Updating model...\n')
+    def run(self):
+        global_step = self.session.run(self.global_step)
+
+        while global_step < self.max_global_step:
+            self.env.run()
+            experience = self.env.get_experience()
+            self.env.reset()
+
+            global_step = self.session.run(self.global_step)
