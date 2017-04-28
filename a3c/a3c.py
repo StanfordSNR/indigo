@@ -10,11 +10,10 @@ class ActorCriticNetwork(object):
 
         actor_h1 = layers.relu(self.states, 10)
         self.action_scores = layers.linear(actor_h1, action_cnt)
-        self.predicted_action = tf.reshape(
-            tf.argmax(self.action_scores, 1), [])
+        self.predicted_actions = tf.argmax(self.action_scores, 1)
 
         critic_h1 = layers.relu(self.states, 10)
-        self.state_values = layers.linear(critic_h1, 1)
+        self.state_values = tf.reshape(layers.linear(critic_h1, 1), [-1])
 
         self.trainable_vars = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
@@ -76,15 +75,15 @@ class A3C(object):
         # policy loss
         cross_entropy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=pi.action_scores, labels=self.actions)
-        policy_loss = tf.reduce_sum(cross_entropy_loss * self.advantages)
+        policy_loss = tf.reduce_mean(cross_entropy_loss * self.advantages)
 
         # value loss
-        value_loss = 0.5 * tf.reduce_sum(tf.square(self.advantages))
+        value_loss = 0.5 * tf.reduce_mean(tf.square(self.advantages))
 
         # add entropy to loss to encourage exploration
         action_probs = tf.nn.softmax(pi.action_scores)
         log_action_probs = tf.nn.log_softmax(pi.action_scores)
-        entropy = -tf.reduce_sum(action_probs * log_action_probs)
+        entropy = -tf.reduce_mean(action_probs * log_action_probs)
 
         # total loss and gradients
         loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
@@ -104,16 +103,40 @@ class A3C(object):
             optimizer.apply_gradients(grads_and_vars), inc_global_episode)
 
     def sample_action(self, state):
-        state = self.normalize_states([state])
+        norm_state = self.normalize_states([state])
 
-        return self.session.run(self.local_network.predicted_action,
-                                {self.local_network.states: state})
+        return self.session.run(self.local_network.predicted_actions[0],
+                                {self.local_network.states: norm_state})
+
+    def normalize_states(self, states):
+        norm_states = np.array(states, dtype=np.float32)
+
+        # queuing_delay, mostly in [0, 210]
+        queuing_delays = norm_states[:, 0]
+        queuing_delays /= 105.0
+        queuing_delays -= 1.0
+
+        # send_ewma and ack_ewma, mostly in [0, 16]
+        for i in [1, 2]:
+            ewmas = norm_states[:, i]
+            ewmas /= 8.0
+            ewmas -= 1.0
+
+        # make sure all features lie in [-1.0, 1.0]
+        norm_states[norm_states > 1.0] = 1.0
+        norm_states[norm_states < -1.0] = -1.0
+        return norm_states
+
+    def discount_rewards(self, final_reward, episode_len):
+        return [final_reward] * episode_len
 
     def run(self):
         global_episode = self.session.run(self.global_episode)
 
         while global_episode < self.max_global_episode:
-            # copy global parameters to local
+            sys.stderr.write('Global Episode: %d\n' % global_episode)
+
+            # reset local parameters to global
             self.session.run(self.sync_op)
 
             # get an episode of experience
@@ -121,10 +144,11 @@ class A3C(object):
             state_buf, action_buf, final_reward = self.env.get_experience()
             self.env.reset()
 
+            # process the episode
             state_buf = self.normalize_states(state_buf)
             reward_buf = self.discount_rewards(final_reward, len(action_buf))
 
-            # train on local network using the episode
+            # train using the episode
             self.session.run(self.train_op, {
                 self.states: state_buf,
                 self.actions: action_buf,
@@ -132,9 +156,3 @@ class A3C(object):
             })
 
             global_episode = self.session.run(self.global_episode)
-
-    def normalize_states(self, states):
-        return states
-
-    def discount_rewards(self, final_reward, length):
-        return [final_reward] * length

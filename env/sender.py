@@ -207,8 +207,8 @@ class Sender(object):
     def get_experience(self):
         assert self.train
 
-        reward = self.compute_reward()
-        return self.state_buf, self.action_buf, reward
+        final_reward = self.compute_reward()
+        return self.state_buf, self.action_buf, final_reward
 
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd
