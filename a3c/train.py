@@ -70,7 +70,7 @@ def run(args):
         ps_proc.communicate()
 
 
-def clean_up(args):
+def cleanup(args):
     sys.stderr.write('\nCleaning up...\n')
 
     hostname_set = set(args['worker_list'] + args['ps_list'])
@@ -144,7 +144,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        clean_up(args)
+        cleanup(args)
 
 
 if __name__ == '__main__':

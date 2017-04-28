@@ -1,7 +1,6 @@
 import os
 import sys
 import signal
-import multiprocessing
 import project_root
 from os import path
 from sender import Sender
@@ -11,29 +10,34 @@ from helpers.helpers import get_open_udp_port
 
 class Environment(object):
     def __init__(self, mahimahi_cmd):
+        self.mahimahi_cmd = mahimahi_cmd
+        self.sender = None
+        self.receiver = None
+
+    def setup(self):
+        """Must be called immediately after initializing.
+        """
+
         self.port = get_open_udp_port()
 
-        # run sender in a separate process
-        sender_proc = multiprocessing.Process(target=self.run_sender)
+        # start sender in a separate process
+        sys.stderr.write('Starting sender...\n')
+        self.sender = Sender(self.port, train=True)
 
-        # run receiver in another process
+        # start receiver in another process
         sys.stderr.write('Starting receiver...\n')
-        run_receiver_src = path.join(
+        receiver_src = path.join(
             project_root.DIR, 'env', 'run_receiver.py')
-        recv_cmd = 'python %s $MAHIMAHI_BASE %s' % (run_receiver_src, port)
-        cmd = "%s -- sh -c '%s'" % (mahimahi_cmd, recv_cmd)
+        recv_cmd = 'python %s $MAHIMAHI_BASE %s' % (receiver_src, self.port)
+        cmd = "%s -- sh -c '%s'" % (self.mahimahi_cmd, recv_cmd)
         sys.stderr.write('$ %s\n' % cmd)
-        receiver_proc = Popen(cmd, preexec_fn=os.setsid)
+        self.receiver = Popen(cmd, preexec_fn=os.setsid, shell=True)
 
         # wait until the handshake between sender and receiver completes
-        sender_proc.join()
+        self.sender.handshake()
 
         self.state_dim = self.sender.state_dim
         self.action_cnt = self.sender.action_cnt
-
-    def run_sender(self):
-        sys.stderr.write('Starting sender...\n')
-        self.sender = Sender(self.port, train=True)
 
     def set_sample_action(self, sample_action):
         self.sender.set_sample_action(sample_action)
@@ -47,10 +51,14 @@ class Environment(object):
     def reset(self):
         self.sender.reset()
 
-    def clean_up(self):
-        self.sender.clean_up()
+    def cleanup(self):
+        sys.stderr.write('\nCleaning up environment...\n')
 
-        try:
-            os.killpg(os.getpgid(self.receiver.pid), signal.SIGTERM)
-        except OSError as e:
-            sys.stderr.write('%s\n' % e)
+        if self.sender:
+            self.sender.cleanup()
+
+        if self.receiver:
+            try:
+                os.killpg(os.getpgid(self.receiver.pid), signal.SIGTERM)
+            except OSError as e:
+                sys.stderr.write('%s\n' % e)
