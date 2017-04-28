@@ -7,6 +7,19 @@ from os import path
 from env.environment import Environment
 
 
+def create_env():
+    uplink_trace = path.join(project_root.DIR, 'env', '12mbps.trace')
+    downlink_trace = uplink_trace
+    mahimahi_cmd = (
+        'mm-delay 20 mm-link %s %s '
+        '--uplink-queue=droptail --uplink-queue-args=packets=200' %
+        (uplink_trace, downlink_trace))
+
+    env = Environment(mahimahi_cmd)
+    env.setup()
+    return env
+
+
 class Learner(object):
     def __init__(self, env):
         self.env = env
@@ -38,16 +51,7 @@ class Learner(object):
 
 
 def main():
-    uplink_trace = path.join(project_root.DIR, 'env', '12mbps.trace')
-    downlink_trace = uplink_trace
-    mahimahi_cmd = (
-        'mm-delay 20 mm-link %s %s '
-        '--uplink-queue=droptail --uplink-queue-args=packets=200' %
-        (uplink_trace, downlink_trace))
-
-    env = Environment(mahimahi_cmd)
-    env.setup()
-
+    env = create_env()
     learner = Learner(env)
     try:
         learner.run()

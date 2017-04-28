@@ -12,7 +12,7 @@ from helpers.helpers import get_open_udp_port
 
 
 def run(args):
-    # run parameter servers and workers
+    # run worker.py on ps and worker hosts
     for job_name in ['ps', 'worker']:
         host_list = args[job_name + '_list']
         procs = args[job_name + '_procs']
@@ -99,7 +99,7 @@ def main():
     prog_args = parser.parse_args()
     args = construct_args(prog_args)
 
-    # run parameter servers and workers
+    # run worker.py on ps and worker hosts
     try:
         run(args)
     except KeyboardInterrupt:
