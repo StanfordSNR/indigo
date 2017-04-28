@@ -10,12 +10,11 @@ class ActorCriticNetwork(object):
 
         actor_h1 = layers.relu(self.states, 10)
         self.action_scores = layers.linear(actor_h1, action_cnt)
+        self.predicted_action = tf.reshape(
+            tf.argmax(self.action_scores, 1), [])
 
         critic_h1 = layers.relu(self.states, 10)
         self.state_values = layers.linear(critic_h1, 1)
-
-        self.predicted_action = tf.reshape(
-            tf.multinomial(self.action_scores, 1), [])
 
         self.trainable_vars = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
@@ -32,7 +31,7 @@ class A3C(object):
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
 
-        self.max_global_step = 1000
+        self.max_global_episode = 2000
 
         # must call env.set_sample_action() before env.run()
         env.set_sample_action(self.sample_action)
@@ -54,8 +53,8 @@ class A3C(object):
             with tf.variable_scope('global'):
                 self.global_network = ActorCriticNetwork(
                     state_dim=self.state_dim, action_cnt=self.action_cnt)
-                self.global_step = tf.get_variable(
-                    'global_step', [], tf.int32,
+                self.global_episode = tf.get_variable(
+                    'global_episode', [], tf.int32,
                     initializer=tf.constant_initializer(0, tf.int32),
                     trainable=False)
 
@@ -69,9 +68,10 @@ class A3C(object):
     def build_loss(self):
         pi = self.local_network
 
+        self.states = pi.states
         self.actions = tf.placeholder(tf.int32, [None])
         self.rewards = tf.placeholder(tf.float32, [None])
-        self.advantages = tf.placeholder(tf.float32, [None])
+        self.advantages = self.rewards - pi.state_values
 
         # policy loss
         cross_entropy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -79,8 +79,7 @@ class A3C(object):
         policy_loss = tf.reduce_sum(cross_entropy_loss * self.advantages)
 
         # value loss
-        value_loss = 0.5 * tf.reduce_sum(
-            tf.square(pi.state_values - self.rewards))
+        value_loss = 0.5 * tf.reduce_sum(tf.square(self.advantages))
 
         # add entropy to loss to encourage exploration
         action_probs = tf.nn.softmax(pi.action_scores)
@@ -98,21 +97,44 @@ class A3C(object):
 
         # calculate gradients and apply to global network
         grads_and_vars = list(zip(grads, self.global_network.trainable_vars))
-        inc_global_step = self.global_step.assign_add(tf.shape(pi.states)[0])
+        inc_global_episode = self.global_episode.assign_add(1)
 
         optimizer = tf.train.AdamOptimizer(1e-4)
         self.train_op = tf.group(
-            optimizer.apply_gradients(grads_and_vars), inc_global_step)
+            optimizer.apply_gradients(grads_and_vars), inc_global_episode)
 
     def sample_action(self, state):
-        return np.random.randint(0, self.action_cnt)
+        state = self.normalize_states([state])
+
+        return self.session.run(self.local_network.predicted_action,
+                                {self.local_network.states: state})
 
     def run(self):
-        global_step = self.session.run(self.global_step)
+        global_episode = self.session.run(self.global_episode)
 
-        while global_step < self.max_global_step:
+        while global_episode < self.max_global_episode:
+            # copy global parameters to local
+            self.session.run(self.sync_op)
+
+            # get an episode of experience
             self.env.run()
-            experience = self.env.get_experience()
+            state_buf, action_buf, final_reward = self.env.get_experience()
             self.env.reset()
 
-            global_step = self.session.run(self.global_step)
+            state_buf = self.normalize_states(state_buf)
+            reward_buf = self.discount_rewards(final_reward, len(action_buf))
+
+            # train on local network using the episode
+            self.session.run(self.train_op, {
+                self.states: state_buf,
+                self.actions: action_buf,
+                self.rewards: reward_buf,
+            })
+
+            global_episode = self.session.run(self.global_episode)
+
+    def normalize_states(self, states):
+        return states
+
+    def discount_rewards(self, final_reward, length):
+        return [final_reward] * length
