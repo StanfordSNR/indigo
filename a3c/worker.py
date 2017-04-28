@@ -4,8 +4,9 @@ import sys
 import argparse
 import project_root
 import tensorflow as tf
+from os import path
 from a3c import A3C
-from env.sender import Sender
+from env.environment import Environment
 
 
 class Worker(object):
@@ -14,33 +15,34 @@ class Worker(object):
         self.worker_hosts = args.worker_hosts
         self.job_name = args.job_name
         self.task_index = args.task_index
-        self.port = args.port
 
-        self.max_global_steps = 1000
+    def create_env(self):
+        uplink_trace = path.join(project_root.DIR, 'env', '12mbps.trace')
+        downlink_trace = uplink_trace
+        mm_cmd = (
+            'mm-delay 20 mm-link %s %s '
+            '--uplink-queue=droptail --uplink-queue-args=packets=200' %
+            (uplink_trace, downlink_trace))
+
+        env = Environment(mm_cmd)
+        env.setup()
+        return env
 
     def work(self):
-        self.sender = Sender(self.port, train=True)
+        env = self.create_env()
 
-        self.learner = A3C(
+        learner = A3C(
             cluster=self.cluster,
             server=self.server,
             worker_device='/job:worker/task:%d' % self.task_index,
-            state_dim=self.sender.state_dim,
-            action_cnt=self.sender.action_cnt,
-            debug=True)
+            env=env)
 
-        self.sender.set_sample_action(self.learner.sample_action)
-
-        global_step = 0
-        while global_step < self.max_global_steps:
-            self.sender.run()
-            state_buf, action_buf, reward = self.sender.get_experience()
-
-            self.learner.update_model(state_buf, action_buf, reward)
-
-            self.sender.reset()
-
-            global_step = learner.session.run(learner.global_step)
+        try:
+            learner.run()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            learner.cleanup()
 
     def run(self):
         ps_hosts = self.ps_hosts.split(',')
@@ -69,8 +71,6 @@ def main():
                         required=True, help='ps or worker')
     parser.add_argument('--task-index', metavar='N', type=int, required=True,
                         help='index of task')
-    parser.add_argument('--port', type=int, default=0,
-                        help='port of sender to train')
     args = parser.parse_args()
 
     sys.stderr.write('Starting job %s task %d\n' %
