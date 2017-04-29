@@ -46,16 +46,16 @@ class Environment(object):
 
         self.sender.set_sample_action(sample_action)
 
-    def run(self):
-        sys.stderr.write('Running in environment...\n')
+    def rollout(self):
+        """Run sender in env, get an episode of experience and reset sender."""
+
+        sys.stderr.write('Getting an episode from environment...\n')
+
         self.sender.run()
-
-    def get_experience(self):
-        return self.sender.get_experience()
-
-    def reset(self):
-        sys.stderr.write('Resetting environment...\n')
+        rollout = self.sender.get_experience()
         self.sender.reset()
+
+        return rollout
 
     def cleanup(self):
         sys.stderr.write('\nCleaning up environment...\n')

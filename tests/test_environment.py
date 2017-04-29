@@ -38,15 +38,13 @@ class Learner(object):
         for episode_i in xrange(1, 4):
             sys.stderr.write('\nEpisode %d\n' % episode_i)
 
-            # run env, get an episode of experience and reset env
-            self.env.run()
-            experience = self.env.get_experience()
-            self.env.reset()
+            # get an episode of experience
+            rollout = self.env.rollout()
 
             # update model
-            self.update_model(experience)
+            self.update_model(rollout)
 
-    def update_model(self, experience):
+    def update_model(self, rollout):
         sys.stderr.write('Updating model...\n')
 
 
