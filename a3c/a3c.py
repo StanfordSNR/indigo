@@ -91,15 +91,15 @@ class A3C(object):
         # policy loss
         cross_entropy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=pi.action_scores, labels=self.actions)
-        policy_loss = tf.reduce_sum(cross_entropy_loss * self.advantages)
+        policy_loss = tf.reduce_mean(cross_entropy_loss * self.advantages)
 
         # value loss
-        value_loss = 0.5 * tf.reduce_sum(tf.square(self.advantages))
+        value_loss = 0.5 * tf.reduce_mean(tf.square(self.advantages))
 
         # add entropy to loss to encourage exploration
         action_probs = tf.nn.softmax(pi.action_scores)
         log_action_probs = tf.nn.log_softmax(pi.action_scores)
-        entropy = -tf.reduce_sum(action_probs * log_action_probs)
+        entropy = -tf.reduce_mean(action_probs * log_action_probs)
 
         # total loss and gradients
         loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
@@ -119,11 +119,10 @@ class A3C(object):
             optimizer.apply_gradients(grads_and_vars), inc_global_step)
 
         # summary related
-        batch_size = tf.to_float(tf.shape(pi.states)[0])
-        tf.summary.scalar('policy_loss', policy_loss / batch_size)
-        tf.summary.scalar('value_loss', value_loss / batch_size)
-        tf.summary.scalar('entropy', entropy / batch_size)
-        tf.summary.scalar('total_loss', loss / batch_size)
+        tf.summary.scalar('policy_loss', policy_loss)
+        tf.summary.scalar('value_loss', value_loss)
+        tf.summary.scalar('entropy', entropy)
+        tf.summary.scalar('total_loss', loss)
         tf.summary.scalar('grad_global_norm', tf.global_norm(grads))
         tf.summary.scalar('var_global_norm', tf.global_norm(pi.trainable_vars))
         self.summary_op = tf.summary.merge_all()

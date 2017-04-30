@@ -46,10 +46,10 @@ def cleanup(args):
     host_set = set(args['ps_list'] + args['worker_list'])
     for host in host_set:
         pkill_cmd = ('pkill -f mm-delay; pkill -f mm-link; '
-                     'pkill -f mm-loss; pkill -f %s;' % args['rlcc_dir'])
-        kill_cmd = ['ssh', host, pkill_cmd]
+                     'pkill -f mm-loss; pkill -f %s' % args['rlcc_dir'])
+        kill_cmd = 'ssh %s "%s"' % (host, pkill_cmd)
         sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
-        call(kill_cmd)
+        call(kill_cmd, shell=True)
 
     sys.stderr.write('\nAll cleaned up.\n')
 
