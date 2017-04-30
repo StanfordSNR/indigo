@@ -43,13 +43,15 @@ def cleanup(args):
         except OSError as e:
             sys.stderr.write('%s\n' % e)
 
-    host_set = set(args['ps_list'] + args['worker_list'])
+    host_set = set(args['ps_list'] + args['worker_list']))
+    pkill_cmds = ['pkill -f mm-delay', 'pkill -f mm-link',
+                  'pkill -f mm-loss', 'pkill -f %s' % args['rlcc_dir']]
+
     for host in host_set:
-        pkill_cmd = ('pkill -f mm-delay; pkill -f mm-link; '
-                     'pkill -f mm-loss; pkill -f %s' % args['rlcc_dir'])
-        kill_cmd = 'ssh %s "%s"' % (host, pkill_cmd)
-        sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
-        call(kill_cmd, shell=True)
+        for pkill_cmd in pkill_cmds:
+            kill_cmd = ['ssh', host, pkill_cmd]
+            sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
+            call(kill_cmd)
 
     sys.stderr.write('\nAll cleaned up.\n')
 
