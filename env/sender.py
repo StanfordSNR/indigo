@@ -193,7 +193,6 @@ class Sender(object):
         reward += np.log(max(1e-5, avg_throughput / 12.0))
         reward += np.log(max(1e-5, (230.0 - delay_percentile) / 210.0))
         reward += np.log(max(1e-5, 1.0 - loss_rate))
-        reward *= 10.0
 
         sys.stderr.write('Average throughput: %.2f Mbps\n' % avg_throughput)
         sys.stderr.write('95th percentile one-way delay: %d ms\n' %
