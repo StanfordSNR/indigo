@@ -58,8 +58,6 @@ class Environment(object):
         return rollout
 
     def cleanup(self):
-        sys.stderr.write('\nCleaning up environment...\n')
-
         if self.sender:
             self.sender.cleanup()
 
@@ -68,3 +66,5 @@ class Environment(object):
                 os.killpg(os.getpgid(self.receiver.pid), signal.SIGTERM)
             except OSError as e:
                 sys.stderr.write('%s\n' % e)
+
+        sys.stderr.write('\nEnvironment cleaned up.\n')

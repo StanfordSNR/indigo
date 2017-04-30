@@ -36,22 +36,22 @@ def run(args):
 
 
 def cleanup(args):
-    sys.stderr.write('\ntrainer.py: cleaning up...\n')
-
-    host_set = set(args['ps_list'] + args['worker_list'])
-    for host in host_set:
-        pkill_cmd = ('pkill -f %s; pkill -f mm-delay; pkill -f mm-link; '
-                     'pkill -f mm-loss' % args['rlcc_dir'])
-        kill_cmd = ['ssh', host, pkill_cmd]
-        sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
-        call(kill_cmd)
-
     all_procs = args['ps_procs'] + args['worker_procs']
     for proc in all_procs:
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         except OSError as e:
             sys.stderr.write('%s\n' % e)
+
+    host_set = set(args['ps_list'] + args['worker_list'])
+    for host in host_set:
+        pkill_cmd = ('pkill -f mm-delay; pkill -f mm-link; '
+                     'pkill -f mm-loss; pkill -f %s;' % args['rlcc_dir'])
+        kill_cmd = ['ssh', host, pkill_cmd]
+        sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
+        call(kill_cmd)
+
+    sys.stderr.write('\nAll cleaned up.\n')
 
 
 def construct_args(prog_args):
