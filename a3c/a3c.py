@@ -13,10 +13,7 @@ class ActorCriticNetwork(object):
 
         actor_h1 = layers.relu(self.states, 10)
         self.action_scores = layers.linear(actor_h1, action_cnt)
-
-        logits = self.action_scores - tf.reduce_max(
-            self.action_scores, [1], keep_dims=True)
-        self.predicted_actions = tf.reshape(tf.multinomial(logits, 1), [-1])
+        self.action_probs = tf.nn.softmax(self.action_scores)
 
         critic_h1 = layers.relu(self.states, 10)
         self.state_values = tf.reshape(layers.linear(critic_h1, 1), [-1])
@@ -97,9 +94,8 @@ class A3C(object):
         value_loss = 0.5 * tf.reduce_mean(tf.square(self.advantages))
 
         # add entropy to loss to encourage exploration
-        action_probs = tf.nn.softmax(pi.action_scores)
-        log_action_probs = tf.nn.log_softmax(pi.action_scores)
-        entropy = -tf.reduce_mean(action_probs * log_action_probs)
+        log_action_probs = tf.log(pi.action_probs)
+        entropy = -tf.reduce_mean(pi.action_probs * log_action_probs)
 
         # total loss and gradients
         loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
@@ -130,8 +126,11 @@ class A3C(object):
     def sample_action(self, state):
         norm_state = self.normalize_states([state])
 
-        return self.session.run(self.local_network.predicted_actions[0],
-                                {self.local_network.states: norm_state})
+        action_probs = self.session.run(
+            self.local_network.action_probs,
+            {self.local_network.states: norm_state})[0]
+
+        return np.argmax(np.random.multinomial(1, action_probs - 1e-5))
 
     def normalize_states(self, states):
         norm_states = np.array(states, dtype=np.float32)
