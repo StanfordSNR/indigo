@@ -40,7 +40,7 @@ def run(args):
         learner = A3C(
             cluster=cluster,
             server=server,
-            worker_device='/job:worker/task:%d' % task_index,
+            task_index=task_index,
             env=env)
 
         try:
