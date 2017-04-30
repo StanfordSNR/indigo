@@ -43,7 +43,7 @@ def cleanup(args):
         except OSError as e:
             sys.stderr.write('%s\n' % e)
 
-    host_set = set(args['ps_list'] + args['worker_list']))
+    host_set = set(args['ps_list'] + args['worker_list'])
     pkill_cmds = ['pkill -f mm-delay', 'pkill -f mm-link',
                   'pkill -f mm-loss', 'pkill -f %s' % args['rlcc_dir']]
 
