@@ -123,6 +123,7 @@ class A3C(object):
         tf.summary.scalar('policy_loss', policy_loss / batch_size)
         tf.summary.scalar('value_loss', value_loss / batch_size)
         tf.summary.scalar('entropy', entropy / batch_size)
+        tf.summary.scalar('total_loss', loss / batch_size)
         tf.summary.scalar('grad_global_norm', tf.global_norm(grads))
         tf.summary.scalar('var_global_norm', tf.global_norm(pi.trainable_vars))
         self.summary_op = tf.summary.merge_all()
