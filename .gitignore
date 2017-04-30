@@ -1,5 +1,3 @@
 *.swp
 *.pyc
 *.log
-saved_models/
-*_summary/

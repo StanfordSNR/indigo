@@ -14,7 +14,7 @@ def create_env(task_index):
     downlink_trace = uplink_trace
     mm_cmd = (
         'mm-delay 20 mm-link %s %s '
-        '--uplink-queue=droptail --uplink-queue-args=packets=200' %
+        '--downlink-queue=droptail --downlink-queue-args=packets=200' %
         (uplink_trace, downlink_trace))
 
     env = Environment(mm_cmd)

@@ -41,7 +41,7 @@ class A3C(object):
         env.set_sample_action(self.sample_action)
 
         # step counters
-        self.max_global_step = 1000
+        self.max_global_step = 4000
         self.local_step = 0
 
         # build tensorflow computation graph
