@@ -39,7 +39,7 @@ class A3C(object):
         env.set_sample_action(self.sample_action)
 
         # step counters
-        self.max_global_step = 4000
+        self.max_global_step = 10000
         self.local_step = 0
 
         # build tensorflow computation graph
@@ -99,7 +99,7 @@ class A3C(object):
         entropy = -tf.reduce_mean(pi.action_probs * log_action_probs)
 
         # total loss and gradients
-        loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
+        loss = policy_loss + value_loss - entropy
         grads = tf.gradients(loss, pi.trainable_vars)
         grads, _ = tf.clip_by_global_norm(grads, 40.0)
 

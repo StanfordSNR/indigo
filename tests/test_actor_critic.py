@@ -3,8 +3,10 @@
 import sys
 import project_root
 import numpy as np
+import tensorflow as tf
 from os import path
 from env.environment import Environment
+from a3c.a3c import ActorCriticNetwork
 
 
 def create_env():
@@ -26,16 +28,26 @@ class Learner(object):
 
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
+
+        self.ac_network = ActorCriticNetwork(self.state_dim, self.action_cnt)
+        self.session = tf.Session()
+        self.session.run(tf.global_variables_initializer())
+
         env.set_sample_action(self.sample_action)
 
     def sample_action(self, state):
-        return np.random.randint(0, self.action_cnt)
+        state = np.array([state], dtype=np.float32)
+
+        action_probs = self.session.run(self.ac_network.action_probs,
+                                        {self.ac_network.states: state})[0]
+        action = np.argmax(np.random.multinomial(1, action_probs - 1e-5))
+        return action
 
     def cleanup(self):
         self.env.cleanup()
 
     def run(self):
-        for episode_i in xrange(1, 4):
+        for episode_i in xrange(1, 3):
             sys.stderr.write('\nEpisode %d\n' % episode_i)
 
             # get an episode of experience
@@ -51,6 +63,7 @@ class Learner(object):
 def main():
     env = create_env()
     learner = Learner(env)
+
     try:
         learner.run()
     except KeyboardInterrupt:
