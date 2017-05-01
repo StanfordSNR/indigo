@@ -11,7 +11,7 @@ from a3c import ActorCriticNetwork
 
 class Learner(object):
     def __init__(self, state_dim, action_cnt, restore_vars=None):
-        with tf.variable_scope('global'):
+        with tf.variable_scope('local'):
             self.pi = ActorCriticNetwork(state_dim, action_cnt)
 
         self.session = tf.Session()

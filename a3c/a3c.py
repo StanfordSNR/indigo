@@ -1,4 +1,5 @@
 import sys
+import time
 import project_root
 import numpy as np
 import tensorflow as tf
@@ -163,10 +164,15 @@ class A3C(object):
         return state_buf, action_buf, reward_buf
 
     def save_model(self):
-        saver = tf.train.Saver(self.global_network.trainable_vars)
+        # sleep for a while and copy global parameters to local
+        time.sleep(5)
+        self.session.run(self.sync_op)
+
+        # save local parameters to worker-0
+        saver = tf.train.Saver(self.local_network.trainable_vars)
         model_path = path.join(self.logdir, 'model')
         saver.save(self.session, model_path)
-        sys.stderr.write('\nGlobal network saved to %s\n' % model_path)
+        sys.stderr.write('\nModel saved to worker-0:%s\n' % model_path)
 
     def run(self):
         global_step = 0
@@ -203,4 +209,5 @@ class A3C(object):
                 self.summary_writer.flush()
 
         if self.task_index == 0:
-            self.save_model()
+            with tf.device(self.worker_device):
+                self.save_model()
