@@ -47,8 +47,7 @@ class A3C(object):
 
         # summary related
         if self.task_index == 0:
-            self.logdir = path.join(
-                path.dirname(path.abspath(__file__)), 'logs')
+            self.logdir = path.join(project_root.DIR, 'a3c', 'logs')
             make_sure_path_exists(self.logdir)
             self.summary_writer = tf.summary.FileWriter(self.logdir)
 
