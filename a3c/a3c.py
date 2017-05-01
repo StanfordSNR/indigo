@@ -129,8 +129,8 @@ class A3C(object):
         action_probs = self.session.run(
             self.local_network.action_probs,
             {self.local_network.states: norm_state})[0]
-
-        return np.argmax(np.random.multinomial(1, action_probs - 1e-5))
+        action = np.argmax(np.random.multinomial(1, action_probs - 1e-5))
+        return action
 
     def normalize_states(self, states):
         norm_states = np.array(states, dtype=np.float32)
