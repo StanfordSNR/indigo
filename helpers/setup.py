@@ -43,9 +43,9 @@ def setup(args):
 
         for ip in ip_list:
             host = args.username + '@' + ip
-            ssh_cmd = ['ssh', host]
+            ssh_cmd = ['ssh', host, '-o', 'StrictHostKeyChecking=no']
 
-            setup_src = path.join(args.rlcc_dir, 'setup.py')
+            setup_src = path.join(args.rlcc_dir, 'helpers', 'setup.py')
             cmd = ssh_cmd + ['python', setup_src, '--local']
 
             if args.install_deps:
