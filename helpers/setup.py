@@ -73,10 +73,10 @@ def main():
         help='install dependencies: tensorflow, mahimahi, etc.')
     parser.add_argument(
         '--username', default='ubuntu',
-        help='username used in ssh (default: ubuntu)')
+        help='username used in ssh connection (default: ubuntu)')
     parser.add_argument(
-        '--rlcc-dir', metavar='DIR', default='~/RLCC',
-        help='path to RLCC/ (default: ~/RLCC)')
+        '--rlcc-dir', metavar='DIR', default='/home/ubuntu/RLCC',
+        help='absolute path to RLCC/ (default: /home/ubuntu/RLCC)')
     args = parser.parse_args()
 
     setup(args)

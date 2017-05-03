@@ -93,11 +93,11 @@ def main():
         '--worker-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
         help='comma-separated list of hostname:port of workers')
     parser.add_argument(
-        '--username', required=True,
-        help='username used in ssh connection')
+        '--username', default='ubuntu',
+        help='username used in ssh connection (default: ubuntu)')
     parser.add_argument(
-        '--rlcc-dir', metavar='DIR', required=True,
-        help='absolute path to RLCC/ on all the ps and worker hosts')
+        '--rlcc-dir', metavar='DIR', default='/home/ubuntu/RLCC',
+        help='absolute path to RLCC/ (default: /home/ubuntu/RLCC)')
     prog_args = parser.parse_args()
     args = construct_args(prog_args)
 
