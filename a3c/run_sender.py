@@ -46,6 +46,11 @@ class Learner(object):
             ewmas /= 16.0
             ewmas -= 1.0
 
+        # cwnd, mostly in [0, 100]
+        cwnd = norm_states[:, 3]
+        cwnd /= 50.0
+        cwnd -= 1.0
+
         # make sure all features lie in [-1.0, 1.0]
         norm_states[norm_states > 1.0] = 1.0
         norm_states[norm_states < -1.0] = -1.0

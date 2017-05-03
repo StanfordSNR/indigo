@@ -83,9 +83,9 @@ class A3C(object):
         entropy = -tf.reduce_mean(pi.action_probs * log_action_probs)
 
         # total loss and gradients
-        loss = policy_loss + value_loss - entropy
+        loss = policy_loss + 0.5 * value_loss - 0.5 * entropy
         grads = tf.gradients(loss, pi.trainable_vars)
-        grads, _ = tf.clip_by_global_norm(grads, 40.0)
+        grads, _ = tf.clip_by_global_norm(grads, 10.0)
 
         # sync local network to global network
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
@@ -130,6 +130,11 @@ class A3C(object):
             ewmas = norm_states[:, i]
             ewmas /= 16.0
             ewmas -= 1.0
+
+        # cwnd, mostly in [0, 100]
+        cwnd = norm_states[:, 3]
+        cwnd /= 50.0
+        cwnd -= 1.0
 
         # make sure all features lie in [-1.0, 1.0]
         norm_states[norm_states > 1.0] = 1.0
