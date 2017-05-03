@@ -30,7 +30,7 @@ class Sender(object):
         self.data['payload'] = 'x' * 1400
 
         # dimension of state space and action space
-        self.state_dim = 3
+        self.state_dim = 4
         self.action_cnt = 5
         self.action_mapping = [-0.5, -0.25, 0.0, 0.25, 0.5]
 
@@ -169,7 +169,7 @@ class Sender(object):
             if curr_ts_ms() - self.runtime_start > self.max_runtime:
                 self.running = False
 
-        return [queuing_delay, self.send_ewma, self.ack_ewma]
+        return [queuing_delay, self.send_ewma, self.ack_ewma, self.cwnd]
 
     def take_action(self, action):
         self.cwnd += self.action_mapping[action]
