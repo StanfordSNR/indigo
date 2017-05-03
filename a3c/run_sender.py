@@ -6,33 +6,30 @@ import numpy as np
 import tensorflow as tf
 from os import path
 from env.sender import Sender
-from a3c import ActorCriticNetwork
+from models import ActorCriticNetwork
 
 
 class Learner(object):
-    def __init__(self, state_dim, action_cnt, restore_vars=None):
+    def __init__(self, state_dim, action_cnt, restore_vars):
         with tf.variable_scope('local'):
             self.pi = ActorCriticNetwork(state_dim, action_cnt)
 
         self.session = tf.Session()
 
-        if restore_vars is None:
-            self.session.run(tf.global_variables_initializer())
-        else:
-            # restore saved variables
-            saver = tf.train.Saver(self.pi.trainable_vars)
-            saver.restore(self.session, restore_vars)
+        # restore saved variables
+        saver = tf.train.Saver(self.pi.trainable_vars)
+        saver.restore(self.session, restore_vars)
 
-            # init the remaining vars, especially those created by optimizer
-            self.session.run(tf.variables_initializer(
-                set(tf.global_variables()) - set(self.pi.trainable_vars)))
+        # init the remaining vars, especially those created by optimizer
+        uninit_vars = set(tf.global_variables()) - set(self.pi.trainable_vars)
+        self.session.run(tf.variables_initializer(uninit_vars))
 
     def sample_action(self, state):
         norm_state = self.normalize_states([state])
 
         action_probs = self.session.run(self.pi.action_probs,
                                         {self.pi.states: norm_state})[0]
-        action = np.argmax(np.random.multinomial(1, action_probs - 1e-5))
+        action = np.argmax(action_probs)
         return action
 
     def normalize_states(self, states):

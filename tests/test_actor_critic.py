@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 from os import path
 from env.environment import Environment
-from a3c.a3c import ActorCriticNetwork
+from a3c.models import ActorCriticNetwork
 
 
 def create_env():
