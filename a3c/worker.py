@@ -3,19 +3,35 @@
 import sys
 import argparse
 import project_root
+import numpy as np
 import tensorflow as tf
+from subprocess import check_call
 from os import path
 from a3c import A3C
 from env.environment import Environment
 
 
 def create_env(task_index):
-    uplink_trace = path.join(project_root.DIR, 'env', '12mbps.trace')
+    bandwidth = 12
+    delay = 20
+    queue = 200
+
+    trace_dir = path.join(project_root.DIR, 'env')
+    uplink_trace = path.join(trace_dir, '%dmbps.trace' % bandwidth)
     downlink_trace = uplink_trace
-    mm_cmd = (
-        'mm-delay 20 mm-link %s %s '
-        '--downlink-queue=droptail --downlink-queue-args=packets=200' %
-        (uplink_trace, downlink_trace))
+
+    if bandwidth != 12:
+        gen_trace = path.join(project_root.DIR, 'helpers', 'generate_trace.py')
+        cmd = ['python', gen_trace, '--output-dir', trace_dir,
+               '--bandwidth', str(bandwidth)]
+        sys.stderr.write('$ %s\n' % ' '.join(cmd))
+        check_call(cmd)
+
+    mm_cmd = ('mm-delay %d mm-link %s %s' %
+              (delay, uplink_trace, downlink_trace))
+    if queue is not None:
+        mm_cmd += (' --downlink-queue=droptail '
+                   '--downlink-queue-args=packets=%d' % queue)
 
     env = Environment(mm_cmd)
     env.setup()
