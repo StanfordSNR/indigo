@@ -1,6 +1,7 @@
 import sys
 import time
 import project_root
+import scipy.signal
 import numpy as np
 import tensorflow as tf
 from os import path
@@ -19,6 +20,7 @@ class A3C(object):
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
         self.worker_device = '/job:worker/task:%d' % task_index
+        self.gamma = 0.99
 
         # must call env.set_sample_action() before env.run()
         env.set_sample_action(self.sample_action)
@@ -76,7 +78,8 @@ class A3C(object):
         policy_loss = tf.reduce_mean(cross_entropy_loss * self.advantages)
 
         # value loss
-        value_loss = 0.5 * tf.reduce_mean(tf.square(self.advantages))
+        value_loss = 0.5 * tf.reduce_mean(tf.square(
+            self.rewards - pi.state_values))
 
         # add entropy to loss to encourage exploration
         log_action_probs = tf.log(pi.action_probs)
@@ -92,7 +95,7 @@ class A3C(object):
             pi.trainable_vars, self.global_network.trainable_vars)])
 
         # calculate gradients and apply to global network
-        grads_and_vars = list(zip(grads, self.global_network.trainable_vars))
+        grads_and_vars = zip(grads, self.global_network.trainable_vars)
         inc_global_step = self.global_step.assign_add(1)
 
         optimizer = tf.train.AdamOptimizer(1e-4)
@@ -141,16 +144,21 @@ class A3C(object):
         norm_states[norm_states < -1.0] = -1.0
         return norm_states
 
-    def discount_rewards(self, final_reward, episode_len):
-        return [final_reward] * episode_len
+    def discount(self, x, gamma):
+        return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
     def process_rollout(self, rollout):
-        state_buf, action_buf, final_reward = rollout
+        states, actions, final_reward = rollout
+        episode_len = len(actions)
 
-        state_buf = self.normalize_states(state_buf)
-        reward_buf = self.discount_rewards(final_reward, len(action_buf))
+        # normalize states
+        states = self.normalize_states(states)
 
-        return state_buf, action_buf, reward_buf
+        # generate discounted returns
+        rewards = [0.0] * (episode_len - 1) + [final_reward]
+        rewards = self.discount(rewards, self.gamma)
+
+        return states, actions, rewards
 
     def save_model(self):
         # sleep for a while and copy global parameters to local
@@ -174,7 +182,7 @@ class A3C(object):
 
             # get an episode of rollout and process it
             rollout = self.env.rollout()
-            state_buf, action_buf, reward_buf = self.process_rollout(rollout)
+            states, actions, rewards = self.process_rollout(rollout)
 
             # train using the rollout
             summarize = self.task_index == 0 and self.local_step % 10 == 0
@@ -185,9 +193,9 @@ class A3C(object):
                 ops_to_run = [self.train_op, self.global_step]
 
             ret = self.session.run(ops_to_run, {
-                self.states: state_buf,
-                self.actions: action_buf,
-                self.rewards: reward_buf,
+                self.states: states,
+                self.actions: actions,
+                self.rewards: rewards,
             })
 
             global_step = ret[1]
