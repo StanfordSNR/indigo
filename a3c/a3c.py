@@ -5,7 +5,7 @@ import scipy.signal
 import numpy as np
 import tensorflow as tf
 from os import path
-from models import ActorCriticNetwork
+from models import ActorCriticLSTM
 from helpers.helpers import make_sure_path_exists
 
 
@@ -20,7 +20,11 @@ class A3C(object):
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
         self.worker_device = '/job:worker/task:%d' % task_index
-        self.gamma = 0.99
+
+        self.state_buf = []
+        self.action_buf = []
+        self.value_buf = []
+        self.gamma = 1.0
 
         # must call env.set_sample_action() before env.run()
         env.set_sample_action(self.sample_action)
@@ -50,7 +54,7 @@ class A3C(object):
                 worker_device=self.worker_device,
                 cluster=self.cluster)):
             with tf.variable_scope('global'):
-                self.global_network = ActorCriticNetwork(
+                self.global_network = ActorCriticLSTM(
                     state_dim=self.state_dim, action_cnt=self.action_cnt)
                 self.global_step = tf.get_variable(
                     'global_step', [], tf.int32,
@@ -59,18 +63,18 @@ class A3C(object):
 
         with tf.device(self.worker_device):
             with tf.variable_scope('local'):
-                self.local_network = ActorCriticNetwork(
+                self.local_network = ActorCriticLSTM(
                     state_dim=self.state_dim, action_cnt=self.action_cnt)
+                self.lstm_state = self.local_network.lstm_state_init
 
             self.build_loss()
 
     def build_loss(self):
         pi = self.local_network
 
-        self.states = pi.states
         self.actions = tf.placeholder(tf.int32, [None])
         self.rewards = tf.placeholder(tf.float32, [None])
-        self.advantages = self.rewards - pi.state_values
+        self.advantages = tf.placeholder(tf.float32, [None])
 
         # policy loss
         cross_entropy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -95,7 +99,7 @@ class A3C(object):
             pi.trainable_vars, self.global_network.trainable_vars)])
 
         # calculate gradients and apply to global network
-        grads_and_vars = zip(grads, self.global_network.trainable_vars)
+        grads_and_vars = list(zip(grads, self.global_network.trainable_vars))
         inc_global_step = self.global_step.assign_add(1)
 
         optimizer = tf.train.AdamOptimizer(1e-4)
@@ -107,17 +111,36 @@ class A3C(object):
         tf.summary.scalar('value_loss', value_loss)
         tf.summary.scalar('entropy', entropy)
         tf.summary.scalar('total_loss', loss)
+        tf.summary.scalar('reward', self.rewards[-1])
         tf.summary.scalar('grad_global_norm', tf.global_norm(grads))
         tf.summary.scalar('var_global_norm', tf.global_norm(pi.trainable_vars))
         self.summary_op = tf.summary.merge_all()
 
     def sample_action(self, state):
+        pi = self.local_network
+
+        # normalize a state
         norm_state = self.normalize_states([state])
 
-        action_probs = self.session.run(
-            self.local_network.action_probs,
-            {self.local_network.states: norm_state})[0]
-        action = np.argmax(np.random.multinomial(1, action_probs - 1e-5))
+        # run ops in local networks
+        ops_to_run = [pi.action_probs, pi.state_values, pi.lstm_state_out]
+        feed_dict = {
+            pi.states: norm_state,
+            pi.lstm_state_in: self.lstm_state,
+        }
+
+        ret = self.session.run(ops_to_run, feed_dict)
+        action_probs, state_values, lstm_state_out = ret
+
+        # choose an action to take and update current LSTM state
+        action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
+        self.lstm_state = lstm_state_out
+
+        # append state, action, value to episode buffer
+        self.state_buf.extend(norm_state)
+        self.action_buf.append(action)
+        self.value_buf.extend(state_values)
+
         return action
 
     def normalize_states(self, states):
@@ -147,19 +170,6 @@ class A3C(object):
     def discount(self, x, gamma):
         return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
-    def process_rollout(self, rollout):
-        states, actions, final_reward = rollout
-        episode_len = len(actions)
-
-        # normalize states
-        states = self.normalize_states(states)
-
-        # generate discounted returns
-        rewards = [0.0] * (episode_len - 1) + [final_reward]
-        rewards = self.discount(rewards, self.gamma)
-
-        return states, actions, rewards
-
     def save_model(self):
         # sleep for a while and copy global parameters to local
         time.sleep(5)
@@ -171,18 +181,36 @@ class A3C(object):
         saver.save(self.session, model_path)
         sys.stderr.write('\nModel saved to worker-0:%s\n' % model_path)
 
-    def run(self):
-        global_step = 0
+    def rollout(self):
+        final_reward = self.env.rollout()
 
+        # state_buf, action_buf, value_buf should have been filled in
+        episode_len = len(self.state_buf)
+        assert len(self.action_buf) == episode_len
+        assert len(self.value_buf) == episode_len
+
+        # generate discounted returns
+        if self.gamma == 1.0:
+            self.reward_buf = [final_reward] * episode_len
+        else:
+            self.reward_buf = [0.0] * (episode_len - 1) + [final_reward]
+            self.reward_buf = self.discount(self.reward_buf, self.gamma)
+
+        # compute advantages
+        self.adv_buf = np.asarray(self.reward_buf) - np.asarray(self.value_buf)
+
+    def run(self):
+        pi = self.local_network
+
+        global_step = 0
         while global_step < self.max_global_step:
-            sys.stderr.write('Global step: %d\n' % global_step)
+            sys.stderr.write('\nGlobal step: %d\n' % global_step)
 
             # reset local parameters to global
             self.session.run(self.sync_op)
 
-            # get an episode of rollout and process it
-            rollout = self.env.rollout()
-            states, actions, rewards = self.process_rollout(rollout)
+            # get an episode of rollout
+            self.rollout()
 
             # train using the rollout
             summarize = self.task_index == 0 and self.local_step % 10 == 0
@@ -193,9 +221,11 @@ class A3C(object):
                 ops_to_run = [self.train_op, self.global_step]
 
             ret = self.session.run(ops_to_run, {
-                self.states: states,
-                self.actions: actions,
-                self.rewards: rewards,
+                pi.states: self.state_buf,
+                self.actions: self.action_buf,
+                self.rewards: self.reward_buf,
+                self.advantages: self.adv_buf,
+                pi.lstm_state_in: pi.lstm_state_init,
             })
 
             global_step = ret[1]
@@ -204,6 +234,11 @@ class A3C(object):
             if summarize:
                 self.summary_writer.add_summary(ret[2], global_step)
                 self.summary_writer.flush()
+
+            self.state_buf = []
+            self.action_buf = []
+            self.value_buf = []
+            self.lstm_state = pi.lstm_state_init
 
         if self.task_index == 0:
             with tf.device(self.worker_device):
