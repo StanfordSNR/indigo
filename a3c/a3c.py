@@ -16,7 +16,7 @@ def normalize_states(states):
     queuing_delays /= 105.0
     queuing_delays -= 1.0
 
-    # send_ts_diff and ack_ts_diff, mostly in [0, 100]
+    # send_ts_diff and recv_ts_diff, mostly in [0, 100]
     for i in [1, 2]:
         ts_diffs = norm_states[:, i]
         ts_diffs /= 50.0

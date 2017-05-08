@@ -42,7 +42,7 @@ class Sender(object):
         # features (in state vector) related
         self.base_delay = sys.maxint
         self.prev_send_ts = None
-        self.prev_ack_ts = None
+        self.prev_recv_ts = None
 
         if self.train:
             self.max_step_cnt = 2000
@@ -51,8 +51,8 @@ class Sender(object):
             # statistics variables to compute rewards
             self.sent_bytes = 0
             self.acked_bytes = 0
-            self.first_ack_ts = float('inf')
-            self.last_ack_ts = 0
+            self.first_recv_ts = float('inf')
+            self.last_recv_ts = 0
             self.total_delays = []
 
     def cleanup(self):
@@ -87,12 +87,12 @@ class Sender(object):
 
         self.base_delay = sys.maxint
         self.prev_send_ts = None
-        self.prev_ack_ts = None
+        self.prev_recv_ts = None
 
         self.sent_bytes = 0
         self.acked_bytes = 0
-        self.first_ack_ts = float('inf')
-        self.last_ack_ts = 0
+        self.first_recv_ts = float('inf')
+        self.last_recv_ts = 0
         self.total_delays = []
 
         self.drain_packets()
@@ -120,30 +120,30 @@ class Sender(object):
 
     def update_state(self, ack):
         send_ts = ack['ack_send_ts']
-        ack_ts = ack['ack_recv_ts']
+        recv_ts = ack['ack_recv_ts']
 
         # queuing delay
-        curr_delay = ack_ts - send_ts
+        curr_delay = recv_ts - send_ts
         self.base_delay = min(self.base_delay, curr_delay)
         queuing_delay = curr_delay - self.base_delay
 
-        # interarrival time between two send_ts and two ack_ts
+        # interarrival time between two send_ts and two recv_ts
         if self.prev_send_ts is None:
-            assert self.prev_ack_ts is None
+            assert self.prev_recv_ts is None
             self.prev_send_ts = send_ts
-            self.prev_ack_ts = ack_ts
+            self.prev_recv_ts = recv_ts
 
         send_ts_diff = send_ts - self.prev_send_ts
-        ack_ts_diff = ack_ts - self.prev_ack_ts
+        recv_ts_diff = recv_ts - self.prev_recv_ts
         self.prev_send_ts = send_ts
-        self.prev_ack_ts = ack_ts
+        self.prev_recv_ts = recv_ts
 
         if self.train:
             self.acked_bytes += ack['ack_bytes']
             self.total_delays.append(curr_delay)
 
-            self.first_ack_ts = min(ack_ts, self.first_ack_ts)
-            self.last_ack_ts = max(ack_ts, self.last_ack_ts)
+            self.first_recv_ts = min(recv_ts, self.first_recv_ts)
+            self.last_recv_ts = max(recv_ts, self.last_recv_ts)
 
             self.step_cnt += 1
             if self.step_cnt >= self.max_step_cnt:
@@ -152,7 +152,7 @@ class Sender(object):
             if curr_ts_ms() - self.runtime_start > self.max_runtime:
                 self.running = False
 
-        return [queuing_delay, send_ts_diff, ack_ts_diff, self.cwnd]
+        return [queuing_delay, send_ts_diff, recv_ts_diff, self.cwnd]
 
     def take_action(self, action):
         self.cwnd += self.action_mapping[action]
@@ -164,7 +164,7 @@ class Sender(object):
             sys.stderr.write('cwnd %.2f\n' % self.cwnd)
 
     def compute_reward(self):
-        duration = self.last_ack_ts - self.first_ack_ts
+        duration = self.last_recv_ts - self.first_recv_ts
         avg_throughput = float(self.acked_bytes * 8) * 0.001 / duration
         delay_percentile = float(np.percentile(self.total_delays, 95))
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
