@@ -151,11 +151,11 @@ class A3C(object):
         queuing_delays /= 105.0
         queuing_delays -= 1.0
 
-        # send_ewma and ack_ewma, mostly in [0, 32]
+        # send_ts_diff and ack_ts_diff, mostly in [0, 100]
         for i in [1, 2]:
-            ewmas = norm_states[:, i]
-            ewmas /= 16.0
-            ewmas -= 1.0
+            ts_diffs = norm_states[:, i]
+            ts_diffs /= 50.0
+            ts_diffs -= 1.0
 
         # cwnd, mostly in [0, 100]
         cwnd = norm_states[:, 3]

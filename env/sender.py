@@ -41,8 +41,6 @@ class Sender(object):
 
         # features (in state vector) related
         self.base_delay = sys.maxint
-        self.send_ewma = 0.0
-        self.ack_ewma = 0.0
         self.prev_send_ts = None
         self.prev_ack_ts = None
 
@@ -88,8 +86,6 @@ class Sender(object):
         self.cwnd = 10.0
 
         self.base_delay = sys.maxint
-        self.send_ewma = 0.0
-        self.ack_ewma = 0.0
         self.prev_send_ts = None
         self.prev_ack_ts = None
 
@@ -131,7 +127,7 @@ class Sender(object):
         self.base_delay = min(self.base_delay, curr_delay)
         queuing_delay = curr_delay - self.base_delay
 
-        # EWMA of interarrival time between two send_ts and two ack_ts
+        # interarrival time between two send_ts and two ack_ts
         if self.prev_send_ts is None:
             assert self.prev_ack_ts is None
             self.prev_send_ts = send_ts
@@ -141,10 +137,6 @@ class Sender(object):
         ack_ts_diff = ack_ts - self.prev_ack_ts
         self.prev_send_ts = send_ts
         self.prev_ack_ts = ack_ts
-
-        alpha = 0.125
-        self.send_ewma = (1 - alpha) * self.send_ewma + alpha * send_ts_diff
-        self.ack_ewma = (1 - alpha) * self.ack_ewma + alpha * ack_ts_diff
 
         if self.train:
             self.acked_bytes += ack['ack_bytes']
@@ -160,7 +152,7 @@ class Sender(object):
             if curr_ts_ms() - self.runtime_start > self.max_runtime:
                 self.running = False
 
-        return [queuing_delay, self.send_ewma, self.ack_ewma, self.cwnd]
+        return [queuing_delay, send_ts_diff, ack_ts_diff, self.cwnd]
 
     def take_action(self, action):
         self.cwnd += self.action_mapping[action]
