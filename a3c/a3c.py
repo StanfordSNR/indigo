@@ -9,6 +9,35 @@ from models import ActorCriticLSTM
 from helpers.helpers import make_sure_path_exists
 
 
+def normalize_states(states):
+    norm_states = np.array(states, dtype=np.float32)
+
+    # queuing_delay, mostly in [0, 210]
+    queuing_delays = norm_states[:, 0]
+    queuing_delays /= 105.0
+    queuing_delays -= 1.0
+
+    # send_ts_diff and ack_ts_diff, mostly in [0, 100]
+    for i in [1, 2]:
+        ts_diffs = norm_states[:, i]
+        ts_diffs /= 50.0
+        ts_diffs -= 1.0
+
+    # cwnd, mostly in [0, 100]
+    cwnd = norm_states[:, 3]
+    cwnd /= 50.0
+    cwnd -= 1.0
+
+    # make sure all features lie in [-1.0, 1.0]
+    norm_states[norm_states > 1.0] = 1.0
+    norm_states[norm_states < -1.0] = -1.0
+    return norm_states
+
+
+def discount(x, gamma):
+    return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
+
+
 class A3C(object):
     def __init__(self, cluster, server, task_index, env):
         # distributed tensorflow related
@@ -65,6 +94,7 @@ class A3C(object):
             with tf.variable_scope('local'):
                 self.local_network = ActorCriticLSTM(
                     state_dim=self.state_dim, action_cnt=self.action_cnt)
+                # save the current LSTM state of local network
                 self.lstm_state = self.local_network.lstm_state_init
 
             self.build_loss()
@@ -120,7 +150,7 @@ class A3C(object):
         pi = self.local_network
 
         # normalize a state
-        norm_state = self.normalize_states([state])
+        norm_state = normalize_states([state])
 
         # run ops in local networks
         ops_to_run = [pi.action_probs, pi.state_values, pi.lstm_state_out]
@@ -142,33 +172,6 @@ class A3C(object):
         self.value_buf.extend(state_values)
 
         return action
-
-    def normalize_states(self, states):
-        norm_states = np.array(states, dtype=np.float32)
-
-        # queuing_delay, mostly in [0, 210]
-        queuing_delays = norm_states[:, 0]
-        queuing_delays /= 105.0
-        queuing_delays -= 1.0
-
-        # send_ts_diff and ack_ts_diff, mostly in [0, 100]
-        for i in [1, 2]:
-            ts_diffs = norm_states[:, i]
-            ts_diffs /= 50.0
-            ts_diffs -= 1.0
-
-        # cwnd, mostly in [0, 100]
-        cwnd = norm_states[:, 3]
-        cwnd /= 50.0
-        cwnd -= 1.0
-
-        # make sure all features lie in [-1.0, 1.0]
-        norm_states[norm_states > 1.0] = 1.0
-        norm_states[norm_states < -1.0] = -1.0
-        return norm_states
-
-    def discount(self, x, gamma):
-        return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
     def save_model(self):
         # sleep for a while and copy global parameters to local
@@ -194,7 +197,7 @@ class A3C(object):
             self.reward_buf = [final_reward] * episode_len
         else:
             self.reward_buf = [0.0] * (episode_len - 1) + [final_reward]
-            self.reward_buf = self.discount(self.reward_buf, self.gamma)
+            self.reward_buf = discount(self.reward_buf, self.gamma)
 
         # compute advantages
         self.adv_buf = np.asarray(self.reward_buf) - np.asarray(self.value_buf)
@@ -204,7 +207,7 @@ class A3C(object):
 
         global_step = 0
         while global_step < self.max_global_step:
-            sys.stderr.write('\nGlobal step: %d\n' % global_step)
+            sys.stderr.write('Global step: %d\n' % global_step)
 
             # reset local parameters to global
             self.session.run(self.sync_op)
