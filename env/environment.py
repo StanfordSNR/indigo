@@ -47,15 +47,15 @@ class Environment(object):
         self.sender.set_sample_action(sample_action)
 
     def rollout(self):
-        """Run sender in env, get an episode of experience and reset sender."""
+        """Run sender in env, get final reward of an episode, reset sender."""
 
-        sys.stderr.write('Getting an episode from environment...\n')
+        sys.stderr.write('Obtaining an episode from environment...\n')
 
         self.sender.run()
-        rollout = self.sender.get_experience()
+        final_reward = self.sender.compute_reward()
         self.sender.reset()
 
-        return rollout
+        return final_reward
 
     def cleanup(self):
         if self.sender:

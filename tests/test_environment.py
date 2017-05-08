@@ -6,7 +6,6 @@ import numpy as np
 import tensorflow as tf
 from os import path
 from env.environment import Environment
-from a3c.models import ActorCriticNetwork
 
 
 def create_env():
@@ -29,19 +28,10 @@ class Learner(object):
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
 
-        self.ac_network = ActorCriticNetwork(self.state_dim, self.action_cnt)
-        self.session = tf.Session()
-        self.session.run(tf.global_variables_initializer())
-
         env.set_sample_action(self.sample_action)
 
     def sample_action(self, state):
-        state = np.array([state], dtype=np.float32)
-
-        action_probs = self.session.run(self.ac_network.action_probs,
-                                        {self.ac_network.states: state})[0]
-        action = np.argmax(np.random.multinomial(1, action_probs - 1e-5))
-        return action
+        return np.random.randint(0, self.action_cnt)
 
     def cleanup(self):
         self.env.cleanup()
@@ -51,12 +41,12 @@ class Learner(object):
             sys.stderr.write('\nEpisode %d\n' % episode_i)
 
             # get an episode of experience
-            rollout = self.env.rollout()
+            final_reward = self.env.rollout()
 
             # update model
-            self.update_model(rollout)
+            self.update_model(final_reward)
 
-    def update_model(self, rollout):
+    def update_model(self, final_reward):
         sys.stderr.write('Updating model...\n')
 
 
