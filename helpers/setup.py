@@ -25,7 +25,7 @@ def setup_local(args):
         sys.stderr.write('$ %s\n' % cmd)
         check_call(cmd, shell=True)
 
-        cmd = 'sudo pip install numpy scipy tensorflow'
+        cmd = 'sudo pip install numpy tensorflow'
         sys.stderr.write('$ %s\n' % cmd)
         check_call(cmd, shell=True)
 

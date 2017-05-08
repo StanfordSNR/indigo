@@ -1,7 +1,6 @@
 import sys
 import time
 import project_root
-import scipy.signal
 import numpy as np
 import tensorflow as tf
 from os import path
@@ -34,10 +33,6 @@ def normalize_states(states):
     return norm_states
 
 
-def discount(x, gamma):
-    return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
-
-
 class A3C(object):
     def __init__(self, cluster, server, task_index, env):
         # distributed tensorflow related
@@ -49,18 +44,14 @@ class A3C(object):
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
         self.worker_device = '/job:worker/task:%d' % task_index
-
-        self.state_buf = []
-        self.action_buf = []
-        self.value_buf = []
         self.gamma = 1.0
-
-        # must call env.set_sample_action() before env.run()
-        env.set_sample_action(self.sample_action)
 
         # step counters
         self.max_global_step = 10000
         self.local_step = 0
+
+        # must call env.set_sample_action() before env.run()
+        env.set_sample_action(self.sample_action)
 
         # build tensorflow computation graph
         self.build_tf_graph()
@@ -94,8 +85,6 @@ class A3C(object):
             with tf.variable_scope('local'):
                 self.local_network = ActorCriticLSTM(
                     state_dim=self.state_dim, action_cnt=self.action_cnt)
-                # save the current LSTM state of local network
-                self.lstm_state = self.local_network.lstm_state_init
 
             self.build_loss()
 
@@ -185,6 +174,13 @@ class A3C(object):
         sys.stderr.write('\nModel saved to worker-0:%s\n' % model_path)
 
     def rollout(self):
+        # reset buffers for states, actions and values, and LSTM state
+        self.state_buf = []
+        self.action_buf = []
+        self.value_buf = []
+        self.lstm_state = self.local_network.lstm_state_init
+
+        # get an episode of rollout
         final_reward = self.env.rollout()
 
         # state_buf, action_buf, value_buf should have been filled in
@@ -192,15 +188,17 @@ class A3C(object):
         assert len(self.action_buf) == episode_len
         assert len(self.value_buf) == episode_len
 
-        # generate discounted returns
+        # compute discounted returns
         if self.gamma == 1.0:
-            self.reward_buf = [final_reward] * episode_len
+            self.reward_buf = np.full(episode_len, final_reward)
         else:
-            self.reward_buf = [0.0] * (episode_len - 1) + [final_reward]
-            self.reward_buf = discount(self.reward_buf, self.gamma)
+            reward_buf = np.zeros(episode_len)
+            reward_buf[-1] = final_reward
+            for i in reversed(xrange(episode_len - 1)):
+                reward_buf[i] = reward_buf[i + 1] * self.gamma
 
         # compute advantages
-        self.adv_buf = np.asarray(self.reward_buf) - np.asarray(self.value_buf)
+        self.adv_buf = self.reward_buf - np.asarray(self.value_buf)
 
     def run(self):
         pi = self.local_network
@@ -237,11 +235,6 @@ class A3C(object):
             if summarize:
                 self.summary_writer.add_summary(ret[2], global_step)
                 self.summary_writer.flush()
-
-            self.state_buf = []
-            self.action_buf = []
-            self.value_buf = []
-            self.lstm_state = pi.lstm_state_init
 
         if self.task_index == 0:
             with tf.device(self.worker_device):
