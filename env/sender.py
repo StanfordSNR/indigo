@@ -57,10 +57,6 @@ class Sender(object):
             self.last_ack_ts = 0
             self.total_delays = []
 
-            # buffers for states and actions in a single episode
-            self.state_buf = []
-            self.action_buf = []
-
     def cleanup(self):
         self.sock.close()
 
@@ -87,10 +83,8 @@ class Sender(object):
     def reset(self):
         """Reset the sender. Must be called in every training iteration."""
 
-        assert self.train
-
-        self.seq_num += 1
-        self.next_ack = self.seq_num
+        self.seq_num = 0
+        self.next_ack = 0
         self.cwnd = 10.0
 
         self.base_delay = sys.maxint
@@ -104,9 +98,6 @@ class Sender(object):
         self.first_ack_ts = float('inf')
         self.last_ack_ts = 0
         self.total_delays = []
-
-        self.state_buf = []
-        self.action_buf = []
 
         self.drain_packets()
 
@@ -202,17 +193,11 @@ class Sender(object):
 
         return reward
 
-    def get_experience(self):
-        assert self.train
-
-        final_reward = self.compute_reward()
-        return self.state_buf, self.action_buf, final_reward
-
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd
 
     def send(self):
-        self.data['seq_num'] = self.seq_num
+        self.data['seq_num'] = str(self.seq_num).zfill(10)
         self.seq_num += 1
         self.data['send_ts'] = curr_ts_ms()
 
@@ -223,7 +208,7 @@ class Sender(object):
             self.sent_bytes += len(serialized_data)
 
         if self.debug:
-            sys.stderr.write('Sent seq_num %d\n' % self.data['seq_num'])
+            sys.stderr.write('Sent seq_num %d\n' % int(self.data['seq_num']))
 
     def recv(self):
         serialized_ack, addr = self.sock.recvfrom(1500)
@@ -236,18 +221,15 @@ class Sender(object):
         except ValueError:
             return
 
-        self.next_ack = max(self.next_ack, ack['ack_seq_num'] + 1)
+        self.next_ack = max(self.next_ack, int(ack['ack_seq_num']) + 1)
 
         state = self.update_state(ack)
         action = self.sample_action(state)
         self.take_action(action)
 
-        if self.train:
-            self.state_buf.append(state)
-            self.action_buf.append(action)
-
         if self.debug:
-            sys.stderr.write('Received ack_seq_num %d\n' % ack['ack_seq_num'])
+            sys.stderr.write('Received ack_seq_num %d\n' %
+                             int(ack['ack_seq_num']))
 
     def run(self):
         TIMEOUT = 500  # ms
