@@ -165,17 +165,17 @@ class Sender(object):
 
     def compute_reward(self):
         duration = self.last_recv_ts - self.first_recv_ts
-        avg_throughput = float(self.acked_bytes * 8) * 0.001 / duration
+
+        if duration > 0:
+            avg_throughput = float(self.acked_bytes * 8) * 0.001 / duration
+        else:
+            avg_throughput = 0.0
+
         delay_percentile = float(np.percentile(self.total_delays, 95))
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
-        avg_throughput = max(0.0, min(12.0, avg_throughput))
-        delay_percentile = max(20.0, min(230.0, delay_percentile))
-
-        reward = 3.0
-        reward += np.log(max(1e-5, avg_throughput / 12.0))
-        reward += np.log(max(1e-5, (230.0 - delay_percentile) / 210.0))
-        reward += np.log(max(1e-5, 1.0 - loss_rate))
+        reward = np.log(max(1e-4, avg_throughput))
+        reward -= np.log(max(1.0, delay_percentile / 10.0))
 
         sys.stderr.write('Average throughput: %.2f Mbps\n' % avg_throughput)
         sys.stderr.write('95th percentile one-way delay: %d ms\n' %
