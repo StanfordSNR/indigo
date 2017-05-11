@@ -35,9 +35,9 @@ def prepare_traces(bandwidth):
 
 
 def create_env(task_index):
-    bandwidth = 12  # e.g. Verizon-LTE-driving
+    bandwidth = 12  # or 'Verizon-LTE-driving'
     delay = 20
-    queue = 200  # e.g. None
+    queue = 200  # or None
 
     uplink_trace, downlink_trace = prepare_traces(bandwidth)
     mm_cmd = ('mm-delay %d mm-link %s %s' %

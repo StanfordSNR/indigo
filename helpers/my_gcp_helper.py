@@ -21,7 +21,6 @@ def main():
     worker_port = 16000
     for i in xrange(0, len(ip_list), 2):
         internal_ip = ip_list[i]
-        external_ip = ip_list[i + 1]
 
         if i == 0:
             ret_cmd += internal_ip + ':15000 --worker-hosts '
@@ -29,7 +28,7 @@ def main():
             ret_cmd += internal_ip + ':%d,' % worker_port
             worker_port += 1
 
-        ret_ip_list += '%s,' % external_ip
+        ret_ip_list += '%s,' % internal_ip
 
     print ret_cmd[:-1]
     print ret_ip_list[:-1]
