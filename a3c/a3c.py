@@ -11,18 +11,18 @@ from helpers.helpers import make_sure_path_exists
 def normalize_states(states):
     norm_states = np.array(states, dtype=np.float32)
 
-    # queuing_delay, mostly in [0, 210]
+    # queuing_delay, target range [0, 200]
     queuing_delays = norm_states[:, 0]
-    queuing_delays /= 105.0
+    queuing_delays /= 100.0
     queuing_delays -= 1.0
 
-    # send_ts_diff and recv_ts_diff, mostly in [0, 100]
+    # send_ts_diff and recv_ts_diff, target range [0, 100]
     for i in [1, 2]:
         ts_diffs = norm_states[:, i]
         ts_diffs /= 50.0
         ts_diffs -= 1.0
 
-    # cwnd, mostly in [0, 100]
+    # cwnd, target range [0, 100]
     cwnd = norm_states[:, 3]
     cwnd /= 50.0
     cwnd -= 1.0
@@ -47,7 +47,7 @@ class A3C(object):
         self.gamma = 1.0
 
         # step counters
-        self.max_global_step = 10000
+        self.max_global_step = 32000
         self.local_step = 0
 
         # must call env.set_sample_action() before env.run()
@@ -109,7 +109,7 @@ class A3C(object):
         entropy = -tf.reduce_mean(pi.action_probs * log_action_probs)
 
         # total loss and gradients
-        loss = policy_loss + 0.5 * value_loss - 0.5 * entropy
+        loss = policy_loss + 0.5 * value_loss - 0.2 * entropy
         grads = tf.gradients(loss, pi.trainable_vars)
         grads, _ = tf.clip_by_global_norm(grads, 10.0)
 
@@ -162,14 +162,18 @@ class A3C(object):
 
         return action
 
-    def save_model(self):
-        # sleep for a while and copy global parameters to local
-        time.sleep(5)
+    def save_model(self, check_point=None):
+        if check_point is None:
+            time.sleep(5)
+            model_path = path.join(self.logdir, 'model')
+        else:
+            model_path = path.join(self.logdir, 'checkpoint-%d' % check_point)
+
+        # copy global parameters to local
         self.session.run(self.sync_op)
 
         # save local parameters to worker-0
         saver = tf.train.Saver(self.local_network.trainable_vars)
-        model_path = path.join(self.logdir, 'model')
         saver.save(self.session, model_path)
         sys.stderr.write('\nModel saved to worker-0:%s\n' % model_path)
 
@@ -204,6 +208,7 @@ class A3C(object):
         pi = self.local_network
 
         global_step = 0
+        check_point = 5000
         while global_step < self.max_global_step:
             sys.stderr.write('Global step: %d\n' % global_step)
 
@@ -235,6 +240,11 @@ class A3C(object):
             if summarize:
                 self.summary_writer.add_summary(ret[2], global_step)
                 self.summary_writer.flush()
+
+            if self.task_index == 0 and global_step >= check_point:
+                with tf.device(self.worker_device):
+                    self.save_model(check_point)
+                check_point += 5000
 
         if self.task_index == 0:
             with tf.device(self.worker_device):

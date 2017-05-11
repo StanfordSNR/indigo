@@ -51,12 +51,12 @@ def main():
 
     sender = Sender(args.port)
 
-    restore_vars = path.join(project_root.DIR, 'a3c', 'logs', 'model')
+    model_path = path.join(project_root.DIR, 'a3c', 'logs', 'model')
 
     learner = Learner(
         state_dim=sender.state_dim,
         action_cnt=sender.action_cnt,
-        restore_vars=restore_vars)
+        restore_vars=model_path)
 
     sender.set_sample_action(learner.sample_action)
 
