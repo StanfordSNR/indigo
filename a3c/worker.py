@@ -11,22 +11,35 @@ from a3c import A3C
 from env.environment import Environment
 
 
-def create_env(task_index):
-    bandwidth = 12
-    delay = 20
-    queue = 200
-
+def prepare_traces(bandwidth):
     trace_dir = path.join(project_root.DIR, 'env')
-    uplink_trace = path.join(trace_dir, '%dmbps.trace' % bandwidth)
-    downlink_trace = uplink_trace
 
-    if bandwidth != 12:
-        gen_trace = path.join(project_root.DIR, 'helpers', 'generate_trace.py')
-        cmd = ['python', gen_trace, '--output-dir', trace_dir,
-               '--bandwidth', str(bandwidth)]
-        sys.stderr.write('$ %s\n' % ' '.join(cmd))
-        check_call(cmd)
+    if type(bandwidth) == int:
+        if bandwidth != 12:
+            gen_trace = path.join(project_root.DIR, 'helpers',
+                                  'generate_trace.py')
+            cmd = ['python', gen_trace, '--output-dir', trace_dir,
+                   '--bandwidth', str(bandwidth)]
+            sys.stderr.write('$ %s\n' % ' '.join(cmd))
+            check_call(cmd)
 
+        uplink_trace = path.join(trace_dir, '%dmbps.trace' % bandwidth)
+        downlink_trace = uplink_trace
+    else:
+        trace_path = '/usr/share/mahimahi/traces/' + bandwidth
+        # intentionally switch uplink and downlink traces due to sender first
+        uplink_trace = trace_path + '.down'
+        downlink_trace = trace_path + '.up'
+
+    return uplink_trace, downlink_trace
+
+
+def create_env(task_index):
+    bandwidth = 12  # e.g. Verizon-LTE-driving
+    delay = 20
+    queue = 200  # e.g. None
+
+    uplink_trace, downlink_trace = prepare_traces(bandwidth)
     mm_cmd = ('mm-delay %d mm-link %s %s' %
               (delay, uplink_trace, downlink_trace))
     if queue is not None:
