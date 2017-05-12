@@ -9,7 +9,9 @@ def build_cmd_db():
     cmd_db = {}
 
     cmd_db['git_clone'] = 'git clone https://github.com/StanfordSNR/RLCC.git'
-    cmd_db['git_pull'] = 'cd %s && git pull' % args.rlcc_dir
+    cmd_db['git_force_pull'] = (
+        'cd ~/RLCC && git checkout cellular && '
+        'git reset --hard @~1 && git pull')
 
     return cmd_db
 
@@ -36,7 +38,7 @@ def main():
         host = args.username + '@' + ip
 
         cmd = ['ssh', host, '-o', 'StrictHostKeyChecking=no',
-               cmd_db['git_clone']]
+               cmd_db['git_force_pull']]
 
         procs.append(Popen(cmd))
 
