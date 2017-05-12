@@ -9,8 +9,7 @@ def build_cmd_db():
     cmd_db = {}
 
     cmd_db['git_clone'] = 'git clone https://github.com/StanfordSNR/RLCC.git'
-    cmd_db['git_force_pull'] = ('cd ~/RLCC && git fetch --all && '
-                                'git reset --hard origin/master && git pull')
+    cmd_db['git_pull'] = 'cd %s && git pull' % args.rlcc_dir
 
     return cmd_db
 
@@ -28,7 +27,7 @@ def main():
         '--rlcc-dir', metavar='DIR', default='~/RLCC',
         help='path to RLCC/ (default: ~/RLCC)')
     args = parser.parse_args()
-    cmd_db = build_cmd_db()
+    cmd_db = build_cmd_db(args)
 
     ip_list = args.remote.split(',')
     procs = []
