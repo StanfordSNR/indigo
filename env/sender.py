@@ -133,8 +133,8 @@ class Sender(object):
             self.prev_send_ts = send_ts
             self.prev_recv_ts = recv_ts
 
-        send_ts_diff = send_ts - self.prev_send_ts
-        recv_ts_diff = recv_ts - self.prev_recv_ts
+        send_interval = send_ts - self.prev_send_ts
+        recv_interval = recv_ts - self.prev_recv_ts
         self.prev_send_ts = send_ts
         self.prev_recv_ts = recv_ts
 
@@ -152,7 +152,8 @@ class Sender(object):
             if curr_ts_ms() - self.runtime_start > self.max_runtime:
                 self.running = False
 
-        return [queuing_delay, send_ts_diff, recv_ts_diff, self.cwnd]
+        state = [queuing_delay, send_interval, recv_interval, self.cwnd]
+        return state
 
     def take_action(self, action):
         self.cwnd += self.action_mapping[action]

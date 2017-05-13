@@ -11,16 +11,16 @@ from helpers.helpers import make_sure_path_exists
 def normalize_states(states):
     norm_states = np.array(states, dtype=np.float32)
 
-    # queuing_delay, target range [0, 200]
-    queuing_delays = norm_states[:, 0]
-    queuing_delays /= 100.0
-    queuing_delays -= 1.0
+    # queuing_delay, target range [0, 2000]
+    queuing_delay = norm_states[:, 0]
+    queuing_delay /= 1000.0
+    queuing_delay -= 1.0
 
-    # send_ts_diff and recv_ts_diff, target range [0, 100]
+    # send_interval and recv_interval, target range [0, 500]
     for i in [1, 2]:
-        ts_diffs = norm_states[:, i]
-        ts_diffs /= 50.0
-        ts_diffs -= 1.0
+        interval = norm_states[:, i]
+        interval /= 250.0
+        interval -= 1.0
 
     # cwnd, target range [0, 100]
     cwnd = norm_states[:, 3]
@@ -109,7 +109,7 @@ class A3C(object):
         entropy = -tf.reduce_mean(pi.action_probs * log_action_probs)
 
         # total loss and gradients
-        loss = policy_loss + 0.5 * value_loss - 0.2 * entropy
+        loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
         grads = tf.gradients(loss, pi.trainable_vars)
         grads, _ = tf.clip_by_global_norm(grads, 10.0)
 
@@ -196,10 +196,10 @@ class A3C(object):
         if self.gamma == 1.0:
             self.reward_buf = np.full(episode_len, final_reward)
         else:
-            reward_buf = np.zeros(episode_len)
-            reward_buf[-1] = final_reward
+            self.reward_buf = np.zeros(episode_len)
+            self.reward_buf[-1] = final_reward
             for i in reversed(xrange(episode_len - 1)):
-                reward_buf[i] = reward_buf[i + 1] * self.gamma
+                self.reward_buf[i] = self.reward_buf[i + 1] * self.gamma
 
         # compute advantages
         self.adv_buf = self.reward_buf - np.asarray(self.value_buf)

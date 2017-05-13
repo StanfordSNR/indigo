@@ -26,7 +26,7 @@ def prepare_traces(bandwidth):
         uplink_trace = path.join(trace_dir, '%dmbps.trace' % bandwidth)
         downlink_trace = uplink_trace
     else:
-        trace_path = '/usr/share/mahimahi/traces/' + bandwidth
+        trace_path = path.join(trace_dir, bandwidth)
         # intentionally switch uplink and downlink traces due to sender first
         uplink_trace = trace_path + '.down'
         downlink_trace = trace_path + '.up'
@@ -35,9 +35,9 @@ def prepare_traces(bandwidth):
 
 
 def create_env(task_index):
-    bandwidth = 12  # or 'Verizon-LTE-driving'
+    bandwidth = 12
     delay = 20
-    queue = 200  # or None
+    queue = 200
 
     uplink_trace, downlink_trace = prepare_traces(bandwidth)
     mm_cmd = ('mm-delay %d mm-link %s %s' %
