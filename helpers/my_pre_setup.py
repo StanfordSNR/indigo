@@ -5,13 +5,13 @@ import argparse
 from subprocess import Popen
 
 
-def build_cmd_db():
+def build_cmd_db(args):
     cmd_db = {}
 
     cmd_db['git_clone'] = 'git clone https://github.com/StanfordSNR/RLCC.git'
     cmd_db['git_force_pull'] = (
-        'cd ~/RLCC && git checkout cellular && '
-        'git reset --hard @~1 && git pull')
+        'cd %s && git checkout cellular && '
+        'git reset --hard @~1 && git pull' % args.rlcc_dir)
 
     return cmd_db
 
