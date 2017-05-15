@@ -16,10 +16,10 @@ def normalize_states(states):
     queuing_delay /= 1000.0
     queuing_delay -= 1.0
 
-    # send_interval and recv_interval, target range [0, 500]
+    # send_interval and recv_interval, target range [0, 1000]
     for i in [1, 2]:
         interval = norm_states[:, i]
-        interval /= 250.0
+        interval /= 500.0
         interval -= 1.0
 
     # cwnd, target range [0, 100]
@@ -44,7 +44,7 @@ class A3C(object):
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
         self.worker_device = '/job:worker/task:%d' % task_index
-        self.gamma = 0.999
+        self.gamma = 0.99
 
         # step counters
         self.max_global_step = 32000
