@@ -11,20 +11,20 @@ from helpers.helpers import make_sure_path_exists
 def normalize_states(states):
     norm_states = np.array(states, dtype=np.float32)
 
-    # queuing_delay, target range [0, 2000]
+    # queuing_delay, target range [0, 200]
     queuing_delay = norm_states[:, 0]
-    queuing_delay /= 1000.0
+    queuing_delay /= 100.0
     queuing_delay -= 1.0
 
-    # send_interval and recv_interval, target range [0, 1000]
+    # send_interval and recv_interval, target range [0, 50]
     for i in [1, 2]:
         interval = norm_states[:, i]
-        interval /= 500.0
+        interval /= 25.0
         interval -= 1.0
 
-    # cwnd, target range [0, 100]
+    # cwnd, target range [0, 200]
     cwnd = norm_states[:, 3]
-    cwnd /= 50.0
+    cwnd /= 100.0
     cwnd -= 1.0
 
     # make sure all features lie in [-1.0, 1.0]
