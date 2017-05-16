@@ -26,7 +26,7 @@ class ActorCriticLSTM(object):
         rnn_in = tf.expand_dims(self.states, [0])
 
         # create LSTM
-        lstm_state_dim = 256
+        lstm_state_dim = 500
         lstm_cell = rnn.BasicLSTMCell(lstm_state_dim)
 
         c_init = np.zeros([1, lstm_cell.state_size.c], np.float32)

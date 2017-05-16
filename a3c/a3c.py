@@ -47,7 +47,7 @@ class A3C(object):
         self.gamma = 0.99
 
         # step counters
-        self.max_global_step = 32000
+        self.max_global_step = 80000
         self.local_step = 0
 
         # must call env.set_sample_action() before env.run()
