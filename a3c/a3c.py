@@ -47,7 +47,7 @@ class A3C(object):
         self.gamma = 0.99
 
         # step counters
-        self.max_global_step = 80000
+        self.max_global_step = 8000
         self.local_step = 0
 
         # must call env.set_sample_action() before env.run()
@@ -178,6 +178,9 @@ class A3C(object):
         sys.stderr.write('\nModel saved to worker-0:%s\n' % model_path)
 
     def rollout(self):
+        # reset environment
+        self.env.reset()
+
         # reset buffers for states, actions and values, and LSTM state
         self.state_buf = []
         self.action_buf = []

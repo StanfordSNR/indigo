@@ -45,7 +45,7 @@ class Sender(object):
         self.prev_recv_ts = None
 
         if self.train:
-            self.max_runtime = 5000
+            self.max_runtime = 30000
 
             # statistics variables to compute rewards
             self.sent_bytes = 0
