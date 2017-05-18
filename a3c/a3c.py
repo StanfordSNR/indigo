@@ -121,7 +121,7 @@ class A3C(object):
         grads_and_vars = list(zip(grads, self.global_network.trainable_vars))
         inc_global_step = self.global_step.assign_add(1)
 
-        optimizer = tf.train.AdamOptimizer(1e-4)
+        optimizer = tf.train.AdamOptimizer(1e-3)
         self.train_op = tf.group(
             optimizer.apply_gradients(grads_and_vars), inc_global_step)
 
