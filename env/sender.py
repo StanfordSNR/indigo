@@ -45,7 +45,7 @@ class Sender(object):
         self.prev_recv_ts = None
 
         if self.train:
-            self.max_runtime = 30000
+            self.max_runtime = 10000
 
             # statistics variables to compute rewards
             self.sent_bytes = 0
@@ -152,7 +152,7 @@ class Sender(object):
 
     def take_action(self, action):
         self.cwnd += self.action_mapping[action]
-        self.cwnd = max(0.0, self.cwnd)
+        self.cwnd = max(5.0, self.cwnd)
 
         if self.debug:
             sys.stderr.write('cwnd %.2f\n' % self.cwnd)
@@ -169,9 +169,8 @@ class Sender(object):
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
         reward = 1.0
-        reward += np.log(max(1e-4, avg_throughput))
+        reward += np.log(max(1e-3, avg_throughput))
         reward -= np.log(max(1.0, delay_percentile / 10.0))
-        reward = min(max(reward, -2.0), 2.0)
 
         sys.stderr.write('Average throughput: %.2f Mbps\n' % avg_throughput)
         sys.stderr.write('95th percentile one-way delay: %d ms\n' %

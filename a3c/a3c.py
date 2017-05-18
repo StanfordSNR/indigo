@@ -16,10 +16,10 @@ def normalize_states(states):
     queuing_delay /= 100.0
     queuing_delay -= 1.0
 
-    # send_interval and recv_interval, target range [0, 50]
+    # send_interval and recv_interval, target range [0, 100]
     for i in [1, 2]:
         interval = norm_states[:, i]
-        interval /= 25.0
+        interval /= 50.0
         interval -= 1.0
 
     # cwnd, target range [0, 200]
@@ -44,10 +44,10 @@ class A3C(object):
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
         self.worker_device = '/job:worker/task:%d' % task_index
-        self.gamma = 0.99
+        self.gamma = 1.0
 
         # step counters
-        self.max_global_step = 8000
+        self.max_global_step = 4000
         self.local_step = 0
 
         # must call env.set_sample_action() before env.run()
@@ -211,7 +211,7 @@ class A3C(object):
         pi = self.local_network
 
         global_step = 0
-        check_point = 5000
+        check_point = 1000
         while global_step < self.max_global_step:
             sys.stderr.write('Global step: %d\n' % global_step)
 
@@ -247,7 +247,7 @@ class A3C(object):
             if self.task_index == 0 and global_step >= check_point:
                 with tf.device(self.worker_device):
                     self.save_model(check_point)
-                check_point += 5000
+                check_point += 1000
 
         if self.task_index == 0:
             with tf.device(self.worker_device):
