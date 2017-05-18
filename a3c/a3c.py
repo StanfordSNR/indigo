@@ -44,7 +44,7 @@ class A3C(object):
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
         self.worker_device = '/job:worker/task:%d' % task_index
-        self.gamma = 1.0
+        self.gamma = 0.999
 
         # step counters
         self.max_global_step = 4000
@@ -130,7 +130,8 @@ class A3C(object):
         tf.summary.scalar('value_loss', value_loss)
         tf.summary.scalar('entropy', entropy)
         tf.summary.scalar('total_loss', loss)
-        tf.summary.scalar('reward', self.rewards[-1])
+        tf.summary.scalar('final_reward', self.rewards[-1])
+        tf.summary.scalar('mean_reward', tf.reduce_mean(self.rewards))
         tf.summary.scalar('grad_global_norm', tf.global_norm(grads))
         tf.summary.scalar('var_global_norm', tf.global_norm(pi.trainable_vars))
         self.summary_op = tf.summary.merge_all()
