@@ -22,9 +22,9 @@ def normalize_states(states):
         interval /= 250.0
         interval -= 1.0
 
-    # cwnd, target range [0, 100]
+    # cwnd, target range [0, 1000]
     cwnd = norm_states[:, 3]
-    cwnd /= 50.0
+    cwnd /= 500.0
     cwnd -= 1.0
 
     # make sure all features lie in [-1.0, 1.0]
@@ -40,6 +40,7 @@ class A3C(object):
         self.server = server
         self.task_index = task_index
         self.env = env
+        self.is_chief = (task_index == 0)
 
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
@@ -57,7 +58,7 @@ class A3C(object):
         self.build_tf_graph()
 
         # summary related
-        if self.task_index == 0:
+        if self.is_chief:
             self.logdir = path.join(project_root.DIR, 'a3c', 'logs')
             make_sure_path_exists(self.logdir)
             self.summary_writer = tf.summary.FileWriter(self.logdir)
@@ -113,10 +114,6 @@ class A3C(object):
         grads = tf.gradients(loss, pi.trainable_vars)
         grads, _ = tf.clip_by_global_norm(grads, 10.0)
 
-        # sync local network to global network
-        self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
-            pi.trainable_vars, self.global_network.trainable_vars)])
-
         # calculate gradients and apply to global network
         grads_and_vars = list(zip(grads, self.global_network.trainable_vars))
         inc_global_step = self.global_step.assign_add(1)
@@ -124,6 +121,10 @@ class A3C(object):
         optimizer = tf.train.AdamOptimizer(1e-4)
         self.train_op = tf.group(
             optimizer.apply_gradients(grads_and_vars), inc_global_step)
+
+        # sync local network to global network
+        self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
+            pi.trainable_vars, self.global_network.trainable_vars)])
 
         # summary related
         tf.summary.scalar('policy_loss', policy_loss)
@@ -164,7 +165,6 @@ class A3C(object):
 
     def save_model(self, check_point=None):
         if check_point is None:
-            time.sleep(5)
             model_path = path.join(self.logdir, 'model')
         else:
             model_path = path.join(self.logdir, 'checkpoint-%d' % check_point)
@@ -183,6 +183,9 @@ class A3C(object):
         self.action_buf = []
         self.value_buf = []
         self.lstm_state = self.local_network.lstm_state_init
+
+        # reset environment
+        self.env.reset()
 
         # get an episode of rollout
         final_reward = self.env.rollout()
@@ -219,7 +222,7 @@ class A3C(object):
             self.rollout()
 
             # train using the rollout
-            summarize = self.task_index == 0 and self.local_step % 10 == 0
+            summarize = self.is_chief and self.local_step % 10 == 0
 
             if summarize:
                 ops_to_run = [self.train_op, self.global_step, self.summary_op]
@@ -241,11 +244,11 @@ class A3C(object):
                 self.summary_writer.add_summary(ret[2], global_step)
                 self.summary_writer.flush()
 
-            if self.task_index == 0 and global_step >= check_point:
+            if self.is_chief and global_step >= check_point:
                 with tf.device(self.worker_device):
                     self.save_model(check_point)
                 check_point += 5000
 
-        if self.task_index == 0:
+        if self.is_chief:
             with tf.device(self.worker_device):
                 self.save_model()

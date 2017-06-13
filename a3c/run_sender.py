@@ -13,7 +13,8 @@ from a3c import normalize_states
 class Learner(object):
     def __init__(self, state_dim, action_cnt, restore_vars):
         with tf.variable_scope('local'):
-            self.pi = ActorCriticLSTM(state_dim, action_cnt)
+            self.pi = ActorCriticLSTM(
+                state_dim=state_dim, action_cnt=action_cnt)
             # save the current LSTM state of local network
             self.lstm_state = self.pi.lstm_state_init
 
@@ -40,6 +41,7 @@ class Learner(object):
         action_probs, lstm_state_out = ret
 
         action = np.argmax(action_probs[0])
+        # action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
         self.lstm_state = lstm_state_out
         return action
 

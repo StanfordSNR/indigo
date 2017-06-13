@@ -50,10 +50,6 @@ class ActorCriticLSTM(object):
         self.lstm_state_in = tuple(self.lstm_state_in)
         lstm_state_in = tuple(lstm_state_in)
 
-        c_in = tf.placeholder(tf.float32, [1, lstm_cell.state_size.c])
-        h_in = tf.placeholder(tf.float32, [1, lstm_cell.state_size.h])
-        self.lstm_state_in = (c_in, h_in)
-
         lstm_outputs, lstm_state_out = tf.nn.dynamic_rnn(
             stacked_cell, rnn_in, initial_state=lstm_state_in)
 
@@ -64,8 +60,6 @@ class ActorCriticLSTM(object):
         self.lstm_state_out = tuple(self.lstm_state_out)
 
         rnn_out = tf.reshape(lstm_outputs, [-1, lstm_state_dim])
-        c_out, h_out = lstm_state_out
-        self.lstm_state_out = (c_out[:1, :], h_out[:1, :])
 
         # actor
         actor_h1 = layers.relu(rnn_out, 64)

@@ -36,8 +36,9 @@ def prepare_traces(bandwidth):
 
 def create_env(task_index):
     bandwidth = 12
-    delay = 20
-    queue = 200
+    # bandwidth = int(np.linspace(10, 100, num=16, dtype=np.int)[task_index])
+    delay = 25
+    queue = None
 
     uplink_trace, downlink_trace = prepare_traces(bandwidth)
     mm_cmd = ('mm-delay %d mm-link %s %s' %
