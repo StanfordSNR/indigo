@@ -26,31 +26,55 @@ class ActorCriticLSTM(object):
         rnn_in = tf.expand_dims(self.states, [0])
 
         # create LSTM
+        lstm_layers = 2
         lstm_state_dim = 256
-        lstm_cell = rnn.BasicLSTMCell(lstm_state_dim)
+        lstm_cell_list = []
+        for i in xrange(lstm_layers):
+            lstm_cell_list.append(rnn.BasicLSTMCell(lstm_state_dim))
+        stacked_cell = rnn.MultiRNNCell(lstm_cell_list)
 
-        c_init = np.zeros([1, lstm_cell.state_size.c], np.float32)
-        h_init = np.zeros([1, lstm_cell.state_size.h], np.float32)
-        self.lstm_state_init = (c_init, h_init)
+        self.lstm_state_init = []
+        self.lstm_state_in = []
+        lstm_state_in = []
+        for i in xrange(lstm_layers):
+            c_init = np.zeros([1, lstm_state_dim], np.float32)
+            h_init = np.zeros([1, lstm_state_dim], np.float32)
+            self.lstm_state_init.append((c_init, h_init))
+
+            c_in = tf.placeholder(tf.float32, [1, lstm_state_dim])
+            h_in = tf.placeholder(tf.float32, [1, lstm_state_dim])
+            self.lstm_state_in.append((c_in, h_in))
+            lstm_state_in.append(rnn.LSTMStateTuple(c_in, h_in))
+
+        self.lstm_state_init = tuple(self.lstm_state_init)
+        self.lstm_state_in = tuple(self.lstm_state_in)
+        lstm_state_in = tuple(lstm_state_in)
 
         c_in = tf.placeholder(tf.float32, [1, lstm_cell.state_size.c])
         h_in = tf.placeholder(tf.float32, [1, lstm_cell.state_size.h])
         self.lstm_state_in = (c_in, h_in)
 
         lstm_outputs, lstm_state_out = tf.nn.dynamic_rnn(
-            lstm_cell, rnn_in,
-            initial_state=rnn.LSTMStateTuple(c_in, h_in))
+            stacked_cell, rnn_in, initial_state=lstm_state_in)
+
+        self.lstm_state_out = []
+        for i in xrange(lstm_layers):
+            self.lstm_state_out.append(
+                (lstm_state_out[i].c, lstm_state_out[i].h))
+        self.lstm_state_out = tuple(self.lstm_state_out)
 
         rnn_out = tf.reshape(lstm_outputs, [-1, lstm_state_dim])
         c_out, h_out = lstm_state_out
         self.lstm_state_out = (c_out[:1, :], h_out[:1, :])
 
         # actor
-        self.action_scores = layers.linear(rnn_out, action_cnt)
+        actor_h1 = layers.relu(rnn_out, 64)
+        self.action_scores = layers.linear(actor_h1, action_cnt)
         self.action_probs = tf.nn.softmax(self.action_scores)
 
         # critic
-        self.state_values = tf.reshape(layers.linear(rnn_out, 1), [-1])
+        critic_h1 = layers.relu(rnn_out, 64)
+        self.state_values = tf.reshape(layers.linear(critic_h1, 1), [-1])
 
         self.trainable_vars = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
