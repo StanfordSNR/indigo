@@ -27,7 +27,7 @@ class Sender(object):
 
         # UDP datagram template
         self.data = {}
-        self.data['payload'] = 'x' * 1400
+        self.data['payload'] = 'x' * 1350
 
         # dimension of state space and action space
         self.state_dim = 4
@@ -45,8 +45,7 @@ class Sender(object):
         self.prev_recv_ts = None
 
         if self.train:
-            self.max_step_cnt = 2000
-            self.max_runtime = 5000
+            self.max_runtime = 10000
 
             # statistics variables to compute rewards
             self.sent_bytes = 0
@@ -62,7 +61,7 @@ class Sender(object):
         """Handshake with peer receiver. Must be called before run()."""
 
         while True:
-            msg, addr = self.sock.recvfrom(1500)
+            msg, addr = self.sock.recvfrom(1600)
 
             if msg == 'Hello from receiver' and self.peer_addr is None:
                 self.peer_addr = addr
@@ -79,7 +78,7 @@ class Sender(object):
         self.sample_action = sample_action
 
     def reset(self):
-        """Reset the sender. Must be called in every training iteration."""
+        """Reset the sender. Must be called after every training iteration."""
 
         self.seq_num = 0
         self.next_ack = 0
@@ -89,13 +88,14 @@ class Sender(object):
         self.prev_send_ts = None
         self.prev_recv_ts = None
 
-        self.sent_bytes = 0
-        self.acked_bytes = 0
-        self.first_recv_ts = float('inf')
-        self.last_recv_ts = 0
-        self.total_delays = []
+        if self.train:
+            self.sent_bytes = 0
+            self.acked_bytes = 0
+            self.first_recv_ts = float('inf')
+            self.last_recv_ts = 0
+            self.total_delays = []
 
-        self.drain_packets()
+            self.drain_packets()
 
     def drain_packets(self):
         """Drain all the packets left in the channel."""
@@ -116,7 +116,7 @@ class Sender(object):
                     sys.exit('Channel closed or error occurred')
 
                 if flag & READ_FLAGS:
-                    self.sock.recvfrom(1500)
+                    self.sock.recvfrom(1600)
 
     def update_state(self, ack):
         send_ts = ack['ack_send_ts']
@@ -145,10 +145,6 @@ class Sender(object):
             self.first_recv_ts = min(recv_ts, self.first_recv_ts)
             self.last_recv_ts = max(recv_ts, self.last_recv_ts)
 
-            self.step_cnt += 1
-            if self.step_cnt >= self.max_step_cnt:
-                self.running = False
-
             if curr_ts_ms() - self.runtime_start > self.max_runtime:
                 self.running = False
 
@@ -157,9 +153,7 @@ class Sender(object):
 
     def take_action(self, action):
         self.cwnd += self.action_mapping[action]
-
-        if self.cwnd < 5.0:
-            self.cwnd = 5.0
+        self.cwnd = max(5.0, self.cwnd)
 
         if self.debug:
             sys.stderr.write('cwnd %.2f\n' % self.cwnd)
@@ -175,8 +169,9 @@ class Sender(object):
         delay_percentile = float(np.percentile(self.total_delays, 95))
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
-        reward = np.log(max(1e-4, avg_throughput))
-        reward -= np.log(max(1.0, delay_percentile / 10.0))
+        reward = 2 * np.log(max(1e-3, avg_throughput))
+        reward -= np.log(max(1.0, delay_percentile))
+        reward += np.log(1.0 - loss_rate)
 
         sys.stderr.write('Average throughput: %.2f Mbps\n' % avg_throughput)
         sys.stderr.write('95th percentile one-way delay: %d ms\n' %
@@ -204,7 +199,7 @@ class Sender(object):
             sys.stderr.write('Sent seq_num %d\n' % int(self.data['seq_num']))
 
     def recv(self):
-        serialized_ack, addr = self.sock.recvfrom(1500)
+        serialized_ack, addr = self.sock.recvfrom(1600)
 
         if addr != self.peer_addr:
             return
@@ -231,7 +226,6 @@ class Sender(object):
         curr_flags = ALL_FLAGS
 
         self.running = True
-        self.step_cnt = 0
         self.runtime_start = curr_ts_ms()
 
         while not self.train or self.running:

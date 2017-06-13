@@ -2,8 +2,8 @@
 
 import sys
 import argparse
-import project_root
 import numpy as np
+import project_root
 from env.sender import Sender
 
 

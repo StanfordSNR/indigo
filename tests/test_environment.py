@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 
-import sys
-import project_root
-import numpy as np
-import tensorflow as tf
 from os import path
+import sys
+import numpy as np
+import project_root
 from env.environment import Environment
 
 
@@ -39,6 +38,7 @@ class Learner(object):
     def run(self):
         for episode_i in xrange(1, 3):
             sys.stderr.write('\nEpisode %d\n' % episode_i)
+            self.env.reset()
 
             # get an episode of experience
             final_reward = self.env.rollout()

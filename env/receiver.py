@@ -68,7 +68,7 @@ class Receiver(object):
                     sys.exit('Channel closed or error occurred')
 
                 if flag & READ_FLAGS:
-                    msg, addr = self.sock.recvfrom(1500)
+                    msg, addr = self.sock.recvfrom(1600)
 
                     if addr == self.peer_addr:
                         if msg != 'Hello from sender':
@@ -83,7 +83,7 @@ class Receiver(object):
         self.sock.setblocking(1)  # blocking UDP socket
 
         while True:
-            serialized_data, addr = self.sock.recvfrom(1500)
+            serialized_data, addr = self.sock.recvfrom(1600)
 
             if addr == self.peer_addr:
                 ack = self.construct_ack_from_data(serialized_data)

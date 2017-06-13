@@ -1,10 +1,10 @@
 import os
+from os import path
 import sys
 import signal
-import project_root
-from os import path
-from sender import Sender
 from subprocess import Popen
+from sender import Sender
+import project_root
 from helpers.helpers import get_open_udp_port
 
 
@@ -44,6 +44,7 @@ class Environment(object):
     def set_sample_action(self, sample_action):
         """Set the sender's policy. Must be called before run()."""
 
+        self.sample_action = sample_action
         self.sender.set_sample_action(sample_action)
 
     def rollout(self):
@@ -60,11 +61,19 @@ class Environment(object):
     def cleanup(self):
         if self.sender:
             self.sender.cleanup()
+            self.sender = None
 
         if self.receiver:
             try:
                 os.killpg(os.getpgid(self.receiver.pid), signal.SIGTERM)
             except OSError as e:
                 sys.stderr.write('%s\n' % e)
+            finally:
+                self.receiver = None
 
-        sys.stderr.write('\nEnvironment cleaned up.\n')
+    def reset(self):
+        self.cleanup()
+        self.setup()
+
+        if self.sender:
+            self.sender.set_sample_action(self.sample_action)
