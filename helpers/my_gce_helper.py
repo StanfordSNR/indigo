@@ -15,12 +15,15 @@ def main():
     cmd = 'grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}" ' + args.table
     ip_list = check_output(cmd, shell=True).split()
 
-    ret_cmd = './train.py --ps-hosts '
-    ret_ip_list = ''
+    ret_cmd = ('./train.py --username francisyyan --rlcc-dir '
+               '/home/francisyyan/RLCC --ps-hosts ')
+    ret_int_ip_list = ''
+    ret_ext_ip_list = ''
 
     worker_port = 16000
     for i in xrange(0, len(ip_list), 2):
         internal_ip = ip_list[i]
+        external_ip = ip_list[i + 1]
 
         if i == 0:
             ret_cmd += internal_ip + ':15000 --worker-hosts '
@@ -28,10 +31,12 @@ def main():
             ret_cmd += internal_ip + ':%d,' % worker_port
             worker_port += 1
 
-        ret_ip_list += '%s,' % internal_ip
+        ret_int_ip_list += '%s,' % internal_ip
+        ret_ext_ip_list += '%s,' % external_ip
 
     print ret_cmd[:-1]
-    print ret_ip_list[:-1]
+    print ret_int_ip_list[:-1]
+    print ret_ext_ip_list[:-1]
 
 
 if __name__ == '__main__':
