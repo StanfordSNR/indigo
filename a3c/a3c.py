@@ -11,25 +11,10 @@ from helpers.helpers import make_sure_path_exists
 def normalize_states(states):
     norm_states = np.array(states, dtype=np.float32)
 
-    # queuing_delay, target range [0, 2000]
-    queuing_delay = norm_states[:, 0]
-    queuing_delay /= 1000.0
-    queuing_delay -= 1.0
+    for i in xrange(1):
+        norm_states[:, i][norm_states[:, i] < 1.0] = 1.0
+        norm_states[:, i] = np.log(norm_states[:, i])
 
-    # send_interval and recv_interval, target range [0, 500]
-    for i in [1, 2]:
-        interval = norm_states[:, i]
-        interval /= 250.0
-        interval -= 1.0
-
-    # cwnd, target range [0, 1000]
-    cwnd = norm_states[:, 3]
-    cwnd /= 500.0
-    cwnd -= 1.0
-
-    # make sure all features lie in [-1.0, 1.0]
-    norm_states[norm_states > 1.0] = 1.0
-    norm_states[norm_states < -1.0] = -1.0
     return norm_states
 
 
@@ -48,8 +33,10 @@ class A3C(object):
         self.gamma = 1.0
 
         # step counters
-        self.max_global_step = 32000
+        self.max_global_step = 12000
         self.local_step = 0
+
+        self.time_file = open('/tmp/time_file', 'a')
 
         # must call env.set_sample_action() before env.run()
         env.set_sample_action(self.sample_action)
@@ -118,7 +105,7 @@ class A3C(object):
         grads_and_vars = list(zip(grads, self.global_network.trainable_vars))
         inc_global_step = self.global_step.assign_add(1)
 
-        optimizer = tf.train.AdamOptimizer(1e-4)
+        optimizer = tf.train.AdamOptimizer(1e-5)
         self.train_op = tf.group(
             optimizer.apply_gradients(grads_and_vars), inc_global_step)
 
@@ -149,7 +136,11 @@ class A3C(object):
             pi.lstm_state_in: self.lstm_state,
         }
 
+        start_time = time.time()
         ret = self.session.run(ops_to_run, feed_dict)
+        elapsed_time = time.time() - start_time
+        self.time_file.write('%s\n' % elapsed_time)
+
         action_probs, state_values, lstm_state_out = ret
 
         # choose an action to take and update current LSTM state
