@@ -2,6 +2,7 @@ import sys
 import json
 import socket
 import select
+from os import path
 import numpy as np
 import project_root
 from helpers.helpers import (
@@ -54,6 +55,14 @@ class Sender(object):
             self.last_recv_ts = 0
             self.total_delays = []
 
+            history_path = path.join(project_root.DIR, 'history')
+            self.history = open(history_path, 'a')
+            self.state_cnt = []
+            self.state_cnt.append(np.zeros(10))
+            self.state_cnt.append(np.zeros(10))
+            self.state_cnt.append(np.zeros(10))
+            self.state_cnt.append(np.zeros(10))
+
     def cleanup(self):
         self.sock.close()
 
@@ -95,6 +104,15 @@ class Sender(object):
             self.last_recv_ts = 0
             self.total_delays = []
 
+            self.history.write('\nSTATE:\n')
+            for i in xrange(4):
+                for j in xrange(len(self.state_cnt[i])):
+                    self.history.write('\t%d' % self.state_cnt[i][j])
+                    self.state_cnt[i][j] = 0
+
+                self.history.write('\n')
+            self.history.write('\n')
+
             self.drain_packets()
 
     def drain_packets(self):
@@ -118,6 +136,12 @@ class Sender(object):
                 if flag & READ_FLAGS:
                     self.sock.recvfrom(1600)
 
+    def count_state(self, state):
+        self.state_cnt[0][min(9, int(state[0] / 10))] += 1
+        self.state_cnt[1][min(9, int(state[1] / 10))] += 1
+        self.state_cnt[2][min(9, int(state[2] / 10))] += 1
+        self.state_cnt[3][min(9, int(state[3] / 10))] += 1
+
     def update_state(self, ack):
         send_ts = ack['ack_send_ts']
         recv_ts = ack['ack_recv_ts']
@@ -138,6 +162,8 @@ class Sender(object):
         self.prev_send_ts = send_ts
         self.prev_recv_ts = recv_ts
 
+        state = [queuing_delay, send_interval, recv_interval, self.cwnd]
+
         if self.train:
             self.acked_bytes += ack['ack_bytes']
             self.total_delays.append(curr_delay)
@@ -148,7 +174,8 @@ class Sender(object):
             if curr_ts_ms() - self.runtime_start > self.max_runtime:
                 self.running = False
 
-        state = [queuing_delay, send_interval, recv_interval, self.cwnd]
+            self.count_state(state)
+
         return state
 
     def take_action(self, action):
@@ -169,15 +196,15 @@ class Sender(object):
         delay_percentile = float(np.percentile(self.total_delays, 95))
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
-        reward = 2 * np.log(max(1e-3, avg_throughput))
+        reward = np.log(max(1e-3, avg_throughput))
         reward -= np.log(max(1.0, delay_percentile))
         reward += np.log(1.0 - loss_rate)
 
-        sys.stderr.write('Average throughput: %.2f Mbps\n' % avg_throughput)
-        sys.stderr.write('95th percentile one-way delay: %d ms\n' %
-                         delay_percentile)
-        sys.stderr.write('Loss rate: %.2f\n' % loss_rate)
-        sys.stderr.write('Reward: %.3f\n' % reward)
+        self.history.write('Average throughput: %.2f Mbps\n' % avg_throughput)
+        self.history.write('95th percentile one-way delay: %d ms\n' %
+                           delay_percentile)
+        self.history.write('Loss rate: %.2f\n' % loss_rate)
+        self.history.write('Reward: %.3f\n' % reward)
 
         return reward
 
