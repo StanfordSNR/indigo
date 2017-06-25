@@ -23,9 +23,8 @@ class ActorCriticNetwork(object):
 class ActorCriticLSTM(object):
     def __init__(self, state_dim, action_cnt):
         self.states = tf.placeholder(tf.float32, [None, state_dim])
-        rnn_in = tf.expand_dims(self.states, [0])
+        rnn_in = tf.expand_dims(self.states, [0])  # shape=(1, ?, state_dim)
 
-        # create LSTM
         lstm_layers = 2
         lstm_state_dim = 256
         lstm_cell_list = []
@@ -47,27 +46,35 @@ class ActorCriticLSTM(object):
             lstm_state_in.append(rnn.LSTMStateTuple(c_in, h_in))
 
         self.lstm_state_init = tuple(self.lstm_state_init)
+
+        # state input placeholder: ((c1, h1), (c2, h2))
         self.lstm_state_in = tuple(self.lstm_state_in)
+
+        # (LSTMStateTuple(c1, h1), LSTMStateTuple(c2, h2))
         lstm_state_in = tuple(lstm_state_in)
 
-        lstm_outputs, lstm_state_out = tf.nn.dynamic_rnn(
+        # lstm_state_out: (LSTMStateTuple(c1, h1), LSTMStateTuple(c2, h2))
+        # rnn_out: shape=(1, ?, lstm_state_dim), includes all h2 from the batch
+        rnn_out, lstm_state_out = tf.nn.dynamic_rnn(
             stacked_cell, rnn_in, initial_state=lstm_state_in)
 
         self.lstm_state_out = []
         for i in xrange(lstm_layers):
             self.lstm_state_out.append(
                 (lstm_state_out[i].c, lstm_state_out[i].h))
+        # state output: ((c1, h1), (c2, h2))
         self.lstm_state_out = tuple(self.lstm_state_out)
 
-        rnn_out = tf.reshape(lstm_outputs, [-1, lstm_state_dim])
+        # output: shape=(1, lstm_state_dim)
+        output = tf.reshape(rnn_out, [-1, lstm_state_dim])
 
         # actor
-        actor_h1 = layers.relu(rnn_out, 64)
+        actor_h1 = layers.relu(output, 64)
         self.action_scores = layers.linear(actor_h1, action_cnt)
         self.action_probs = tf.nn.softmax(self.action_scores)
 
         # critic
-        critic_h1 = layers.relu(rnn_out, 64)
+        critic_h1 = layers.relu(output, 64)
         self.state_values = tf.reshape(layers.linear(critic_h1, 1), [-1])
 
         self.trainable_vars = tf.get_collection(
