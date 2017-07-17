@@ -8,14 +8,14 @@ from models import ActorCriticLSTM
 from helpers.helpers import make_sure_path_exists
 
 
-def normalize_states(states):
-    norm_states = np.array(states, dtype=np.float32)
+def normalize_state_buf(step_state_buf):
+    norm_state_buf = np.asarray(step_state_buf, dtype=np.float32)
 
     for i in xrange(1):
-        norm_states[:, i][norm_states[:, i] < 1.0] = 1.0
-        norm_states[:, i] = np.log(norm_states[:, i])
+        norm_state_buf[:, i][norm_state_buf[:, i] < 1.0] = 1.0
+        norm_state_buf[:, i] = np.log(norm_state_buf[:, i])
 
-    return norm_states
+    return norm_state_buf
 
 
 class A3C(object):
@@ -121,16 +121,17 @@ class A3C(object):
         tf.summary.scalar('var_global_norm', tf.global_norm(pi.trainable_vars))
         self.summary_op = tf.summary.merge_all()
 
-    def sample_action(self, state):
+    def sample_action(self, step_state_buf):
         pi = self.local_network
 
-        # normalize a state
-        norm_state = normalize_states([state])
+        # normalize step_state_buf
+        norm_state_buf = normalize_state_buf(step_state_buf)
 
         # run ops in local networks
         ops_to_run = [pi.action_probs, pi.state_values, pi.lstm_state_out]
         feed_dict = {
-            pi.states: norm_state,
+            pi.states: norm_state_buf,
+            pi.indices: [len(step_state_buf) - 1],
             pi.lstm_state_in: self.lstm_state,
         }
 
@@ -142,7 +143,9 @@ class A3C(object):
         self.lstm_state = lstm_state_out
 
         # append state, action, value to episode buffer
-        self.state_buf.extend(norm_state)
+        self.state_buf.extend(norm_state_buf)
+        last_index = self.indices[-1] if len(self.indices) > 0 else -1
+        self.indices.append(len(step_state_buf) + last_index)
         self.action_buf.append(action)
         self.value_buf.extend(state_values)
 
@@ -165,6 +168,7 @@ class A3C(object):
     def rollout(self):
         # reset buffers for states, actions and values, and LSTM state
         self.state_buf = []
+        self.indices = []
         self.action_buf = []
         self.value_buf = []
         self.lstm_state = self.local_network.lstm_state_init
@@ -175,8 +179,8 @@ class A3C(object):
         # get an episode of rollout
         final_reward = self.env.rollout()
 
-        # state_buf, action_buf, value_buf should have been filled in
-        episode_len = len(self.state_buf)
+        # state_buf, indices, action_buf, value_buf should have been filled in
+        episode_len = len(self.indices)
         assert len(self.action_buf) == episode_len
         assert len(self.value_buf) == episode_len
 
@@ -216,6 +220,7 @@ class A3C(object):
 
             ret = self.session.run(ops_to_run, {
                 pi.states: self.state_buf,
+                pi.indices: self.indices,
                 self.actions: self.action_buf,
                 self.rewards: self.reward_buf,
                 self.advantages: self.adv_buf,

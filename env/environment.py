@@ -54,7 +54,6 @@ class Environment(object):
 
         self.sender.run()
         final_reward = self.sender.compute_reward()
-        self.sender.reset()
 
         return final_reward
 

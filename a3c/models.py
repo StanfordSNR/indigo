@@ -23,6 +23,7 @@ class ActorCriticNetwork(object):
 class ActorCriticLSTM(object):
     def __init__(self, state_dim, action_cnt):
         self.states = tf.placeholder(tf.float32, [None, state_dim])
+        self.indices = tf.placeholder(tf.int32, [None])
         rnn_in = tf.expand_dims(self.states, [0])  # shape=(1, ?, state_dim)
 
         lstm_layers = 2
@@ -65,8 +66,9 @@ class ActorCriticLSTM(object):
         # state output: ((c1, h1), (c2, h2))
         self.lstm_state_out = tuple(self.lstm_state_out)
 
-        # output: shape=(1, lstm_state_dim)
+        # output: shape=(?, lstm_state_dim)
         output = tf.reshape(rnn_out, [-1, lstm_state_dim])
+        output = tf.gather(output, self.indices)
 
         # actor
         actor_h1 = layers.relu(output, 64)

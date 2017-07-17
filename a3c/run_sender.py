@@ -7,7 +7,7 @@ import tensorflow as tf
 from os import path
 from env.sender import Sender
 from models import ActorCriticLSTM
-from a3c import normalize_states
+from a3c import normalize_state_buf
 
 
 class Learner(object):
@@ -28,12 +28,13 @@ class Learner(object):
         uninit_vars = set(tf.global_variables()) - set(self.pi.trainable_vars)
         self.session.run(tf.variables_initializer(uninit_vars))
 
-    def sample_action(self, state):
-        norm_state = normalize_states([state])
+    def sample_action(self, step_state_buf):
+        norm_state_buf = normalize_state_buf(step_state_buf)
 
         ops_to_run = [self.pi.action_probs, self.pi.lstm_state_out]
         feed_dict = {
-            self.pi.states: norm_state,
+            self.pi.states: norm_state_buf,
+            self.pi.indices: [len(step_state_buf) - 1],
             self.pi.lstm_state_in: self.lstm_state,
         }
 

@@ -30,18 +30,24 @@ class Sender(object):
         self.data = {}
         self.data['payload'] = 'x' * 1350
 
-        # dimension of state space and action space
-        self.state_dim = 1
-        self.action_cnt = 5
-        self.action_mapping = [-0.5, -0.25, 0.0, 0.25, 0.5]
-
         # congestion control related
         self.seq_num = 0
         self.next_ack = 0
         self.cwnd = 10.0
 
+        # RL related
+        self.state_dim = 1
+        self.action_cnt = 5
+        self.action_mapping = [
+            ('+=', 0.0), ('+=', -2.0), ('+=', 2.0), ('*=', 0.5), ('*=', 2.0)]
+        self.step_len = 100  # ms
+        self.step_state_buf = []
+        self.step_start_ts = None
+        self.running = True
+
         if self.train:
-            self.max_runtime = 30000
+            self.step_cnt = 0
+            self.max_steps = 100
 
             # statistics variables to compute rewards
             self.sent_bytes = 0
@@ -76,48 +82,11 @@ class Sender(object):
 
         self.sample_action = sample_action
 
-    def reset(self):
-        """Reset the sender. Must be called after every training iteration."""
-
-        self.seq_num = 0
-        self.next_ack = 0
-        self.cwnd = 10.0
-
-        if self.train:
-            self.sent_bytes = 0
-            self.acked_bytes = 0
-            self.first_recv_ts = float('inf')
-            self.last_recv_ts = 0
-            self.total_delays = []
-
-            self.drain_packets()
-
-    def drain_packets(self):
-        """Drain all the packets left in the channel."""
-
-        TIMEOUT = 1000  # ms
-        self.poller.modify(self.sock, READ_ERR_FLAGS)
-
-        while True:
-            events = self.poller.poll(TIMEOUT)
-
-            if not events:  # timed out
-                break
-
-            for fd, flag in events:
-                assert self.sock.fileno() == fd
-
-                if flag & ERR_FLAGS:
-                    sys.exit('Channel closed or error occurred')
-
-                if flag & READ_FLAGS:
-                    self.sock.recvfrom(1600)
-
     def update_state(self, ack):
         send_ts = ack['ack_send_ts']
         recv_ts = ack['ack_recv_ts']
 
-        # queuing delay
+        # one-way delay
         curr_delay = recv_ts - send_ts
         state = [curr_delay]
 
@@ -128,14 +97,17 @@ class Sender(object):
             self.first_recv_ts = min(recv_ts, self.first_recv_ts)
             self.last_recv_ts = max(recv_ts, self.last_recv_ts)
 
-            if curr_ts_ms() - self.runtime_start > self.max_runtime:
-                self.running = False
-
         return state
 
     def take_action(self, action):
-        self.cwnd += self.action_mapping[action]
-        self.cwnd = max(5.0, self.cwnd)
+        op, val = self.action_mapping[action]
+
+        if op == '+=':
+            self.cwnd += val
+        elif op == '*=':
+            self.cwnd *= val
+
+        self.cwnd = min(max(5.0, self.cwnd), 500)
 
         if self.debug:
             sys.stderr.write('cwnd %.2f\n' % self.cwnd)
@@ -193,23 +165,34 @@ class Sender(object):
         self.next_ack = max(self.next_ack, int(ack['ack_seq_num']) + 1)
 
         state = self.update_state(ack)
-        action = self.sample_action(state)
-        self.take_action(action)
+        self.step_state_buf.append(state)
+
+        if self.step_start_ts is None:
+            self.step_start_ts = curr_ts_ms()
+
+        if curr_ts_ms() - self.step_start_ts > self.step_len:  # end of a step
+            action = self.sample_action(self.step_state_buf)
+            self.take_action(action)
+
+            self.step_state_buf = []
+            self.step_start_ts = curr_ts_ms()
+
+            self.step_cnt += 1
+            if self.step_cnt >= self.max_steps:
+                self.step_cnt = 0
+                self.running = False
 
         if self.debug:
             sys.stderr.write('Received ack_seq_num %d\n' %
                              int(ack['ack_seq_num']))
 
     def run(self):
-        TIMEOUT = 500  # ms
+        TIMEOUT = 1000  # ms
 
         self.poller.modify(self.sock, ALL_FLAGS)
         curr_flags = ALL_FLAGS
 
-        self.running = True
-        self.runtime_start = curr_ts_ms()
-
-        while not self.train or self.running:
+        while self.running:
             if self.window_is_open():
                 if curr_flags != ALL_FLAGS:
                     self.poller.modify(self.sock, ALL_FLAGS)
