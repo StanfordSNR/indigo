@@ -76,3 +76,6 @@ class Environment(object):
 
         if self.sender:
             self.sender.set_sample_action(self.sample_action)
+
+    def set_best_cwnd(self, best_cwnd):
+        self.best_cwnd = best_cwnd

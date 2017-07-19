@@ -25,6 +25,11 @@ def run(args):
                    '--worker-hosts', args['worker_hosts'],
                    '--job-name', job_name,
                    '--task-index', str(i)]
+            if args['dagger']:
+                cmd.append('--dagger')
+            if args['driver'] is not None:
+                cmd += ['--driver', args['driver']]
+
             cmd = ssh_cmd + cmd
 
             sys.stderr.write('$ %s\n' % ' '.join(cmd))
@@ -78,6 +83,8 @@ def construct_args(prog_args):
 
     args['ps_procs'] = []
     args['worker_procs'] = []
+    args['dagger'] = prog_args.dagger
+    args['driver'] = prog_args.driver
 
     return args
 
@@ -96,6 +103,9 @@ def main():
     parser.add_argument(
         '--rlcc-dir', metavar='DIR', default='/home/ubuntu/RLCC',
         help='absolute path to RLCC/ (default: /home/ubuntu/RLCC)')
+    parser.add_argument('--dagger', action='store_true',
+        help='run Dagger rather than A3C')
+    parser.add_argument('--driver', help='hostname of the driver')
     prog_args = parser.parse_args()
     args = construct_args(prog_args)
 

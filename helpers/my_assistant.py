@@ -18,8 +18,16 @@ def run_cmd(args, host, procs):
     elif cmd == 'git_clone':
         cmd_in_ssh = 'git clone https://github.com/StanfordSNR/RLCC.git'
     elif cmd == 'git_pull':
-        cmd_in_ssh = ('cd %s && git fetch --all && git checkout bw-10-100-owd'
-                      % args.rlcc_dir)
+        cmd_in_ssh = ('cd %s && git fetch --all && git checkout dagger-ewma &&'
+                      ' git reset --hard @~1 && git pull' % args.rlcc_dir)
+    elif cmd == 'cleanup':
+        cmd_in_ssh = ('rm -rf %s/history %s/a3c/logs' %
+                      (args.rlcc_dir, args.rlcc_dir))
+    elif cmd == 'inc_rmem':
+        cmd_in_ssh = ('sudo sysctl -w net.core.rmem_default=16777216 && '
+                      'sudo sysctl -w net.core.rmem_max=33554432')
+    elif cmd == 'shutdown':
+        cmd_in_ssh = 'sudo poweroff'
     else:
         cmd_in_ssh = cmd
 
@@ -52,6 +60,9 @@ def main():
 
     for proc in procs:
         proc.communicate()
+
+    if args.cmd == 'shutdown':
+        check_call(['sudo', 'poweroff'])
 
 
 if __name__ == '__main__':

@@ -1,40 +1,50 @@
 import sys
-import time
 import project_root
 import numpy as np
+import project_root
 import tensorflow as tf
 from os import path
-from models import ActorCriticLSTM
+from models import ActorCriticNetwork
 from helpers.helpers import make_sure_path_exists
 
 
-def normalize_state_buf(step_state_buf):
-    norm_state_buf = np.asarray(step_state_buf, dtype=np.float32)
+def normalize_state(state):
+    norm_state = np.asarray(state, dtype=np.float32)
 
     for i in xrange(1):
-        norm_state_buf[:, i][norm_state_buf[:, i] < 1.0] = 1.0
-        norm_state_buf[:, i] = np.log(norm_state_buf[:, i])
+        norm_state[:, i] = norm_state[:, i] / 200.0 - 1.0
+        norm_state[:, i][norm_state[:, i] > 1.0] = 1.0
 
-    return norm_state_buf
+    return norm_state
 
 
 class A3C(object):
-    def __init__(self, cluster, server, task_index, env):
+    def __init__(self, cluster, server, task_index, env, dagger):
         # distributed tensorflow related
         self.cluster = cluster
         self.server = server
         self.task_index = task_index
         self.env = env
-        self.is_chief = (task_index == 0)
+        self.dagger = dagger
 
-        self.state_dim = env.state_dim
-        self.action_cnt = env.action_cnt
+        self.is_chief = (task_index == 0)
         self.worker_device = '/job:worker/task:%d' % task_index
-        self.gamma = 1.0
 
         # step counters
-        self.max_global_step = 12000
         self.local_step = 0
+
+        if self.dagger:
+            self.max_global_step = 5000
+            self.check_point = 2000
+            self.learn_rate = 1e-3
+        else:
+            self.max_global_step = 12000
+            self.check_point = 5000
+            self.learn_rate = 1e-5
+
+        # dimension of state and action spaces
+        self.state_dim = env.state_dim
+        self.action_cnt = env.action_cnt
 
         # must call env.set_sample_action() before env.run()
         env.set_sample_action(self.sample_action)
@@ -60,7 +70,7 @@ class A3C(object):
                 worker_device=self.worker_device,
                 cluster=self.cluster)):
             with tf.variable_scope('global'):
-                self.global_network = ActorCriticLSTM(
+                self.global_network = ActorCriticNetwork(
                     state_dim=self.state_dim, action_cnt=self.action_cnt)
                 self.global_step = tf.get_variable(
                     'global_step', [], tf.int32,
@@ -69,7 +79,7 @@ class A3C(object):
 
         with tf.device(self.worker_device):
             with tf.variable_scope('local'):
-                self.local_network = ActorCriticLSTM(
+                self.local_network = ActorCriticNetwork(
                     state_dim=self.state_dim, action_cnt=self.action_cnt)
 
             self.build_loss()
@@ -78,32 +88,46 @@ class A3C(object):
         pi = self.local_network
 
         self.actions = tf.placeholder(tf.int32, [None])
-        self.rewards = tf.placeholder(tf.float32, [None])
-        self.advantages = tf.placeholder(tf.float32, [None])
-
-        # policy loss
+        # cross entropy loss
         cross_entropy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=pi.action_scores, labels=self.actions)
-        policy_loss = tf.reduce_mean(cross_entropy_loss * self.advantages)
 
-        # value loss
-        value_loss = 0.5 * tf.reduce_mean(tf.square(
-            self.rewards - pi.state_values))
+        if self.dagger:
+            # regularization loss
+            reg_loss = 0.0
+            for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+                reg_loss += tf.nn.l2_loss(x)
+            reg_loss *= 0.01
 
-        # add entropy to loss to encourage exploration
-        log_action_probs = tf.log(pi.action_probs)
-        entropy = -tf.reduce_mean(pi.action_probs * log_action_probs)
+            # total loss
+            reduced_ce_loss = tf.reduce_mean(cross_entropy_loss)
+            loss = reduced_ce_loss + reg_loss
+        else:
+            self.rewards = tf.placeholder(tf.float32, [None])
+            self.advantages = tf.placeholder(tf.float32, [None])
 
-        # total loss and gradients
-        loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
+            # policy loss
+            policy_loss = tf.reduce_mean(cross_entropy_loss * self.advantages)
+
+            # value loss
+            value_loss = 0.5 * tf.reduce_mean(tf.square(
+                self.rewards - pi.state_values))
+
+            # add entropy to loss to encourage exploration
+            log_action_probs = tf.log(pi.action_probs)
+            entropy = -tf.reduce_mean(pi.action_probs * log_action_probs)
+
+            # total loss
+            loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
+
         grads = tf.gradients(loss, pi.trainable_vars)
-        grads, _ = tf.clip_by_global_norm(grads, 10.0)
+        grads, _ = tf.clip_by_global_norm(grads, 5.0)
 
         # calculate gradients and apply to global network
         grads_and_vars = list(zip(grads, self.global_network.trainable_vars))
         inc_global_step = self.global_step.assign_add(1)
 
-        optimizer = tf.train.AdamOptimizer(1e-5)
+        optimizer = tf.train.AdamOptimizer(self.learn_rate)
         self.train_op = tf.group(
             optimizer.apply_gradients(grads_and_vars), inc_global_step)
 
@@ -112,42 +136,72 @@ class A3C(object):
             pi.trainable_vars, self.global_network.trainable_vars)])
 
         # summary related
-        tf.summary.scalar('policy_loss', policy_loss)
-        tf.summary.scalar('value_loss', value_loss)
-        tf.summary.scalar('entropy', entropy)
         tf.summary.scalar('total_loss', loss)
-        tf.summary.scalar('reward', self.rewards[-1])
         tf.summary.scalar('grad_global_norm', tf.global_norm(grads))
         tf.summary.scalar('var_global_norm', tf.global_norm(pi.trainable_vars))
+
+        if self.dagger:
+            tf.summary.scalar('reduced_ce_loss', reduced_ce_loss)
+            tf.summary.scalar('reg_loss', reg_loss)
+        else:
+            tf.summary.scalar('policy_loss', policy_loss)
+            tf.summary.scalar('value_loss', value_loss)
+            tf.summary.scalar('entropy', entropy)
+            tf.summary.scalar('reward', self.rewards[-1])
+
         self.summary_op = tf.summary.merge_all()
 
-    def sample_action(self, step_state_buf):
-        pi = self.local_network
+    def sample_expert_action(self, state, cwnd):
+        if cwnd * 2 <= self.env.best_cwnd:
+            action = 0
+        elif cwnd + 10 <= self.env.best_cwnd:
+            action = 1
+        elif cwnd * 0.5 >= self.env.best_cwnd:
+            action = 4
+        elif cwnd - 10 >= self.env.best_cwnd:
+            action = 3
+        else:
+            action = 2
 
-        # normalize step_state_buf
-        norm_state_buf = normalize_state_buf(step_state_buf)
+        return action
+
+    def sample_action(self, state, cwnd):
+        # normalize state and append to episode buffer
+        norm_state = normalize_state([state])
+        self.state_buf.extend(norm_state)
+
+        if self.dagger:
+            expert_action = self.sample_expert_action(state, cwnd)
+            self.action_buf.append(expert_action)
+
+            if self.local_step == 0:
+                return expert_action
 
         # run ops in local networks
-        ops_to_run = [pi.action_probs, pi.state_values, pi.lstm_state_out]
+        pi = self.local_network
+
         feed_dict = {
-            pi.states: norm_state_buf,
-            pi.indices: [len(step_state_buf) - 1],
-            pi.lstm_state_in: self.lstm_state,
+            pi.states: norm_state,
         }
 
+        if self.dagger:
+            ops_to_run = [pi.action_probs]
+        else:
+            ops_to_run = [pi.action_probs, pi.state_values]
+
         ret = self.session.run(ops_to_run, feed_dict)
-        action_probs, state_values, lstm_state_out = ret
 
-        # choose an action to take and update current LSTM state
-        action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
-        self.lstm_state = lstm_state_out
+        if self.dagger:
+            action_probs = ret
+        else:
+            action_probs, state_values = ret
 
-        # append state, action, value to episode buffer
-        self.state_buf.extend(norm_state_buf)
-        last_index = self.indices[-1] if len(self.indices) > 0 else -1
-        self.indices.append(len(step_state_buf) + last_index)
-        self.action_buf.append(action)
-        self.value_buf.extend(state_values)
+        # choose an action to take
+        action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
+
+        if not self.dagger:
+            self.action_buf.append(action)
+            self.value_buf.extend(state_values)
 
         return action
 
@@ -166,12 +220,12 @@ class A3C(object):
         sys.stderr.write('\nModel saved to worker-0:%s\n' % model_path)
 
     def rollout(self):
-        # reset buffers for states, actions and values, and LSTM state
+        # reset buffers for states, actions, etc.
         self.state_buf = []
-        self.indices = []
         self.action_buf = []
-        self.value_buf = []
-        self.lstm_state = self.local_network.lstm_state_init
+
+        if not self.dagger:
+            self.value_buf = []
 
         # reset environment
         self.env.reset()
@@ -179,28 +233,31 @@ class A3C(object):
         # get an episode of rollout
         final_reward = self.env.rollout()
 
-        # state_buf, indices, action_buf, value_buf should have been filled in
-        episode_len = len(self.indices)
+        # state_buf, action_buf, etc. should have been filled in
+        episode_len = len(self.state_buf)
         assert len(self.action_buf) == episode_len
-        assert len(self.value_buf) == episode_len
 
-        # compute discounted returns
-        if self.gamma == 1.0:
-            self.reward_buf = np.full(episode_len, final_reward)
-        else:
-            self.reward_buf = np.zeros(episode_len)
-            self.reward_buf[-1] = final_reward
-            for i in reversed(xrange(episode_len - 1)):
-                self.reward_buf[i] = self.reward_buf[i + 1] * self.gamma
+        if not self.dagger:
+            assert len(self.value_buf) == episode_len
 
-        # compute advantages
-        self.adv_buf = self.reward_buf - np.asarray(self.value_buf)
+            # compute discounted returns
+            gamma = 1.0
+            if gamma == 1.0:
+                self.reward_buf = np.full(episode_len, final_reward)
+            else:
+                self.reward_buf = np.zeros(episode_len)
+                self.reward_buf[-1] = final_reward
+                for i in reversed(xrange(episode_len - 1)):
+                    self.reward_buf[i] = self.reward_buf[i + 1] * gamma
+
+            # compute advantages
+            self.adv_buf = self.reward_buf - np.asarray(self.value_buf)
 
     def run(self):
         pi = self.local_network
 
         global_step = 0
-        check_point = 5000
+        check_point = self.check_point
         while global_step < self.max_global_step:
             sys.stderr.write('Global step: %d\n' % global_step)
 
@@ -218,14 +275,18 @@ class A3C(object):
             else:
                 ops_to_run = [self.train_op, self.global_step]
 
-            ret = self.session.run(ops_to_run, {
-                pi.states: self.state_buf,
-                pi.indices: self.indices,
-                self.actions: self.action_buf,
-                self.rewards: self.reward_buf,
-                self.advantages: self.adv_buf,
-                pi.lstm_state_in: pi.lstm_state_init,
-            })
+            if self.dagger:
+                ret = self.session.run(ops_to_run, {
+                    pi.states: self.state_buf,
+                    self.actions: self.action_buf,
+                })
+            else:
+                ret = self.session.run(ops_to_run, {
+                    pi.states: self.state_buf,
+                    self.actions: self.action_buf,
+                    self.rewards: self.reward_buf,
+                    self.advantages: self.adv_buf,
+                })
 
             global_step = ret[1]
             self.local_step += 1
@@ -237,7 +298,7 @@ class A3C(object):
             if self.is_chief and global_step >= check_point:
                 with tf.device(self.worker_device):
                     self.save_model(check_point)
-                check_point += 5000
+                check_point += self.check_point
 
         if self.is_chief:
             with tf.device(self.worker_device):

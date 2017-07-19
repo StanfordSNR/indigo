@@ -37,13 +37,15 @@ class Sender(object):
 
         # RL related
         self.state_dim = 1
+        self.state = [0.0]
+
         self.action_cnt = 5
         self.action_mapping = [
-            ('+=', 0.0), ('+=', -2.0), ('+=', 2.0), ('*=', 0.5), ('*=', 2.0)]
-        self.step_len = 100  # ms
-        self.step_state_buf = []
-        self.step_start_ts = None
+            ('*=', 2.0), ('+=', 10.0), ('+=', 0.0), ('+=', -10.0), ('*=', 0.5)]
+
         self.running = True
+        self.step_start_ms = None
+        self.step_len_ms = 100  # ms
 
         if self.train:
             self.step_cnt = 0
@@ -87,17 +89,15 @@ class Sender(object):
         recv_ts = ack['ack_recv_ts']
 
         # one-way delay
-        curr_delay = recv_ts - send_ts
-        state = [curr_delay]
+        owd = recv_ts - send_ts
+        self.state[0] = 0.875 * self.state[0] + 0.125 * owd
 
         if self.train:
             self.acked_bytes += ack['ack_bytes']
-            self.total_delays.append(curr_delay)
+            self.total_delays.append(owd)
 
             self.first_recv_ts = min(recv_ts, self.first_recv_ts)
             self.last_recv_ts = max(recv_ts, self.last_recv_ts)
-
-        return state
 
     def take_action(self, action):
         op, val = self.action_mapping[action]
@@ -107,7 +107,7 @@ class Sender(object):
         elif op == '*=':
             self.cwnd *= val
 
-        self.cwnd = min(max(5.0, self.cwnd), 500)
+        self.cwnd = min(max(5.0, self.cwnd), 1000.0)
 
         if self.debug:
             sys.stderr.write('cwnd %.2f\n' % self.cwnd)
@@ -123,7 +123,7 @@ class Sender(object):
         delay_percentile = float(np.percentile(self.total_delays, 95))
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
-        reward = np.log(max(1e-3, avg_throughput))
+        reward = 2.0 + np.log(max(1e-3, avg_throughput))
         reward -= np.log(max(1.0, delay_percentile))
 
         self.history.write('Average throughput: %.2f Mbps\n' % avg_throughput)
@@ -163,24 +163,22 @@ class Sender(object):
             return
 
         self.next_ack = max(self.next_ack, int(ack['ack_seq_num']) + 1)
+        self.update_state(ack)
 
-        state = self.update_state(ack)
-        self.step_state_buf.append(state)
+        if self.step_start_ms is None:
+            self.step_start_ms = curr_ts_ms()
 
-        if self.step_start_ts is None:
-            self.step_start_ts = curr_ts_ms()
-
-        if curr_ts_ms() - self.step_start_ts > self.step_len:  # end of a step
-            action = self.sample_action(self.step_state_buf)
+        if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
+            action = self.sample_action(self.state, self.cwnd)
             self.take_action(action)
 
-            self.step_state_buf = []
-            self.step_start_ts = curr_ts_ms()
+            self.step_start_ms = curr_ts_ms()
 
-            self.step_cnt += 1
-            if self.step_cnt >= self.max_steps:
-                self.step_cnt = 0
-                self.running = False
+            if self.train:
+                self.step_cnt += 1
+                if self.step_cnt >= self.max_steps:
+                    self.step_cnt = 0
+                    self.running = False
 
         if self.debug:
             sys.stderr.write('Received ack_seq_num %d\n' %
