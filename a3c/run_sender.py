@@ -10,6 +10,11 @@ from models import ActorCriticLSTM
 from a3c import normalize_state_buf
 
 
+def softmax(x):
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum(axis=0)
+
+
 class Learner(object):
     def __init__(self, state_dim, action_cnt, restore_vars):
         with tf.variable_scope('local'):
@@ -41,8 +46,12 @@ class Learner(object):
         ret = self.session.run(ops_to_run, feed_dict)
         action_probs, lstm_state_out = ret
 
-        action = np.argmax(action_probs[0])
+        # action = np.argmax(action_probs[0])
         # action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
+        temprature = 1.0
+        temp_probs = softmax(action_probs[0] / temprature)
+        action = np.argmax(np.random.multinomial(1, temp_probs - 1e-5))
+
         self.lstm_state = lstm_state_out
         return action
 

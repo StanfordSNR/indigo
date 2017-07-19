@@ -35,7 +35,7 @@ def prepare_traces(bandwidth):
 
 
 def create_env(task_index):
-    bandwidth = int(np.linspace(10, 100, num=8, dtype=np.int)[task_index])
+    bandwidth = int(np.linspace(30, 60, num=4, dtype=np.int)[task_index])
     delay = 25
     queue = None
 
@@ -49,6 +49,11 @@ def create_env(task_index):
     env = Environment(mm_cmd)
     env.setup()
     return env
+
+
+def shutdown_from_driver(driver):
+    cmd = ['ssh', driver, '~/RLCC/helpers/shutdown.sh']
+    check_call(cmd)
 
 
 def run(args):
@@ -66,11 +71,13 @@ def run(args):
         server.join()
     elif job_name == 'worker':
         env = create_env(task_index)
+
         learner = A3C(
             cluster=cluster,
             server=server,
             task_index=task_index,
-            env=env)
+            env=env,
+            dagger=args.dagger)
 
         try:
             learner.run()
@@ -78,6 +85,8 @@ def run(args):
             pass
         finally:
             learner.cleanup()
+            if args.driver is not None:
+                shutdown_from_driver(args.driver)
 
 
 def main():
@@ -92,6 +101,9 @@ def main():
                         required=True, help='ps or worker')
     parser.add_argument('--task-index', metavar='N', type=int, required=True,
                         help='index of task')
+    parser.add_argument('--dagger', action='store_true',
+                        help='run Dagger rather than A3C')
+    parser.add_argument('--driver', help='hostname of the driver')
     args = parser.parse_args()
 
     # run parameter servers and workers

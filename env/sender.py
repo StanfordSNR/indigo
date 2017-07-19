@@ -37,9 +37,9 @@ class Sender(object):
 
         # RL related
         self.state_dim = 1
-        self.action_cnt = 5
+        self.action_cnt = 4
         self.action_mapping = [
-            ('+=', 0.0), ('+=', -2.0), ('+=', 2.0), ('*=', 0.5), ('*=', 2.0)]
+            ('*=', 2.0), ('+=', 5.0), ('+=', -5.0), ('*=', 0.5)]
         self.step_len = 100  # ms
         self.step_state_buf = []
         self.step_start_ts = None
@@ -107,7 +107,7 @@ class Sender(object):
         elif op == '*=':
             self.cwnd *= val
 
-        self.cwnd = min(max(5.0, self.cwnd), 500)
+        self.cwnd = min(max(5.0, self.cwnd), 1000.0)
 
         if self.debug:
             sys.stderr.write('cwnd %.2f\n' % self.cwnd)
@@ -123,7 +123,7 @@ class Sender(object):
         delay_percentile = float(np.percentile(self.total_delays, 95))
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
-        reward = np.log(max(1e-3, avg_throughput))
+        reward = 2.0 + np.log(max(1e-3, avg_throughput))
         reward -= np.log(max(1.0, delay_percentile))
 
         self.history.write('Average throughput: %.2f Mbps\n' % avg_throughput)
@@ -177,10 +177,11 @@ class Sender(object):
             self.step_state_buf = []
             self.step_start_ts = curr_ts_ms()
 
-            self.step_cnt += 1
-            if self.step_cnt >= self.max_steps:
-                self.step_cnt = 0
-                self.running = False
+            if self.train:
+                self.step_cnt += 1
+                if self.step_cnt >= self.max_steps:
+                    self.step_cnt = 0
+                    self.running = False
 
         if self.debug:
             sys.stderr.write('Received ack_seq_num %d\n' %

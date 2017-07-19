@@ -71,13 +71,13 @@ class ActorCriticLSTM(object):
         output = tf.gather(output, self.indices)
 
         # actor
-        actor_h1 = layers.relu(output, 64)
-        self.action_scores = layers.linear(actor_h1, action_cnt)
+        # actor_h1 = layers.relu(output, 64)
+        self.action_scores = layers.linear(output, action_cnt)
         self.action_probs = tf.nn.softmax(self.action_scores)
 
         # critic
-        critic_h1 = layers.relu(output, 64)
-        self.state_values = tf.reshape(layers.linear(critic_h1, 1), [-1])
+        # critic_h1 = layers.relu(output, 64)
+        self.state_values = tf.reshape(layers.linear(output, 1), [-1])
 
         self.trainable_vars = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
