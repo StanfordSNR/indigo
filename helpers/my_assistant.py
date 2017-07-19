@@ -18,8 +18,8 @@ def run_cmd(args, host, procs):
     elif cmd == 'git_clone':
         cmd_in_ssh = 'git clone https://github.com/StanfordSNR/RLCC.git'
     elif cmd == 'git_pull':
-        cmd_in_ssh = ('cd %s && git fetch --all && git checkout bw-10-100-owd'
-                      % args.rlcc_dir)
+        cmd_in_ssh = ('cd %s && git checkout a3c-dagger && '
+                      'git reset --hard @~1 && git pull' % args.rlcc_dir)
     else:
         cmd_in_ssh = cmd
 
