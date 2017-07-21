@@ -123,7 +123,7 @@ class Sender(object):
         delay_percentile = float(np.percentile(self.total_delays, 95))
         loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
 
-        reward = 2 * np.log(max(1e-3, avg_throughput))
+        reward = np.log(max(1e-3, avg_throughput))
         reward -= np.log(max(1.0, delay_percentile))
 
         self.history.write('Average throughput: %.2f Mbps\n' % avg_throughput)
