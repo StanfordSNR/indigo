@@ -4,7 +4,7 @@ import project_root
 import numpy as np
 import tensorflow as tf
 from os import path
-from models import ActorCriticLSTM
+from models import ActorCriticNetwork
 from helpers.helpers import make_sure_path_exists
 
 
@@ -26,6 +26,7 @@ class A3C(object):
         self.task_index = task_index
         self.env = env
         self.dagger = dagger
+        self.time_file = open('/tmp/sample_action_time', 'a')
 
         self.is_chief = (task_index == 0)
         self.worker_device = '/job:worker/task:%d' % task_index
@@ -70,7 +71,7 @@ class A3C(object):
                 worker_device=self.worker_device,
                 cluster=self.cluster)):
             with tf.variable_scope('global'):
-                self.global_network = ActorCriticLSTM(
+                self.global_network = ActorCriticNetwork(
                     state_dim=self.state_dim, action_cnt=self.action_cnt)
                 self.global_step = tf.get_variable(
                     'global_step', [], tf.int32,
@@ -79,7 +80,7 @@ class A3C(object):
 
         with tf.device(self.worker_device):
             with tf.variable_scope('local'):
-                self.local_network = ActorCriticLSTM(
+                self.local_network = ActorCriticNetwork(
                     state_dim=self.state_dim, action_cnt=self.action_cnt)
 
             self.build_loss()
@@ -97,7 +98,7 @@ class A3C(object):
             reg_loss = 0.0
             for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
                 reg_loss += tf.nn.l2_loss(x)
-            reg_loss *= 0.01
+            reg_loss *= 0.001
 
             # total loss
             reduced_ce_loss = tf.reduce_mean(cross_entropy_loss)
@@ -163,10 +164,33 @@ class A3C(object):
         else:
             return 3
 
+    def ewma(self, data, window):
+        alpha = 2 /(window + 1.0)
+        alpha_rev = 1-alpha
+        n = data.shape[0]
+
+        pows = alpha_rev**(np.arange(n+1))
+
+        scale_arr = 1/pows[:-1]
+        offset = data[0]*pows[1:]
+        pw0 = alpha*alpha_rev**(n-1)
+
+        mult = data*pw0*scale_arr
+        cumsums = mult.cumsum()
+        out = offset + cumsums*scale_arr[::-1]
+        return out
+
     def sample_action(self, step_state_buf):
         # normalize step_state_buf and append to episode buffer
         norm_state_buf = normalize_state_buf(step_state_buf)
-        self.state_buf.extend(norm_state_buf)
+
+        # state = EWMA of past 100ms
+        start_time = time.time()
+        ewma_delay = self.ewma(step_state_buf, len(step_state_buf))
+        elapsed_time = time.time() - start_time
+        self.time_file.write('EWMA calculation: %s\n' % elapsed_time)
+
+        self.state_buf.extend([ewma_delay])
         last_index = self.indices[-1] if len(self.indices) > 0 else -1
         self.indices.append(len(step_state_buf) + last_index)
 
@@ -181,26 +205,30 @@ class A3C(object):
         pi = self.local_network
 
         feed_dict = {
-            pi.states: norm_state_buf,
-            pi.indices: [len(step_state_buf) - 1],
-            pi.lstm_state_in: self.lstm_state,
+            pi.states: [ewma_delay]  #norm_state_buf,
+            # pi.indices: [len(step_state_buf) - 1],
+            # pi.lstm_state_in: self.lstm_state,
         }
 
         if self.dagger:
-            ops_to_run = [pi.action_probs, pi.lstm_state_out]
+            ops_to_run = [pi.action_probs]#, pi.lstm_state_out]
         else:
-            ops_to_run = [pi.action_probs, pi.state_values, pi.lstm_state_out]
+            ops_to_run = [pi.action_probs, pi.state_values]#, pi.lstm_state_out]
 
+        start_time = time.time()
         ret = self.session.run(ops_to_run, feed_dict)
+        elapsed_time = time.time() - start_time
+        self.time_file.write('TF action: %s\n\n' % elapsed_time)
 
         if self.dagger:
-            action_probs, lstm_state_out = ret
+            action_probs = ret#, lstm_state_out = ret
         else:
-            action_probs, state_values, lstm_state_out = ret
+            action_probs, state_values = ret#, lstm_state_out = ret
 
         # choose an action to take and update current LSTM state
-        action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
-        self.lstm_state = lstm_state_out
+        print action_probs
+        action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
+        # self.lstm_state = lstm_state_out
 
         if not self.dagger:
             self.action_buf.append(action)
@@ -227,7 +255,7 @@ class A3C(object):
         self.state_buf = []
         self.indices = []
         self.action_buf = []
-        self.lstm_state = self.local_network.lstm_state_init
+        # self.lstm_state = self.local_network.lstm_state_init
 
         if not self.dagger:
             self.value_buf = []
@@ -283,9 +311,9 @@ class A3C(object):
             if self.dagger:
                 ret = self.session.run(ops_to_run, {
                     pi.states: self.state_buf,
-                    pi.indices: self.indices,
+                    # pi.indices: self.indices,
                     self.actions: self.action_buf,
-                    pi.lstm_state_in: pi.lstm_state_init,
+                    # pi.lstm_state_in: pi.lstm_state_init,
                 })
             else:
                 ret = self.session.run(ops_to_run, {

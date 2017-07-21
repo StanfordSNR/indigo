@@ -35,7 +35,7 @@ def prepare_traces(bandwidth):
 
 
 def create_env(task_index):
-    bandwidth = int(np.linspace(10, 100, num=8, dtype=np.int)[task_index])
+    bandwidth = 50 #int(np.linspace(30, 60, num=4, dtype=np.int)[task_index])
     delay = 25
     queue = None
 

@@ -10,7 +10,7 @@ def run_cmd(args, host, procs):
     cmd_in_ssh = None
 
     if cmd == 'copy_key':
-        cmd_to_run = ('KEY=$(cat ~/.ssh/rlcc_gce.pub); '
+        cmd_to_run = ('KEY=$(cat ~/.ssh/id_rsa.pub); '
                       'ssh -o StrictHostKeyChecking=no %s '
                       '"grep -qF \'$KEY\' .ssh/authorized_keys || '
                       'echo \'$KEY\' >> .ssh/authorized_keys"' % host)
@@ -18,7 +18,7 @@ def run_cmd(args, host, procs):
     elif cmd == 'git_clone':
         cmd_in_ssh = 'git clone https://github.com/StanfordSNR/RLCC.git'
     elif cmd == 'git_pull':
-        cmd_in_ssh = ('cd %s && git checkout a3c-dagger && '
+        cmd_in_ssh = ('cd %s && git checkout a3c-dagger-nolstm && '
                       'git reset --hard @~1 && git pull' % args.rlcc_dir)
     else:
         cmd_in_ssh = cmd
@@ -35,8 +35,8 @@ def main():
         '--remote', required=True, metavar='IP,...',
         help='comma-separated list of IP addresses of remote hosts')
     parser.add_argument(
-        '--username', default='francisyyan',
-        help='username used in ssh (default: francisyyan)')
+        '--username', default='jestinm',
+        help='username used in ssh (default: jestinm)')
     parser.add_argument(
         '--rlcc-dir', metavar='DIR', default='~/RLCC',
         help='path to RLCC/ (default: ~/RLCC)')
