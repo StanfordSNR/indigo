@@ -40,7 +40,7 @@ class Sender(object):
         self.action_cnt = 4
         self.action_mapping = [
             ('*=', 2.0), ('+=', 5.0), ('+=', -5.0), ('*=', 0.5)]
-        self.step_len = 100  # ms
+        self.step_len = 10  # ms
         self.step_state_buf = []
         self.step_start_ts = None
         self.running = True

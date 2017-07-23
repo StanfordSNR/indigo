@@ -8,7 +8,7 @@ from subprocess import check_output
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        'table', metavar='TABLE',
+        '--table', metavar='TABLE', nargs='?', default='TABLE',
         help='(messy) table of VM instances copied from Google Cloud Platform')
     args = parser.parse_args()
 
@@ -34,7 +34,9 @@ def main():
         ret_int_ip_list += '%s,' % internal_ip
         ret_ext_ip_list += '%s,' % external_ip
 
-    print ret_cmd[:-1]
+    ret_cmd = ret_cmd[:-1] + ' --dagger'
+
+    print ret_cmd
     print ret_int_ip_list[:-1]
     print ret_ext_ip_list[:-1]
 
