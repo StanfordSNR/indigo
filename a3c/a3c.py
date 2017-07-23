@@ -3,6 +3,7 @@ import time
 import project_root
 import numpy as np
 import tensorflow as tf
+import datetime
 from os import path
 from models import ActorCriticNetwork
 from helpers.helpers import make_sure_path_exists
@@ -10,7 +11,6 @@ from helpers.helpers import make_sure_path_exists
 
 def normalize_state_buf(step_state_buf):
     norm_state_buf = np.asarray(step_state_buf, dtype=np.float32)
-
     for i in xrange(1):
         norm_state_buf[:, i][norm_state_buf[:, i] < 1.0] = 1.0
         norm_state_buf[:, i] = np.log(norm_state_buf[:, i])
@@ -26,16 +26,21 @@ class A3C(object):
         self.task_index = task_index
         self.env = env
         self.dagger = dagger
+        self.time_file = open('/tmp/sample_action_time', 'w')
 
         self.is_chief = (task_index == 0)
         self.worker_device = '/job:worker/task:%d' % task_index
+        
+        # buffers required to train
+        self.action_buf = []
+        self.state_buf = []
 
         # step counters
         self.local_step = 0
 
         if self.dagger:
-            self.max_global_step = 8000
-            self.check_point = 3000
+            self.max_global_step = 2000 
+            self.check_point =1500 
             self.learn_rate = 1e-3
         else:
             self.max_global_step = 12000
@@ -54,7 +59,8 @@ class A3C(object):
 
         # summary related
         if self.is_chief:
-            self.logdir = path.join(project_root.DIR, 'a3c', 'logs')
+            today_datetime = datetime.datetime.now().strftime('%Y-%m-%d--%H-%M-%S')
+            self.logdir = path.join(project_root.DIR, 'a3c', 'logs', today_datetime)
             make_sure_path_exists(self.logdir)
             self.summary_writer = tf.summary.FileWriter(self.logdir)
 
@@ -97,7 +103,7 @@ class A3C(object):
             reg_loss = 0.0
             for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
                 reg_loss += tf.nn.l2_loss(x)
-            reg_loss *= 0.001
+            reg_loss *= 0.005
 
             # total loss
             reduced_ce_loss = tf.reduce_mean(cross_entropy_loss)
@@ -163,11 +169,31 @@ class A3C(object):
         else:
             return 3
 
+    def ewma(self, data, window):
+        alpha = 2 /(window + 1.0)
+        alpha_rev = 1-alpha
+        n = data.shape[0]
+
+        pows = alpha_rev**(np.arange(n+1))
+
+        scale_arr = 1/pows[:-1]
+        offset = data[0]*pows[1:]
+        pw0 = alpha*alpha_rev**(n-1)
+
+        mult = data*pw0*scale_arr
+        cumsums = mult.cumsum()
+        out = offset + cumsums*scale_arr[::-1]
+        return out[-1]
+
     def sample_action(self, step_state_buf):
+        flat_step_state_buf = np.asarray(step_state_buf, dtype=np.float32).ravel()
         # normalize step_state_buf and append to episode buffer
-        norm_state_buf = normalize_state_buf(step_state_buf)
-        mean_norm_state = [np.mean(norm_state_buf)]
-        self.state_buf.extend([mean_norm_state])
+        # norm_state_buf = normalize_state_buf(step_state_buf)
+
+        # state = EWMA of past step
+        ewma_delay = self.ewma(flat_step_state_buf, 3)
+
+        self.state_buf.extend([[ewma_delay]])
         last_index = self.indices[-1] if len(self.indices) > 0 else -1
         self.indices.append(len(step_state_buf) + last_index)
 
@@ -175,14 +201,16 @@ class A3C(object):
             expert_action = self.sample_expert_action(step_state_buf)
             self.action_buf.append(expert_action)
 
-            if self.local_step == 0:
+            use_expert = 0.75 ** self.local_step
+
+            if use_expert == 0:
                 return expert_action
 
         # run ops in local networks
         pi = self.local_network
 
         feed_dict = {
-            pi.states: [mean_norm_state]  #norm_state_buf,
+            pi.states: [[ewma_delay]]  #norm_state_buf,
             # pi.indices: [len(step_state_buf) - 1],
             # pi.lstm_state_in: self.lstm_state,
         }
@@ -192,7 +220,10 @@ class A3C(object):
         else:
             ops_to_run = [pi.action_probs, pi.state_values]#, pi.lstm_state_out]
 
+        start_time = time.time()
         ret = self.session.run(ops_to_run, feed_dict)
+        elapsed_time = time.time() - start_time
+        self.time_file.write('TF sample_action took: %s s.\n' % elapsed_time)
 
         if self.dagger:
             action_probs = ret#, lstm_state_out = ret
@@ -200,7 +231,6 @@ class A3C(object):
             action_probs, state_values = ret#, lstm_state_out = ret
 
         # choose an action to take and update current LSTM state
-        print action_probs
         action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
         # self.lstm_state = lstm_state_out
 
@@ -216,6 +246,8 @@ class A3C(object):
         else:
             model_path = path.join(self.logdir, 'checkpoint-%d' % check_point)
 
+        make_sure_path_exists(model_path)
+
         # copy global parameters to local
         self.session.run(self.sync_op)
 
@@ -226,9 +258,9 @@ class A3C(object):
 
     def rollout(self):
         # reset buffers for states, actions, LSTM states, etc.
-        self.state_buf = []
+        # self.state_buf = []
         self.indices = []
-        self.action_buf = []
+        # self.action_buf = []
         # self.lstm_state = self.local_network.lstm_state_init
 
         if not self.dagger:
@@ -241,8 +273,8 @@ class A3C(object):
         final_reward = self.env.rollout()
 
         # state_buf, indices, action_buf, etc. should have been filled in
-        episode_len = len(self.indices)
-        assert len(self.action_buf) == episode_len
+        # episode_len = len(self.indices)
+        # assert len(self.action_buf) == episode_len
 
         if not self.dagger:
             assert len(self.value_buf) == episode_len

@@ -20,6 +20,8 @@ def run_cmd(args, host, procs):
     elif cmd == 'git_pull':
         cmd_in_ssh = ('cd %s && git checkout a3c-dagger-nolstm && '
                       'git reset --hard @~1 && git pull' % args.rlcc_dir)
+    elif cmd == 'cleanup':
+        cmd_in_ssh = ('rm %s/history' % args.rlcc_dir)
     else:
         cmd_in_ssh = cmd
 
