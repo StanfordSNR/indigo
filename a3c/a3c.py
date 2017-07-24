@@ -18,6 +18,23 @@ def normalize_state_buf(step_state_buf):
     return norm_state_buf
 
 
+def ewma(data, window):
+    alpha = 2 /(window + 1.0)
+    alpha_rev = 1-alpha
+    n = data.shape[0]
+
+    pows = alpha_rev**(np.arange(n+1))
+
+    scale_arr = 1/pows[:-1]
+    offset = data[0]*pows[1:]
+    pw0 = alpha*alpha_rev**(n-1)
+
+    mult = data*pw0*scale_arr
+    cumsums = mult.cumsum()
+    out = offset + cumsums*scale_arr[::-1]
+    return out[-1]
+
+
 class A3C(object):
     def __init__(self, cluster, server, task_index, env, dagger):
         # distributed tensorflow related
@@ -165,29 +182,13 @@ class A3C(object):
         else:
             return 3
 
-    def ewma(self, data, window):
-        alpha = 2 /(window + 1.0)
-        alpha_rev = 1-alpha
-        n = data.shape[0]
-
-        pows = alpha_rev**(np.arange(n+1))
-
-        scale_arr = 1/pows[:-1]
-        offset = data[0]*pows[1:]
-        pw0 = alpha*alpha_rev**(n-1)
-
-        mult = data*pw0*scale_arr
-        cumsums = mult.cumsum()
-        out = offset + cumsums*scale_arr[::-1]
-        return out[-1]
-
     def sample_action(self, step_state_buf):
         flat_step_state_buf = np.asarray(step_state_buf, dtype=np.float32).ravel()
         # normalize step_state_buf and append to episode buffer
         # norm_state_buf = normalize_state_buf(step_state_buf)
 
         # state = EWMA of past step
-        ewma_delay = self.ewma(flat_step_state_buf, 3)
+        ewma_delay = ewma(flat_step_state_buf, 3)
 
         self.state_buf.extend([[ewma_delay]])
         last_index = self.indices[-1] if len(self.indices) > 0 else -1

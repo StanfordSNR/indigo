@@ -7,7 +7,7 @@ import tensorflow as tf
 from os import path
 from env.sender import Sender
 from models import ActorCriticNetwork
-from a3c import normalize_state_buf
+from a3c import ewma
 
 
 class Learner(object):
@@ -29,12 +29,13 @@ class Learner(object):
         self.session.run(tf.variables_initializer(uninit_vars))
 
     def sample_action(self, step_state_buf):
-        norm_state_buf = normalize_state_buf(step_state_buf)
+        flat_step_state_buf = np.asarray(step_state_buf, dtype=np.float32).ravel()
+        ewma_delay = ewma(flat_step_state_buf, 3)
 
         ops_to_run = [self.pi.action_probs]#, self.pi.lstm_state_out]
         feed_dict = {
-            self.pi.states: norm_state_buf,
-            self.pi.indices: [len(step_state_buf) - 1],
+            self.pi.states: [[ewma_delay]],
+            # self.pi.indices: [len(step_state_buf) - 1],
             # self.pi.lstm_state_in: self.lstm_state,
         }
 
