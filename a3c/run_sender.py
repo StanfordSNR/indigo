@@ -29,7 +29,10 @@ class Learner(object):
         self.session.run(tf.variables_initializer(uninit_vars))
 
     def sample_action(self, step_state_buf):
+        # ravel() is a faster flatten()
         flat_step_state_buf = np.asarray(step_state_buf, dtype=np.float32).ravel()
+
+        # state = EWMA of past step
         ewma_delay = ewma(flat_step_state_buf, 3)
 
         ops_to_run = [self.pi.action_probs]#, self.pi.lstm_state_out]

@@ -47,6 +47,10 @@ class A3C(object):
 
         self.is_chief = (task_index == 0)
         self.worker_device = '/job:worker/task:%d' % task_index
+        
+        # buffers required to train
+        self.action_buf = []
+        self.state_buf = []
 
         # step counters
         self.local_step = 0
@@ -72,8 +76,8 @@ class A3C(object):
 
         # summary related
         if self.is_chief:
-            today_datetime = datetime.datetime.now().strftime('%Y-%m-%d--%H-%M-%S')
-            self.logdir = path.join(project_root.DIR, 'a3c', 'logs', today_datetime)
+            date_time = datetime.datetime.now().strftime('%Y-%m-%d--%H-%M-%S')
+            self.logdir = path.join(project_root.DIR, 'a3c', 'logs', date_time)
             make_sure_path_exists(self.logdir)
             self.summary_writer = tf.summary.FileWriter(self.logdir)
 
@@ -116,7 +120,7 @@ class A3C(object):
             reg_loss = 0.0
             for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
                 reg_loss += tf.nn.l2_loss(x)
-            reg_loss *= 0.001
+            reg_loss *= 0.005
 
             # total loss
             reduced_ce_loss = tf.reduce_mean(cross_entropy_loss)
@@ -183,7 +187,9 @@ class A3C(object):
             return 3
 
     def sample_action(self, step_state_buf):
+        # ravel() is a faster flatten()
         flat_step_state_buf = np.asarray(step_state_buf, dtype=np.float32).ravel()
+
         # normalize step_state_buf and append to episode buffer
         # norm_state_buf = normalize_state_buf(step_state_buf)
 
@@ -198,7 +204,10 @@ class A3C(object):
             expert_action = self.sample_expert_action(step_state_buf)
             self.action_buf.append(expert_action)
 
-            if self.local_step == 0:
+            # exponentially decaying sample of using expert policy
+            use_expert = 0.75 ** self.local_step
+
+            if use_expert == 0:
                 return expert_action
 
         # run ops in local networks
@@ -253,9 +262,9 @@ class A3C(object):
 
     def rollout(self):
         # reset buffers for states, actions, LSTM states, etc.
-        self.state_buf = []
+        # self.state_buf = []
         self.indices = []
-        self.action_buf = []
+        # self.action_buf = []
         # self.lstm_state = self.local_network.lstm_state_init
 
         if not self.dagger:
@@ -268,8 +277,8 @@ class A3C(object):
         final_reward = self.env.rollout()
 
         # state_buf, indices, action_buf, etc. should have been filled in
-        episode_len = len(self.indices)
-        assert len(self.action_buf) == episode_len
+        # episode_len = len(self.indices)
+        # assert len(self.action_buf) == episode_len
 
         if not self.dagger:
             assert len(self.value_buf) == episode_len
