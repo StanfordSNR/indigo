@@ -79,7 +79,7 @@ def run(args):
         # Sets up the queue, shared variables, and global classifier.
         worker_tasks = set([idx for idx in xrange(num_workers)])
         leader = DaggerLeader(cluster, server, worker_tasks, Sender.max_steps)
-        leader.run()
+        leader.run(debug=True)
 
     elif job_name == 'worker':
         # Sets up the env, shared variables (sync, classifier, queue, etc)
@@ -88,7 +88,7 @@ def run(args):
         learner = DaggerWorker(cluster, server, task_index, env, dataset_size)
 
         try:
-            learner.run()
+            learner.run(debug=True)
         except KeyboardInterrupt:
             pass
         finally:

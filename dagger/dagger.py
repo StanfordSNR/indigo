@@ -59,18 +59,18 @@ class DaggerLeader(object):
         self.sess = tf.Session(server.target)
         self.sess.run(tf.global_variables_initializer())
 
-    def run(self):
+    def run(self, debug=False):
         while True:
-            workers_ep_done = 0
-
-            sys.stderr.write("PSERVER ep %d: waiting for workers to finish" % self.curr_ep)
+            if debug:
+                sys.stderr.write("PSERVER ep %d: waiting for workers\n" %
+                                 self.curr_ep)
 
             # Keep watching the sync queue for worker statuses
+            workers_ep_done = 0
             while workers_ep_done < len(self.worker_tasks):
                 token = self.sess.run(self.sync_q.dequeue())
 
-                # Update the set of workers and the queue to reflect
-                # which workers are done or dead.
+                # Update which workers are done or dead
                 # Stale tokens will eventually be cleaned out
                 if token[0] not in self.worker_tasks:
                     pass
@@ -85,8 +85,11 @@ class DaggerLeader(object):
             # TODO Set up expert, summaries, and models training
             if workers_ep_done > 0:
                 num_examples = workers_ep_done * self.episode_max_steps
-                sys.stderr.write("PSERVER ep %d: reached dequeuing/training step" % self.curr_ep)
+                states, actions = self.train_q.dequeue_many(num_examples)
+                sys.stderr.write("PSERVER ep %d: dequeueing\n" % self.curr_ep)
             else:
+                sys.stderr.write("PSERVER ep %d: workers done. quitting...\n" % 
+                                 self.curr_ep)
                 break
 
             # After training, tell workers to start another episode
@@ -220,13 +223,15 @@ class DaggerWorker(object):
         self.env.reset()
         self.env.rollout()
 
-    def run(self):
+    def run(self, debug=False):
         """Runs for max_ep episodes, each time sending data to the leader."""
 
         pi = self.local_network
 
         while self.curr_ep < self.max_eps:
-            sys.stderr.write('Current global ep: %d\n' % self.curr_ep)
+            if debug:
+                sys.stderr.write('WORKER%d Current global ep: %d\n' %
+                                (self.task_idx, self.curr_ep))
 
             # Reset local parameters to global
             self.sess.run(self.sync_op)
@@ -238,6 +243,10 @@ class DaggerWorker(object):
                 self.states_data: self.state_buf,
                 self.action_data: self.action_buf})
             self.sess.run(self.sync_q.enqueue([self.task_idx, STATUS.EP_DONE]))
+
+            if debug:
+                sys.stderr.write('WORKER%d ep%d waiting for server\n' %
+                                (self.task_idx, self.curr_ep))
 
             # Wait until pserver finishes training by blocking on sync_q
             # Only proceeds when it finds its own message to.
