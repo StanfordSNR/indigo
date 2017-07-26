@@ -61,8 +61,8 @@ def main():
     model_path = path.join(project_root.DIR, 'a3c', 'logs', 'model')
 
     learner = Learner(
-        state_dim=sender.state_dim,
-        action_cnt=sender.action_cnt,
+        state_dim=Sender.state_dim,
+        action_cnt=Sender.action_cnt,
         restore_vars=model_path)
 
     sender.set_sample_action(learner.sample_action)

@@ -11,7 +11,12 @@ from helpers.helpers import (
 
 class Sender(object):
 
+    # RL related class/static variables
     max_steps = 1000
+    state_dim = 1
+    action_cnt = 4
+    action_mapping = [
+            ('*=', 2.0), ('+=', 5.0), ('+=', -5.0), ('*=', 0.5)]
 
     def __init__(self, port=0, train=False, debug=False):
         self.train = train
@@ -37,13 +42,8 @@ class Sender(object):
         self.seq_num = 0
         self.next_ack = 0
         self.cwnd = 10.0
-        step_len = 10  # ms
+        self.step_len = 10  # ms
 
-        # RL related
-        self.state_dim = 1
-        self.action_cnt = 4
-        self.action_mapping = [
-            ('*=', 2.0), ('+=', 5.0), ('+=', -5.0), ('*=', 0.5)]
         self.step_state_buf = []
         self.step_start_ts = None
         self.running = True

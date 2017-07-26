@@ -7,7 +7,7 @@ import numpy as np
 import tensorflow as tf
 from subprocess import check_call
 from os import path
-from dagger import DAggerLeader, DAggerWorker
+from dagger import DaggerLeader, DaggerWorker
 from env.environment import Environment
 from env.sender import Sender
 
@@ -18,7 +18,7 @@ def prepare_traces(bandwidth):
     if type(bandwidth) == int:
         trace_path = path.join(trace_dir, '%dmbps.trace' % bandwidth)
 
-        if !path.exists(trace_path):
+        if not path.exists(trace_path):
             gen_trace = path.join(project_root.DIR, 'helpers',
                                   'generate_trace.py')
             cmd = ['python', gen_trace, '--output-dir', trace_dir,
@@ -78,8 +78,14 @@ def run(args):
     if job_name == 'ps':
         # Sets up the queue, shared variables, and global classifier.
         worker_tasks = set([idx for idx in xrange(num_workers)])
-        leader = DaggerLeader(cluster, server, worker_tasks, Sender.max_steps)
-        leader.run(debug=True)
+        leader = DaggerLeader(cluster, server, worker_tasks, Sender.max_steps,
+                              Sender.state_dim, Sender.action_cnt)
+        try:
+            leader.run(debug=True)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            leader.cleanup()
 
     elif job_name == 'worker':
         # Sets up the env, shared variables (sync, classifier, queue, etc)
