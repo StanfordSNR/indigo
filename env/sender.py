@@ -10,6 +10,9 @@ from helpers.helpers import (
 
 
 class Sender(object):
+
+    max_steps = 1000
+
     def __init__(self, port=0, train=False, debug=False):
         self.train = train
         self.debug = debug
@@ -34,20 +37,19 @@ class Sender(object):
         self.seq_num = 0
         self.next_ack = 0
         self.cwnd = 10.0
+        step_len = 10  # ms
 
         # RL related
         self.state_dim = 1
         self.action_cnt = 4
         self.action_mapping = [
             ('*=', 2.0), ('+=', 5.0), ('+=', -5.0), ('*=', 0.5)]
-        self.step_len = 10  # ms
         self.step_state_buf = []
         self.step_start_ts = None
         self.running = True
 
         if self.train:
             self.step_cnt = 0
-            self.max_steps = 100
 
             # statistics variables to compute rewards
             self.sent_bytes = 0
@@ -179,7 +181,7 @@ class Sender(object):
 
             if self.train:
                 self.step_cnt += 1
-                if self.step_cnt >= self.max_steps:
+                if self.step_cnt >= Sender.max_steps:
                     self.step_cnt = 0
                     self.running = False
 

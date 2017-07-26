@@ -1,190 +1,249 @@
 import sys
+import time
+import project_root
 import numpy as np
 import tensorflow as tf
-import project_root
-from helpers.helpers import make_sure_path_exists
+import datetime
+import time
+from tensorflow import contrib
+from random import random
+from os import path
+from models import DaggerNetwork
+from helpers.helpers import make_sure_path_exists, ewma
 
 
-class Dagger(object):
-    def __init__(self, state_dim, action_cnt, train=False,
-                 save_vars=None, restore_vars=None, debug=False):
-        self.state_dim = state_dim
-        self.action_cnt = action_cnt
-        self.train = train
-        self.save_vars = save_vars
-        self.restore_vars = restore_vars
-        self.debug = debug
+class STATUS:
+    EP_DONE = 0
+    WORKER_DONE = 1
 
-        # start tensorflow session and build tensorflow graph
-        self.session = tf.Session()
-        self.build_tf_graph()
-        self.train_iter = 0
 
-        if self.debug:
-            np.set_printoptions(precision=3)
-            np.set_printoptions(suppress=True)
+class DaggerExpert(object):
+    def __init__(self):
+        pass
 
-        if not self.train:  # production
-            assert self.save_vars is None
-            assert self.restore_vars is not None
-        else:
-            # buffers for each batch
-            self.state_buf_batch = []
-            self.action_buf_batch = []
+    def sample_action(self):
+        return 1
 
-        if self.restore_vars is None:
-            # initialize variables
-            self.session.run(tf.global_variables_initializer())
-        else:
-            # restore saved variables
-            saver = tf.train.Saver(self.trainable_vars)
-            saver.restore(self.session, self.restore_vars)
-            if self.debug:
-                print 'Restored variables:'
-                print self.session.run(self.trainable_vars)
 
-            # init the remaining vars, especially those created by optimizer
-            uninit_vars = set(tf.global_variables()) - set(self.trainable_vars)
-            self.session.run(tf.variables_initializer(uninit_vars))
+class DaggerLeader(object):
+    def __init__(self, cluster, server, worker_tasks, episode_max_steps):
+        self.cluster = cluster
+        self.server = server
+        self.worker_tasks = worker_tasks
+        self.num_workers = len(worker_tasks)
+        self.episode_max_steps = episode_max_steps
+        self.curr_ep = 0
 
-    def build_tf_graph(self):
-        self.build_policy()
+        # Create the master network and training/sync queues
+        with tf.variable_scope('global'):
+            self.global_network = DaggerNetwork(
+                    state_dim=self.state_dim, action_cnt=self.action_cnt)
 
-        if self.train:
-            self.build_loss()
+        # Each element is [state], action
+        # Start queue capacity at maximum possible training samples
+        self.train_queue_capacity = episode_max_steps * self.num_workers
+        self.train_q = tf.RandomShuffleQueue(
+                self.train_queue_capacity, 0,
+                [tf.float32, tf.int16],
+                shapes=[[self.state_dim],[]],
+                shared_name='training_feed')
 
-        if self.debug:
-            summary_path = 'dagger_summary'
-            make_sure_path_exists(summary_path)
-            self.summary_writer = tf.summary.FileWriter(
-                summary_path, graph=self.session.graph)
+        # Elements are worker task index to token message
+        # Sync queue should overestimate due to some possible race conditions
+        self.sync_q_capacity = self.num_workers * 2
+        self.sync_q = tf.FIFOQueue(
+                self.sync_q_capacity, [tf.int16, tf.int16],
+                shared_name="sync_queue")
 
-            tf.summary.scalar('reg_loss', self.reg_loss)
-            tf.summary.scalar('total_loss', self.loss)
-            self.summary_op = tf.summary.merge_all()
+        # Create session
+        self.sess = tf.Session(server.target)
+        self.sess.run(tf.global_variables_initializer())
 
-    def build_policy(self):
-        self.state = tf.placeholder(tf.float32, [None, self.state_dim])
+    def run(self):
+        while True:
+            workers_ep_done = 0
 
-        # softmax classification
-        h1_dim = 20
-        W1 = tf.get_variable('W1', [self.state_dim, h1_dim],
-                             initializer=tf.random_normal_initializer())
-        b1 = tf.get_variable('b1', [h1_dim],
-                             initializer=tf.constant_initializer(0.0))
-        h1 = tf.nn.tanh(tf.matmul(self.state, W1) + b1)
+            sys.stderr.write("PSERVER ep %d: waiting for workers to finish" % self.curr_ep)
 
-        W2 = tf.get_variable('W2', [h1_dim, self.action_cnt],
-                             initializer=tf.random_normal_initializer())
-        b2 = tf.get_variable('b2', [self.action_cnt],
-                             initializer=tf.constant_initializer(0.0))
-        self.action_scores = tf.matmul(h1, W2) + b2
-        self.predicted_action = tf.reshape(
-            tf.argmax(self.action_scores, 1), [])
+            # Keep watching the sync queue for worker statuses
+            while workers_ep_done < len(self.worker_tasks):
+                token = self.sess.run(self.sync_q.dequeue())
 
-        self.trainable_vars = [W1, b1, W2, b2]
+                # Update the set of workers and the queue to reflect
+                # which workers are done or dead.
+                # Stale tokens will eventually be cleaned out
+                if token[0] not in self.worker_tasks:
+                    pass
+                elif token[1] == STATUS.EP_DONE:
+                    workers_ep_done += 1
+                elif token[1] == STATUS.WORKER_DONE:
+                    self.worker_tasks.remove(token[0])
+                else:
+                    self.sess.run(self.sync_q.enqueue(token))
 
-    def build_loss(self):
-        self.expert_action = tf.placeholder(tf.int32, [None])
+            # Now dequeue all the examples from the queue and train
+            # TODO Set up expert, summaries, and models training
+            if workers_ep_done > 0:
+                num_examples = workers_ep_done * self.episode_max_steps
+                sys.stderr.write("PSERVER ep %d: reached dequeuing/training step" % self.curr_ep)
+            else:
+                break
 
-        # regularization loss
-        reg_penalty = 0.01
-        self.reg_loss = 0.0
-        for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
-            self.reg_loss += tf.nn.l2_loss(x)
-        self.reg_loss *= reg_penalty
+            # After training, tell workers to start another episode
+            worker_start_msgs = [
+                    [idx for idx in self.worker_tasks],
+                    [STATUS.WORKER_START] * len(self.worker_tasks
+            ]
+            self.sess.run(self.sync_q.enqueue_many(worker_start_msgs)
 
-        # cross entropy loss
-        self.ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-            labels=self.expert_action, logits=self.action_scores)
+            self.curr_ep += 1
 
-        # total loss
-        self.loss = self.ce_loss + self.reg_loss
-        self.loss = tf.reduce_mean(self.loss)
 
-        optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
-        self.train_op = optimizer.minimize(self.loss)
+class DaggerWorker(object):
+    def __init__(self, cluster, server, task_idx, env, dataset_size):
+        # Distributed tensorflow related
+        self.cluster = cluster
+        self.env = env
+        self.task_idx = task_idx
+        self.is_chief = (task_idx == 0)
+        self.worker_device = '/job:worker/task:%d' % task_idx
+        self.num_workers = cluster.num_tasks('worker')
+        self.time_file = open('/tmp/sample_action_time', 'w')
 
-    def normalize_state(self, state):
-        norm_state = np.array(state, dtype=np.float32)
+        # Buffers and parameters required to train
+        self.state_buf = []
+        self.action_buf = []
+        self.state_dim = env.state_dim
+        self.action_cnt = env.action_cnt
 
-        # queuing_delay, mostly in [0, 210]
-        queuing_delays = norm_state[:, 0]
-        queuing_delays /= 105.0
-        queuing_delays -= 1.0
+        # Counters and hyperparameters
+        self.curr_ep = 0
+        self.max_ep = 2000
+        self.check_point = 1000
+        self.train_queue_capacity = dataset_size
+        self.ewma_window = 3    # alpha = 2 / (window+1)
+        self.use_expert_prob = 0.75
+        self.expert = DaggerExpert(self.ewma_window)
 
-        # send_ewma and ack_ewma, mostly in [0, 16]
-        for i in [1, 2]:
-            ewmas = norm_state[:, i]
-            ewmas /= 8.0
-            ewmas -= 1.0
+        # Must call env.set_sample_action() before env.run()
+        env.set_sample_action(self.sample_action)
 
-        # make sure all features lie in [-1.0, 1.0]
-        norm_state[norm_state > 1.0] = 1.0
-        norm_state[norm_state < -1.0] = -1.0
-        return norm_state
+        # Setup local tensorflow ops and classifier
+        self.setup_tf_ops()
 
-    def sample_expert_action(self, state):
-        queuing_delay = state[0]
+        # Create session
+        self.sess = tf.Session(server.target)
+        self.sess.run(tf.global_variables_initializer())
 
-        for action in xrange(5):
-            if queuing_delay >= 10 * (4 - action):
-                return action
+    def cleanup(self):
+        self.env.cleanup()
+        self.sess.run(self.sync_q.enqueue([self.task_idx, STATUS.WORKER_DONE]))
 
+    def setup_tf_ops(self):
+        """ Sets up the shared global neural network, global ep,
+        and training and syncing queue and various ops.
+        """
+        with tf.device(tf.train.replica_device_setter(
+                worker_device=self.worker_device,
+                cluster=self.cluster)):
+
+            with tf.variable_scope('global'):
+                self.global_network = DaggerNetwork(
+                        state_dim=self.state_dim, action_cnt=self.action_cnt)
+
+        # Build shared queues for training data and synchronization
+        # Refer to DaggerLeader for more information
+        with tf.device("/job:ps/task:0")
+            self.train_q = tf.RandomShuffleQueue(
+                    self.train_queue_capacity, 0,
+                    [tf.float32, tf.int16],
+                    shapes=[[self.state_dim],[]],
+                    shared_name='training_feed')
+
+            self.sync_workers_q = tf.FIFOQueue(
+                    self.num_workers * 2, [tf.int16, tf.int16],
+                    shared_name="sync_queue")
+
+        with tf.device(self.worker_device):
+            with tf.variable_scope('local'):
+                self.local_network = DaggerNetwork(
+                        state_dim=self.state_dim, action_cnt=self.action_cnt)
+
+            # Training data is two lists of states and actions.
+            self.states_data = tf.placeholder(tf.float32, shape=(2, None))
+            self.action_data = tf.placeholder(tf.int16, shape=(None))
+            self.enqueue_train_op = self.train_q.enqueue_many(
+                    [self.states_data, self.actions_data])
+
+        # Sync local network to global network
+        local_vars = self.local_network.trainable_vars
+        global_vars = self.global_network.trainable_vars
+        self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
+            local_vars, global_vars)])
+
+    def sample_action(self, ep_state_buf):
+        """ Given a buffer of states in the past episode, returns an action
+        to perform.
+
+        Appends to the state/action buffers the state and the
+        "correct" action to take according to the expert.
+        """
+
+        # ravel() is a faster flatten()
+        flat_ep_state_buf = np.asarray(ep_state_buf, dtype=np.float32).ravel()
+        ewma_delay = ewma(flat_ep_state_buf, self.emwa_window)
+        expert_action = self.expert.sample_action(ewma_delay)
+
+        self.state_buf.extend([[ewma_delay]])
+        self.action_buf.append(expert_action)
+
+        # Exponentially decaying probability to actually use the expert action
+        if random() < (self.use_expert_prob ** self.curr_ep):
+            return expert_action
+
+        # Get probability of each action from the local network.
+        start_time = time.time()
+        pi = self.local_network
+        action_probs = self.sess.run(pi.action_probs,
+                                     feed_dict={pi.states: [[ewma_delay]]})
+        elapsed_time = time.time() - start_time
+        self.time_file.write('sample_action: %s sec.\n' % elapsed_time)
+
+        # Choose an action to take
+        action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
         return action
 
-    def sample_action(self, state):
-        if not self.train or self.train_iter > 0:
-            norm_state = self.normalize_state([state])
-            action = self.session.run(self.predicted_action,
-                                      {self.state: norm_state})
-        else:
-            action = self.sample_expert_action(state)
+    def rollout(self):
+        """ Start an episode/flow with an empty dataset/environment. """
+        self.state_buf = []
+        self.action_buf = []
+        self.env.reset()
+        self.env.rollout()
 
-        return action
+    def run(self):
+        """Runs for max_ep episodes, each time sending data to the leader."""
 
-    def store_episode(self, state_buf):
-        assert self.train
+        pi = self.local_network
 
-        self.state_buf_batch.extend(state_buf)
+        while self.curr_ep < self.max_eps:
+            sys.stderr.write('Current global ep: %d\n' % self.curr_ep)
 
-        # label states with expert actions
-        for state in state_buf:
-            expert_action = self.sample_expert_action(state)
-            self.action_buf_batch.append(expert_action)
+            # Reset local parameters to global
+            self.sess.run(self.sync_op)
+            # Start a single episode, populating state-action buffers.
+            self.rollout()
 
-    def update_model(self):
-        assert self.train
+            # Enqueue all of the state/action pairs into the training queue.
+            self.sess.run(self.enqueue_train_op, feed_dict={
+                self.states_data: self.state_buf,
+                self.action_data: self.action_buf})
+            self.sess.run(self.sync_q.enqueue([self.task_idx, STATUS.EP_DONE]))
 
-        self.train_iter += 1
-        sys.stderr.write('Updating model...\n')
+            # Wait until pserver finishes training by blocking on sync_q
+            # Only proceeds when it finds its own message to.
+            token = self.sess.run(self.sync_q.dequeue())
+            while token[0] != self.task_idx:
+                self.sess.run(self.sync_q.enqueue(token))
+                token = self.sess.run(self.sync_q.dequeue())
 
-        norm_state_buf = self.normalize_state(self.state_buf_batch)
-
-        if not self.debug:
-            self.session.run(self.train_op, {
-                self.state: norm_state_buf,
-                self.expert_action: self.action_buf_batch
-            })
-        else:
-            _, summary = self.session.run([self.train_op, self.summary_op], {
-                self.state: norm_state_buf,
-                self.expert_action: self.action_buf_batch
-            })
-
-            self.summary_writer.add_summary(summary, self.train_iter)
-
-        self.state_buf_batch = []
-        self.action_buf_batch = []
-
-    def save_model(self):
-        assert self.train
-        assert self.save_vars is not None
-
-        saver = tf.train.Saver(self.trainable_vars)
-        saver.save(self.session, self.save_vars)
-        sys.stderr.write('\nModel saved to %s\n' % self.save_vars)
-
-        if self.debug:
-            print 'Saved variables:'
-            print self.session.run(self.trainable_vars)
+            self.curr_ep += 1
