@@ -1,3 +1,4 @@
+# TODO Set up expert, summaries, and models training
 import sys
 import time
 import project_root
@@ -9,6 +10,7 @@ from tensorflow import contrib
 from random import random
 from os import path
 from models import DaggerNetwork
+from env.sender import Sender
 from helpers.helpers import make_sure_path_exists, ewma
 
 
@@ -20,46 +22,55 @@ class Status:
 
 
 class DaggerExpert(object):
+    """ Naive LEDBAT implementation """
     def __init__(self):
-        pass
+        self.base_delay = float("inf")
+        self.target = 100
+        self.gain = 1
+        self.actions_index = zip(Sender.action_mapping,
+                                 xrange(len(Sender.action_mapping)))
 
-    def sample_action(self, ewma_delay):
-        return 1
+    def sample_action(self, ewma_delay, cwnd):
+        self.base_delay = min(self.base_delay, ewma_delay)
+        queuing_delay = ewma_delay - self.base_delay
+        off_target = self.target - queuing_delay
+        cwnd_inc = self.gain * off_target / cwnd
 
+        # Gets the action closest to the actual increase to the cwnd
+        action = min(self.actions_index, key=lambda x: abs(x[0]-cwnd_inc))
+        return int(action[1])
 
 class DaggerLeader(object):
-    def __init__(self, cluster, server, worker_tasks, episode_max_steps,
-                 state_dim, action_cnt):
+    def __init__(self, cluster, server, worker_tasks):
 
         self.cluster = cluster
         self.server = server
         self.worker_tasks = worker_tasks
         self.num_workers = len(worker_tasks)
-        self.episode_max_steps = episode_max_steps
+        self.episode_max_steps = Sender.max_steps
         self.max_eps = 2000
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
             self.global_network = DaggerNetwork(
-                    state_dim=state_dim, action_cnt=action_cnt)
+                    state_dim=Sender.state_dim, action_cnt=Sender.action_cnt)
 
         # Each element is [state], action
-        # Start queue capacity at maximum possible training samples
-        self.train_queue_capacity = episode_max_steps * self.num_workers
+        # Queue capacity = maximum possible training samples
+        self.train_queue_capacity = self.episode_max_steps * self.num_workers
         self.train_q = tf.RandomShuffleQueue(
                 self.train_queue_capacity, 0,
                 [tf.float32, tf.int16],
-                shapes=[[state_dim],[]],
+                shapes=[[Sender.state_dim],[]],
                 shared_name='training_feed')
 
-        # Elements are worker task index to token message
-        # Sync queue should overestimate due to some possible race conditions
+        # Elements: [worker index, status message)
+        # Extra space in the queue to take care of race conditions
         self.sync_q_capacity = self.num_workers * 2
         self.sync_q = tf.FIFOQueue(
                 self.sync_q_capacity, [tf.int16, tf.int16],
                 shared_name='sync_queue')
 
-        # Create session
         self.sess = tf.Session(server.target)
         self.sess.run(tf.global_variables_initializer())
 
@@ -98,8 +109,7 @@ class DaggerLeader(object):
 
             workers_ep_done = self.wait_on_workers()
         
-            # Now dequeue all the examples from the queue and train
-            # TODO Set up expert, summaries, and models training
+            # If workers had data, dequeue ALL the examples and train
             if workers_ep_done > 0:
                 if debug:
                     sys.stderr.write('[PSERVER EP %d]: dequeueing\n'
@@ -114,6 +124,10 @@ class DaggerLeader(object):
                                       '     states: %s\n'
                                       '     actions: %s\n') 
                                       % (curr_ep, states, actions))
+
+                # train, using mini batches from the states and actions
+               
+
             else:
                 if debug:
                     sys.stderr.write('[PSERVER ep %d]: quitting...\n' 
@@ -128,8 +142,8 @@ class DaggerLeader(object):
 
 
 class DaggerWorker(object):
-    def __init__(self, cluster, server, task_idx, env, dataset_size):
-        # Distributed tensorflow related
+    def __init__(self, cluster, server, task_idx, env):
+        # Distributed tensorflow and logging related
         self.cluster = cluster
         self.env = env
         self.task_idx = task_idx
@@ -146,7 +160,7 @@ class DaggerWorker(object):
         self.action_cnt = env.action_cnt
 
         # Hyperparameters
-        self.train_queue_capacity = dataset_size
+        self.train_queue_capacity = Sender.max_steps * self.num_workers
         self.ewma_window = 3    # alpha = 2 / (window+1)
         self.use_expert_prob = 0.75
         self.expert = DaggerExpert()
@@ -154,10 +168,8 @@ class DaggerWorker(object):
         # Must call env.set_sample_action() before env.run()
         env.set_sample_action(self.sample_action)
 
-        # Setup local tensorflow ops and classifier
+        # Set up Tensorflow for synchronization, training
         self.setup_tf_ops()
-
-        # Create session
         self.sess = tf.Session(server.target)
         self.sess.run(tf.global_variables_initializer())
 
@@ -166,9 +178,11 @@ class DaggerWorker(object):
         self.sess.run(self.sync_q.enqueue([self.task_idx, Status.WORKER_DONE]))
 
     def setup_tf_ops(self):
-        """ Sets up the shared global neural network, global ep,
-        and training and syncing queue and various ops.
+        """ Sets up the shared Tensorflow operators and structures
+        Refer to DaggerLeader for more information
         """
+
+        # Set up the shared global network and local network.
         with tf.device(tf.train.replica_device_setter(
                 worker_device=self.worker_device,
                 cluster=self.cluster)):
@@ -177,8 +191,12 @@ class DaggerWorker(object):
                 self.global_network = DaggerNetwork(
                         state_dim=self.state_dim, action_cnt=self.action_cnt)
 
+        with tf.device(self.worker_device):
+            with tf.variable_scope('local'):
+                self.local_network = DaggerNetwork(
+                        state_dim=self.state_dim, action_cnt=self.action_cnt)
+
         # Build shared queues for training data and synchronization
-        # Refer to DaggerLeader for more information
         with tf.device('/job:ps/task:0'):
             self.train_q = tf.RandomShuffleQueue(
                     self.train_queue_capacity, 0,
@@ -190,12 +208,7 @@ class DaggerWorker(object):
                     self.num_workers * 2, [tf.int16, tf.int16],
                     shared_name='sync_queue')
 
-        with tf.device(self.worker_device):
-            with tf.variable_scope('local'):
-                self.local_network = DaggerNetwork(
-                        state_dim=self.state_dim, action_cnt=self.action_cnt)
-
-        # Training data is two lists of states and actions.
+        # Training data is [[state]], [action]
         self.states_data = tf.placeholder(tf.float32, 
                                           shape=(None, self.state_dim))
         self.action_data = tf.placeholder(tf.int16, shape=(None))
@@ -208,20 +221,22 @@ class DaggerWorker(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             local_vars, global_vars)])
 
-    def sample_action(self, ep_state_buf):
-        """ Given a buffer of states in the past episode, returns an action
+    def sample_action(self, step_state_buf):
+        """ Given a buffer of states in the past step, returns an action
         to perform.
 
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
 
-        # ravel() is a faster flatten()
-        flat_ep_state_buf = np.asarray(ep_state_buf, dtype=np.float32).ravel()
-        ewma_delay = ewma(flat_ep_state_buf, self.ewma_window)
-        expert_action = self.expert.sample_action(ewma_delay)
+        # For ewma delay, only want first component, the one-way delay
+        # For the cwnd, try only the most recent cwnd
+        owd_buf = np.asarray([state[0] for state in step_state_buf])
+        ewma_delay = ewma(owd_buf, self.ewma_window)
+        last_cwnd = step_state_buf[-1][1]
+        expert_action = self.expert.sample_action(ewma_delay, last_cwnd)
 
-        self.state_buf.extend([[ewma_delay]])
+        self.state_buf.extend([[ewma_delay, last_cwnd]])
         self.action_buf.append(expert_action)
 
         # Exponentially decaying probability to actually use the expert action
@@ -232,7 +247,7 @@ class DaggerWorker(object):
         start_time = time.time()
         pi = self.local_network
         action_probs = self.sess.run(pi.action_probs,
-                                     feed_dict={pi.states: [[ewma_delay]]})
+                                     feed_dict={pi.states: step_state_buf})
         elapsed_time = time.time() - start_time
         self.time_file.write('sample_action: %s sec.\n' % elapsed_time)
 
@@ -253,7 +268,7 @@ class DaggerWorker(object):
         pi = self.local_network
         while True:
             if debug:
-                sys.stderr.write('[WORKER %d Ep %d]\n' %
+                sys.stderr.write('[WORKER %d Ep %d] Starting...\n' %
                                 (self.task_idx, self.curr_ep))
 
             # Reset local parameters to global

@@ -11,12 +11,11 @@ from helpers.helpers import (
 
 class Sender(object):
 
-    # RL related class/static variables
+    # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 1
-    action_cnt = 4
-    action_mapping = [
-            ('*=', 2.0), ('+=', 5.0), ('+=', -5.0), ('*=', 0.5)]
+    state_dim = 2
+    action_mapping = [-10.0, -6.0, -2.0, 0.0, 2.0, 6.0, 10.0]
+    action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False, debug=False):
         self.train = train
@@ -88,9 +87,9 @@ class Sender(object):
         send_ts = ack['ack_send_ts']
         recv_ts = ack['ack_recv_ts']
 
-        # one-way delay
+        # state is [one-way delay, cwnd]
         curr_delay = recv_ts - send_ts
-        state = [curr_delay]
+        state = [curr_delay, self.cwnd]
 
         if self.train:
             self.acked_bytes += ack['ack_bytes']
@@ -102,12 +101,9 @@ class Sender(object):
         return state
 
     def take_action(self, action):
-        op, val = self.action_mapping[action]
+        delta = self.action_mapping[action]
 
-        if op == '+=':
-            self.cwnd += val
-        elif op == '*=':
-            self.cwnd *= val
+        self.cwnd += delta
 
         self.cwnd = min(max(5.0, self.cwnd), 1000.0)
 
