@@ -1,4 +1,3 @@
-# TODO Set up expert, summaries, and models training
 import sys
 import time
 import project_root
@@ -25,8 +24,8 @@ class DaggerExpert(object):
     """ Naive LEDBAT implementation """
     def __init__(self):
         self.base_delay = float("inf")
-        self.target = 100
-        self.gain = 1
+        self.target = 100.0
+        self.gain = 1.0
         self.actions_index = zip(Sender.action_mapping,
                                  xrange(len(Sender.action_mapping)))
 
@@ -48,7 +47,10 @@ class DaggerLeader(object):
         self.worker_tasks = worker_tasks
         self.num_workers = len(worker_tasks)
         self.episode_max_steps = Sender.max_steps
+        self.curr_train_step = 0
         self.max_eps = 2000
+        self.num_batches = 10
+        self.learn_rate = 1e-3
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
@@ -60,7 +62,7 @@ class DaggerLeader(object):
         self.train_queue_capacity = self.episode_max_steps * self.num_workers
         self.train_q = tf.RandomShuffleQueue(
                 self.train_queue_capacity, 0,
-                [tf.float32, tf.int16],
+                [tf.float32, tf.int32],
                 shapes=[[Sender.state_dim],[]],
                 shared_name='training_feed')
 
@@ -71,14 +73,37 @@ class DaggerLeader(object):
                 self.sync_q_capacity, [tf.int16, tf.int16],
                 shared_name='sync_queue')
 
-        self.sess = tf.Session(server.target)
-        self.sess.run(tf.global_variables_initializer())
+        self.setup_tf_ops(server)
 
     def cleanup(self):
         end_worker_msgs = [
                 [idx for idx in self.worker_tasks],
                 [Status.PS_DONE] * len(self.worker_tasks)]
-        self.sess.run(self.sync_q.enqueue_many(worker_start_msgs))
+        self.sess.run(self.sync_q.enqueue_many(end_worker_msgs))
+
+    def setup_tf_ops(self, server):
+        """ Sets up Tensorboard operators and tools, such as the optimizer,
+        summary values, Tensorboard, and Session.
+        """
+
+        self.actions = tf.placeholder(tf.int32, [None])
+        self.cross_entropy_loss = tf.reduce_mean(
+                tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    labels=self.actions, 
+                    logits=self.global_network.action_scores))
+        optimizer = tf.train.AdamOptimizer(self.learn_rate)
+        self.train_step = optimizer.minimize(self.cross_entropy_loss)
+
+        tf.summary.scalar('reduced_ce_loss', self.cross_entropy_loss)
+        self.summary_op = tf.summary.merge_all()
+
+        self.sess = tf.Session(server.target)
+        self.sess.run(tf.global_variables_initializer())
+
+        date_time = datetime.datetime.now().strftime('%Y-%m-%d--%H-%M-%S')
+        self.logdir = path.join(project_root.DIR, 'dagger', 'logs', date_time)
+        make_sure_path_exists(self.logdir)
+        self.train_writer = tf.summary.FileWriter(self.logdir, self.sess.graph)
 
     def wait_on_workers(self):
         """ Update which workers are done or dead. Stale tokens will 
@@ -99,6 +124,48 @@ class DaggerLeader(object):
                 self.sess.run(self.sync_q.enqueue(token))
 
         return workers_ep_done
+
+    # TODO Set up summaries, and models training
+    # Should data be queued one by one? All at once? In batches?
+    # Should we switch from queues to tf.train.shuffle_batch?
+    # What about TFRecords and input_producers?
+    def train(self, num_examples, states, actions):
+        """ Runs the training operator until the loss converges.
+        Batches the state action pairs and repeatedly trains on
+        those batches.
+        """
+
+        # In case number of batches > number of examples
+        self.num_batches = min(num_examples, self.num_batches)
+        batch_size = num_examples / self.num_batches
+        prev_loss = float("inf")
+        curr_loss = 1e10
+        loss_delta = 1e-1
+        batch_num = 0
+
+        while abs(prev_loss - curr_loss) > loss_delta:
+
+            ops_to_run = [self.train_step, self.cross_entropy_loss]
+            if self.curr_train_step % 10 == 0: 
+                ops_to_run.append(self.summary_op)
+                sys.stderr.write('On %d step of training' % self.curr_train_step)
+
+            start = batch_size * batch_num
+            end = start + batch_size
+            ret = self.sess.run(ops_to_run, feed_dict={
+                self.global_network.states: states[start:end],
+                self.actions: actions[start:end]}
+            )
+
+            if self.curr_train_step % 10 == 0:
+                summary = ret[2]
+                self.train_writer.add_summary(summary, self.curr_train_step)
+
+            prev_loss = curr_loss
+            curr_loss = ret[1]
+            self.curr_train_step += 1
+            batch_num += 1
+            batch_num = min(batch_num, self.num_batches-1)
 
     def run(self, debug=False):
         for curr_ep in xrange(self.max_eps):
@@ -121,13 +188,11 @@ class DaggerLeader(object):
 
                 if debug:
                     sys.stderr.write(('[PSERVER EP %d]: finished dequeueing\n'
+                                      'Starting training\n'
                                       '     states: %s\n'
                                       '     actions: %s\n') 
                                       % (curr_ep, states, actions))
-
-                # train, using mini batches from the states and actions
-               
-
+                self.train(num_examples, states, actions)
             else:
                 if debug:
                     sys.stderr.write('[PSERVER ep %d]: quitting...\n' 
@@ -150,7 +215,6 @@ class DaggerWorker(object):
         self.is_chief = (task_idx == 0)
         self.worker_device = '/job:worker/task:%d' % task_idx
         self.num_workers = cluster.num_tasks('worker')
-        self.time_file = open('/tmp/sample_action_time', 'w')
 
         # Buffers and parameters required to train
         self.curr_ep = 0
@@ -200,7 +264,7 @@ class DaggerWorker(object):
         with tf.device('/job:ps/task:0'):
             self.train_q = tf.RandomShuffleQueue(
                     self.train_queue_capacity, 0,
-                    [tf.float32, tf.int16],
+                    [tf.float32, tf.int32],
                     shapes=[[self.state_dim],[]],
                     shared_name='training_feed')
 
@@ -211,7 +275,7 @@ class DaggerWorker(object):
         # Training data is [[state]], [action]
         self.states_data = tf.placeholder(tf.float32, 
                                           shape=(None, self.state_dim))
-        self.action_data = tf.placeholder(tf.int16, shape=(None))
+        self.action_data = tf.placeholder(tf.int32, shape=(None))
         self.enqueue_train_op = self.train_q.enqueue_many(
                 [self.states_data, self.action_data])
 
@@ -244,13 +308,10 @@ class DaggerWorker(object):
             return expert_action
 
         # Get probability of each action from the local network.
-        start_time = time.time()
         pi = self.local_network
         action_probs = self.sess.run(pi.action_probs,
-                                     feed_dict={pi.states: step_state_buf})
-        elapsed_time = time.time() - start_time
-        self.time_file.write('sample_action: %s sec.\n' % elapsed_time)
-
+                                     feed_dict={pi.states: [[ewma_delay,
+                                                             last_cwnd]]})
         # Choose an action to take
         action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
         return action

@@ -10,7 +10,8 @@ class DaggerNetwork(object):
         actor_h1 = layers.relu(self.states, 8)
         actor_h2 = layers.relu(actor_h1, 8)
         self.action_scores = layers.linear(actor_h2, action_cnt)
-        self.action_probs = tf.nn.softmax(self.action_scores)
+        self.action_probs = tf.nn.softmax(self.action_scores,
+                                          name='action_probs')
 
         self.trainable_vars = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
