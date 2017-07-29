@@ -46,11 +46,12 @@ class DaggerLeader(object):
         self.server = server
         self.worker_tasks = worker_tasks
         self.num_workers = len(worker_tasks)
-        self.episode_max_steps = Sender.max_steps
         self.curr_train_step = 0
         self.max_eps = 2000
+        self.check_point = 1000
         self.num_batches = 10
         self.learn_rate = 1e-3
+        self.loss_delta = 1e-1
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
@@ -59,7 +60,7 @@ class DaggerLeader(object):
 
         # Each element is [state], action
         # Queue capacity = maximum possible training samples
-        self.train_queue_capacity = self.episode_max_steps * self.num_workers
+        self.train_queue_capacity = Sender.max_steps * self.num_workers
         self.train_q = tf.RandomShuffleQueue(
                 self.train_queue_capacity, 0,
                 [tf.float32, tf.int32],
@@ -76,10 +77,24 @@ class DaggerLeader(object):
         self.setup_tf_ops(server)
 
     def cleanup(self):
+        """ Sends messages to each worker to stop and saves the model """
         end_worker_msgs = [
                 [idx for idx in self.worker_tasks],
                 [Status.PS_DONE] * len(self.worker_tasks)]
         self.sess.run(self.sync_q.enqueue_many(end_worker_msgs))
+        self.save_model()
+
+    def save_model(self, check_point=None):
+        """ Takes care of saving/checkpointing the model. """
+        if check_point is None:
+            model_path = path.join(self.logdir, 'model')
+        else:
+            model_path = path.join(self.logdir, 'checkpoint-%d' % check_point)
+
+        # save local parameters to worker-0
+        saver = tf.train.Saver(self.global_network.trainable_vars)
+        saver.save(self.sess, model_path)
+        sys.stderr.write('\nModel saved to pserver at %s\n' % model_path)
 
     def setup_tf_ops(self, server):
         """ Sets up Tensorboard operators and tools, such as the optimizer,
@@ -112,16 +127,16 @@ class DaggerLeader(object):
         """
         workers_ep_done = 0
         while workers_ep_done < len(self.worker_tasks):
-            token = self.sess.run(self.sync_q.dequeue())
+            worker, msg = self.sess.run(self.sync_q.dequeue())
 
-            if token[0] not in self.worker_tasks:
+            if worker not in self.worker_tasks:
                 pass
-            elif token[1] == Status.EP_DONE:
+            elif msg == Status.EP_DONE:
                 workers_ep_done += 1
-            elif token[1] == Status.WORKER_DONE:
-                self.worker_tasks.remove(token[0])
+            elif msg == Status.WORKER_DONE:
+                self.worker_tasks.remove(worker)
             else:
-                self.sess.run(self.sync_q.enqueue(token))
+                self.sess.run(self.sync_q.enqueue([worker, msg]))
 
         return workers_ep_done
 
@@ -140,15 +155,19 @@ class DaggerLeader(object):
         batch_size = num_examples / self.num_batches
         prev_loss = float("inf")
         curr_loss = 1e10
-        loss_delta = 1e-1
+        self.loss_delta = 1e-1
         batch_num = 0
+        curr_ep_train_step = 0
+        min_train_steps = self.num_batches * 2
 
-        while abs(prev_loss - curr_loss) > loss_delta:
+        while ((prev_loss - curr_loss > self.loss_delta) or
+               (curr_ep_train_step < min_train_steps)):
 
             ops_to_run = [self.train_step, self.cross_entropy_loss]
-            if self.curr_train_step % 10 == 0: 
+
+            if self.curr_train_step % self.num_batches == 0: 
                 ops_to_run.append(self.summary_op)
-                sys.stderr.write('On %d step of training' % self.curr_train_step)
+                sys.stderr.write('On %d training step\n' % self.curr_train_step)
 
             start = batch_size * batch_num
             end = start + batch_size
@@ -157,13 +176,14 @@ class DaggerLeader(object):
                 self.actions: actions[start:end]}
             )
 
-            if self.curr_train_step % 10 == 0:
+            if self.curr_train_step % self.num_batches == 0:
                 summary = ret[2]
                 self.train_writer.add_summary(summary, self.curr_train_step)
 
             prev_loss = curr_loss
             curr_loss = ret[1]
             self.curr_train_step += 1
+            curr_ep_train_step += 1
             batch_num += 1
             batch_num = min(batch_num, self.num_batches-1)
 
@@ -179,19 +199,15 @@ class DaggerLeader(object):
             # If workers had data, dequeue ALL the examples and train
             if workers_ep_done > 0:
                 if debug:
-                    sys.stderr.write('[PSERVER EP %d]: dequeueing\n'
-                                     % curr_ep)
+                    sys.stderr.write('[PSERVER EP %d]: dequeueing\n' % curr_ep)
 
-                num_examples = workers_ep_done * self.episode_max_steps
+                num_examples = self.sess.run(self.train_q.size())
                 states, actions = self.sess.run(
                         self.train_q.dequeue_many(num_examples))
 
                 if debug:
-                    sys.stderr.write(('[PSERVER EP %d]: finished dequeueing\n'
-                                      'Starting training\n'
-                                      '     states: %s\n'
-                                      '     actions: %s\n') 
-                                      % (curr_ep, states, actions))
+                    sys.stderr.write('[PSERVER EP %d]: starting training\n' % curr_ep)
+
                 self.train(num_examples, states, actions)
             else:
                 if debug:
@@ -213,6 +229,7 @@ class DaggerWorker(object):
         self.env = env
         self.task_idx = task_idx
         self.is_chief = (task_idx == 0)
+        self.leader_device = '/job:ps/task:0'
         self.worker_device = '/job:worker/task:%d' % task_idx
         self.num_workers = cluster.num_tasks('worker')
 
@@ -261,7 +278,7 @@ class DaggerWorker(object):
                         state_dim=self.state_dim, action_cnt=self.action_cnt)
 
         # Build shared queues for training data and synchronization
-        with tf.device('/job:ps/task:0'):
+        with tf.device(self.leader_device):
             self.train_q = tf.RandomShuffleQueue(
                     self.train_queue_capacity, 0,
                     [tf.float32, tf.int32],
@@ -362,13 +379,14 @@ class DaggerWorker(object):
                                 (self.task_idx, self.curr_ep))
 
             # Wait until pserver finishes training by blocking on sync_q
-            # Only proceeds when it finds its own message to.
-            token = self.sess.run(self.sync_q.dequeue())
-            while token[0] != self.task_idx:
-                self.sess.run(self.sync_q.enqueue(token))
-                token = self.sess.run(self.sync_q.dequeue())
+            # Only proceeds when it finds its own message from the pserver.
+            idx, msg = self.sess.run(self.sync_q.dequeue())
+            while (idx != self.task_idx or
+                    (msg != Status.WORKER_START and msg != Status.PS_DONE)):
+                self.sess.run(self.sync_q.enqueue([idx, msg]))
+                idx, msg = self.sess.run(self.sync_q.dequeue())
 
-            if token[1] == Status.PS_DONE:
+            if msg == Status.PS_DONE:
                 break
 
             self.curr_ep += 1

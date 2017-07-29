@@ -2,7 +2,7 @@
 
 import sys
 import argparse
-from subprocess import Popen, check_call
+from subprocess import Popen, check_call, check_output
 
 
 def run_cmd(args, host, procs):
@@ -15,13 +15,17 @@ def run_cmd(args, host, procs):
                       '"grep -qF \'$KEY\' .ssh/authorized_keys || '
                       'echo \'$KEY\' >> .ssh/authorized_keys"' % host)
         check_call(cmd_to_run, shell=True)
+
     elif cmd == 'git_clone':
         cmd_in_ssh = 'git clone https://github.com/StanfordSNR/RLCC.git'
+
     elif cmd == 'git_pull':
         cmd_in_ssh = ('cd %s && git checkout sync_dagger && '
                       'git reset --hard @~1 && git pull' % args.rlcc_dir)
-    elif cmd == 'cleanup':
-        cmd_in_ssh = ('rm %s/history' % args.rlcc_dir)
+
+    elif cmd == 'rm_history':
+        cmd_in_ssh = ('rm -f %s/history' % args.rlcc_dir)
+
     else:
         cmd_in_ssh = cmd
 
