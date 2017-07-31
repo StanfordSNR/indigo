@@ -1,0 +1,600 @@
+Average throughput: 38.44 Mbps
+95th percentile one-way delay: 34 ms
+Loss rate: 0.01
+Reward: 0.123
+Average throughput: 36.13 Mbps
+95th percentile one-way delay: 63 ms
+Loss rate: 0.01
+Reward: -0.556
+Average throughput: 34.20 Mbps
+95th percentile one-way delay: 81 ms
+Loss rate: 0.01
+Reward: -0.862
+Average throughput: 36.07 Mbps
+95th percentile one-way delay: 102 ms
+Loss rate: 0.01
+Reward: -1.039
+Average throughput: 35.19 Mbps
+95th percentile one-way delay: 159 ms
+Loss rate: 0.01
+Reward: -1.508
+Average throughput: 34.55 Mbps
+95th percentile one-way delay: 101 ms
+Loss rate: 0.02
+Reward: -1.073
+Average throughput: 33.64 Mbps
+95th percentile one-way delay: 210 ms
+Loss rate: 0.01
+Reward: -1.831
+Average throughput: 30.29 Mbps
+95th percentile one-way delay: 238 ms
+Loss rate: 0.01
+Reward: -2.061
+Average throughput: 26.96 Mbps
+95th percentile one-way delay: 234 ms
+Loss rate: 0.01
+Reward: -2.161
+Average throughput: 29.48 Mbps
+95th percentile one-way delay: 232 ms
+Loss rate: 0.01
+Reward: -2.063
+Average throughput: 26.88 Mbps
+95th percentile one-way delay: 261 ms
+Loss rate: 0.03
+Reward: -2.273
+Average throughput: 23.14 Mbps
+95th percentile one-way delay: 138 ms
+Loss rate: 0.01
+Reward: -1.786
+Average throughput: 25.39 Mbps
+95th percentile one-way delay: 255 ms
+Loss rate: 0.00
+Reward: -2.307
+Average throughput: 37.00 Mbps
+95th percentile one-way delay: 263 ms
+Loss rate: 0.01
+Reward: -1.961
+Average throughput: 36.24 Mbps
+95th percentile one-way delay: 263 ms
+Loss rate: 0.02
+Reward: -1.982
+Average throughput: 30.54 Mbps
+95th percentile one-way delay: 262 ms
+Loss rate: 0.02
+Reward: -2.149
+Average throughput: 37.75 Mbps
+95th percentile one-way delay: 264 ms
+Loss rate: 0.02
+Reward: -1.945
+Average throughput: 34.02 Mbps
+95th percentile one-way delay: 263 ms
+Loss rate: 0.02
+Reward: -2.045
+Average throughput: 33.11 Mbps
+95th percentile one-way delay: 261 ms
+Loss rate: 0.01
+Reward: -2.065
+Average throughput: 31.97 Mbps
+95th percentile one-way delay: 261 ms
+Loss rate: 0.02
+Reward: -2.100
+Average throughput: 26.56 Mbps
+95th percentile one-way delay: 263 ms
+Loss rate: 0.02
+Reward: -2.293
+Average throughput: 31.53 Mbps
+95th percentile one-way delay: 263 ms
+Loss rate: 0.03
+Reward: -2.121
+Average throughput: 26.77 Mbps
+95th percentile one-way delay: 262 ms
+Loss rate: 0.02
+Reward: -2.281
+Average throughput: 35.99 Mbps
+95th percentile one-way delay: 263 ms
+Loss rate: 0.02
+Reward: -1.989
+Average throughput: 37.63 Mbps
+95th percentile one-way delay: 263 ms
+Loss rate: 0.02
+Reward: -1.944
+Average throughput: 28.44 Mbps
+95th percentile one-way delay: 252 ms
+Loss rate: 0.01
+Reward: -2.182
+Average throughput: 23.46 Mbps
+95th percentile one-way delay: 153 ms
+Loss rate: 0.01
+Reward: -1.875
+Average throughput: 23.88 Mbps
+95th percentile one-way delay: 236 ms
+Loss rate: 0.00
+Reward: -2.291
+Average throughput: 35.41 Mbps
+95th percentile one-way delay: 262 ms
+Loss rate: 0.03
+Reward: -2.001
+Average throughput: 29.91 Mbps
+95th percentile one-way delay: 191 ms
+Loss rate: 0.02
+Reward: -1.854
+Average throughput: 34.23 Mbps
+95th percentile one-way delay: 261 ms
+Loss rate: 0.01
+Reward: -2.031
+Average throughput: 31.85 Mbps
+95th percentile one-way delay: 252 ms
+Loss rate: 0.01
+Reward: -2.068
+Average throughput: 32.34 Mbps
+95th percentile one-way delay: 261 ms
+Loss rate: 0.01
+Reward: -2.088
+Average throughput: 20.89 Mbps
+95th percentile one-way delay: 117 ms
+Loss rate: 0.02
+Reward: -1.723
+Average throughput: 36.72 Mbps
+95th percentile one-way delay: 262 ms
+Loss rate: 0.02
+Reward: -1.965
+Average throughput: 38.15 Mbps
+95th percentile one-way delay: 262 ms
+Loss rate: 0.01
+Reward: -1.927
+Average throughput: 29.16 Mbps
+95th percentile one-way delay: 180 ms
+Loss rate: 0.02
+Reward: -1.820
+Average throughput: 37.70 Mbps
+95th percentile one-way delay: 255 ms
+Loss rate: 0.02
+Reward: -1.912
+Average throughput: 28.12 Mbps
+95th percentile one-way delay: 129 ms
+Loss rate: 0.01
+Reward: -1.523
+Average throughput: 34.50 Mbps
+95th percentile one-way delay: 260 ms
+Loss rate: 0.01
+Reward: -2.020
+Average throughput: 34.00 Mbps
+95th percentile one-way delay: 258 ms
+Loss rate: 0.02
+Reward: -2.027
+Average throughput: 30.39 Mbps
+95th percentile one-way delay: 243 ms
+Loss rate: 0.02
+Reward: -2.079
+Average throughput: 26.05 Mbps
+95th percentile one-way delay: 184 ms
+Loss rate: 0.01
+Reward: -1.955
+Average throughput: 27.64 Mbps
+95th percentile one-way delay: 243 ms
+Loss rate: 0.01
+Reward: -2.174
+Average throughput: 29.88 Mbps
+95th percentile one-way delay: 250 ms
+Loss rate: 0.00
+Reward: -2.124
+Average throughput: 33.65 Mbps
+95th percentile one-way delay: 256 ms
+Loss rate: 0.01
+Reward: -2.029
+Average throughput: 30.55 Mbps
+95th percentile one-way delay: 166 ms
+Loss rate: 0.02
+Reward: -1.693
+Average throughput: 32.80 Mbps
+95th percentile one-way delay: 227 ms
+Loss rate: 0.00
+Reward: -1.934
+Average throughput: 34.46 Mbps
+95th percentile one-way delay: 164 ms
+Loss rate: 0.01
+Reward: -1.560
+Average throughput: 32.70 Mbps
+95th percentile one-way delay: 132 ms
+Loss rate: 0.01
+Reward: -1.395
+Average throughput: 31.50 Mbps
+95th percentile one-way delay: 163 ms
+Loss rate: 0.01
+Reward: -1.644
+Average throughput: 30.06 Mbps
+95th percentile one-way delay: 108 ms
+Loss rate: 0.01
+Reward: -1.279
+Average throughput: 34.33 Mbps
+95th percentile one-way delay: 150 ms
+Loss rate: 0.01
+Reward: -1.475
+Average throughput: 31.83 Mbps
+95th percentile one-way delay: 130 ms
+Loss rate: 0.01
+Reward: -1.407
+Average throughput: 32.00 Mbps
+95th percentile one-way delay: 120 ms
+Loss rate: 0.00
+Reward: -1.322
+Average throughput: 32.51 Mbps
+95th percentile one-way delay: 107 ms
+Loss rate: 0.01
+Reward: -1.191
+Average throughput: 32.00 Mbps
+95th percentile one-way delay: 115 ms
+Loss rate: 0.00
+Reward: -1.279
+Average throughput: 31.34 Mbps
+95th percentile one-way delay: 111 ms
+Loss rate: 0.01
+Reward: -1.273
+Average throughput: 32.96 Mbps
+95th percentile one-way delay: 109 ms
+Loss rate: 0.01
+Reward: -1.196
+Average throughput: 32.53 Mbps
+95th percentile one-way delay: 114 ms
+Loss rate: 0.00
+Reward: -1.254
+Average throughput: 32.53 Mbps
+95th percentile one-way delay: 107 ms
+Loss rate: 0.00
+Reward: -1.191
+Average throughput: 34.24 Mbps
+95th percentile one-way delay: 107 ms
+Loss rate: 0.00
+Reward: -1.140
+Average throughput: 31.85 Mbps
+95th percentile one-way delay: 90 ms
+Loss rate: 0.01
+Reward: -1.039
+Average throughput: 34.26 Mbps
+95th percentile one-way delay: 109 ms
+Loss rate: 0.01
+Reward: -1.158
+Average throughput: 32.76 Mbps
+95th percentile one-way delay: 99 ms
+Loss rate: 0.01
+Reward: -1.106
+Average throughput: 34.02 Mbps
+95th percentile one-way delay: 98 ms
+Loss rate: 0.01
+Reward: -1.058
+Average throughput: 33.54 Mbps
+95th percentile one-way delay: 101 ms
+Loss rate: 0.01
+Reward: -1.102
+Average throughput: 35.96 Mbps
+95th percentile one-way delay: 110 ms
+Loss rate: 0.01
+Reward: -1.118
+Average throughput: 34.09 Mbps
+95th percentile one-way delay: 92 ms
+Loss rate: 0.00
+Reward: -0.993
+Average throughput: 34.62 Mbps
+95th percentile one-way delay: 97 ms
+Loss rate: 0.00
+Reward: -1.030
+Average throughput: 35.36 Mbps
+95th percentile one-way delay: 100 ms
+Loss rate: 0.01
+Reward: -1.040
+Average throughput: 35.31 Mbps
+95th percentile one-way delay: 87 ms
+Loss rate: 0.01
+Reward: -0.902
+Average throughput: 34.50 Mbps
+95th percentile one-way delay: 89 ms
+Loss rate: 0.00
+Reward: -0.948
+Average throughput: 34.85 Mbps
+95th percentile one-way delay: 88 ms
+Loss rate: 0.01
+Reward: -0.926
+Average throughput: 34.71 Mbps
+95th percentile one-way delay: 92 ms
+Loss rate: 0.01
+Reward: -0.975
+Average throughput: 35.65 Mbps
+95th percentile one-way delay: 92 ms
+Loss rate: 0.01
+Reward: -0.948
+Average throughput: 36.05 Mbps
+95th percentile one-way delay: 99 ms
+Loss rate: 0.00
+Reward: -1.010
+Average throughput: 35.22 Mbps
+95th percentile one-way delay: 96 ms
+Loss rate: 0.01
+Reward: -1.003
+Average throughput: 34.75 Mbps
+95th percentile one-way delay: 93 ms
+Loss rate: 0.01
+Reward: -0.984
+Average throughput: 36.52 Mbps
+95th percentile one-way delay: 110 ms
+Loss rate: 0.01
+Reward: -1.103
+Average throughput: 36.56 Mbps
+95th percentile one-way delay: 92 ms
+Loss rate: 0.01
+Reward: -0.923
+Average throughput: 35.02 Mbps
+95th percentile one-way delay: 86 ms
+Loss rate: 0.01
+Reward: -0.898
+Average throughput: 34.72 Mbps
+95th percentile one-way delay: 91 ms
+Loss rate: 0.01
+Reward: -0.963
+Average throughput: 35.45 Mbps
+95th percentile one-way delay: 99 ms
+Loss rate: 0.01
+Reward: -1.027
+Average throughput: 35.16 Mbps
+95th percentile one-way delay: 93 ms
+Loss rate: 0.00
+Reward: -0.973
+Average throughput: 34.95 Mbps
+95th percentile one-way delay: 89 ms
+Loss rate: 0.00
+Reward: -0.935
+Average throughput: 35.46 Mbps
+95th percentile one-way delay: 96 ms
+Loss rate: 0.00
+Reward: -0.996
+Average throughput: 35.88 Mbps
+95th percentile one-way delay: 94 ms
+Loss rate: 0.01
+Reward: -0.963
+Average throughput: 36.02 Mbps
+95th percentile one-way delay: 90 ms
+Loss rate: 0.01
+Reward: -0.916
+Average throughput: 36.20 Mbps
+95th percentile one-way delay: 92 ms
+Loss rate: 0.01
+Reward: -0.933
+Average throughput: 35.84 Mbps
+95th percentile one-way delay: 98 ms
+Loss rate: 0.01
+Reward: -1.006
+Average throughput: 36.44 Mbps
+95th percentile one-way delay: 90 ms
+Loss rate: 0.01
+Reward: -0.904
+Average throughput: 35.83 Mbps
+95th percentile one-way delay: 86 ms
+Loss rate: 0.01
+Reward: -0.876
+Average throughput: 35.99 Mbps
+95th percentile one-way delay: 91 ms
+Loss rate: 0.01
+Reward: -0.928
+Average throughput: 36.07 Mbps
+95th percentile one-way delay: 90 ms
+Loss rate: 0.01
+Reward: -0.914
+Average throughput: 36.32 Mbps
+95th percentile one-way delay: 92 ms
+Loss rate: 0.01
+Reward: -0.930
+Average throughput: 36.61 Mbps
+95th percentile one-way delay: 92 ms
+Loss rate: 0.01
+Reward: -0.921
+Average throughput: 35.07 Mbps
+95th percentile one-way delay: 85 ms
+Loss rate: 0.01
+Reward: -0.885
+Average throughput: 34.80 Mbps
+95th percentile one-way delay: 79 ms
+Loss rate: 0.00
+Reward: -0.820
+Average throughput: 35.90 Mbps
+95th percentile one-way delay: 84 ms
+Loss rate: 0.00
+Reward: -0.850
+Average throughput: 36.27 Mbps
+95th percentile one-way delay: 85 ms
+Loss rate: 0.00
+Reward: -0.852
+Average throughput: 35.23 Mbps
+95th percentile one-way delay: 78 ms
+Loss rate: 0.00
+Reward: -0.795
+Average throughput: 35.75 Mbps
+95th percentile one-way delay: 90 ms
+Loss rate: 0.01
+Reward: -0.923
+Average throughput: 36.02 Mbps
+95th percentile one-way delay: 86 ms
+Loss rate: 0.01
+Reward: -0.870
+Average throughput: 35.63 Mbps
+95th percentile one-way delay: 87 ms
+Loss rate: 0.01
+Reward: -0.893
+Average throughput: 35.58 Mbps
+95th percentile one-way delay: 85 ms
+Loss rate: 0.00
+Reward: -0.871
+Average throughput: 35.84 Mbps
+95th percentile one-way delay: 85 ms
+Loss rate: 0.00
+Reward: -0.864
+Average throughput: 35.90 Mbps
+95th percentile one-way delay: 85 ms
+Loss rate: 0.00
+Reward: -0.862
+Average throughput: 35.71 Mbps
+95th percentile one-way delay: 87 ms
+Loss rate: 0.01
+Reward: -0.891
+Average throughput: 36.17 Mbps
+95th percentile one-way delay: 94 ms
+Loss rate: 0.01
+Reward: -0.955
+Average throughput: 36.08 Mbps
+95th percentile one-way delay: 87 ms
+Loss rate: 0.01
+Reward: -0.880
+Average throughput: 35.97 Mbps
+95th percentile one-way delay: 83 ms
+Loss rate: 0.01
+Reward: -0.836
+Average throughput: 36.15 Mbps
+95th percentile one-way delay: 83 ms
+Loss rate: 0.01
+Reward: -0.831
+Average throughput: 36.33 Mbps
+95th percentile one-way delay: 90 ms
+Loss rate: 0.00
+Reward: -0.907
+Average throughput: 36.22 Mbps
+95th percentile one-way delay: 88 ms
+Loss rate: 0.00
+Reward: -0.888
+Average throughput: 36.21 Mbps
+95th percentile one-way delay: 90 ms
+Loss rate: 0.01
+Reward: -0.910
+Average throughput: 35.59 Mbps
+95th percentile one-way delay: 88 ms
+Loss rate: 0.01
+Reward: -0.905
+Average throughput: 36.26 Mbps
+95th percentile one-way delay: 84 ms
+Loss rate: 0.01
+Reward: -0.840
+Average throughput: 35.58 Mbps
+95th percentile one-way delay: 80 ms
+Loss rate: 0.01
+Reward: -0.810
+Average throughput: 36.58 Mbps
+95th percentile one-way delay: 81 ms
+Loss rate: 0.01
+Reward: -0.795
+Average throughput: 36.33 Mbps
+95th percentile one-way delay: 79 ms
+Loss rate: 0.01
+Reward: -0.777
+Average throughput: 35.96 Mbps
+95th percentile one-way delay: 83 ms
+Loss rate: 0.01
+Reward: -0.836
+Average throughput: 35.69 Mbps
+95th percentile one-way delay: 85 ms
+Loss rate: 0.01
+Reward: -0.868
+Average throughput: 36.07 Mbps
+95th percentile one-way delay: 83 ms
+Loss rate: 0.01
+Reward: -0.833
+Average throughput: 35.98 Mbps
+95th percentile one-way delay: 81 ms
+Loss rate: 0.01
+Reward: -0.811
+Average throughput: 35.83 Mbps
+95th percentile one-way delay: 84 ms
+Loss rate: 0.01
+Reward: -0.852
+Average throughput: 36.41 Mbps
+95th percentile one-way delay: 85 ms
+Loss rate: 0.01
+Reward: -0.848
+Average throughput: 36.47 Mbps
+95th percentile one-way delay: 89 ms
+Loss rate: 0.01
+Reward: -0.892
+Average throughput: 35.88 Mbps
+95th percentile one-way delay: 82 ms
+Loss rate: 0.01
+Reward: -0.827
+Average throughput: 36.55 Mbps
+95th percentile one-way delay: 87 ms
+Loss rate: 0.00
+Reward: -0.867
+Average throughput: 36.32 Mbps
+95th percentile one-way delay: 79 ms
+Loss rate: 0.01
+Reward: -0.777
+Average throughput: 36.24 Mbps
+95th percentile one-way delay: 82 ms
+Loss rate: 0.00
+Reward: -0.817
+Average throughput: 36.33 Mbps
+95th percentile one-way delay: 82 ms
+Loss rate: 0.00
+Reward: -0.814
+Average throughput: 36.79 Mbps
+95th percentile one-way delay: 90 ms
+Loss rate: 0.01
+Reward: -0.895
+Average throughput: 35.87 Mbps
+95th percentile one-way delay: 80 ms
+Loss rate: 0.01
+Reward: -0.802
+Average throughput: 36.23 Mbps
+95th percentile one-way delay: 79 ms
+Loss rate: 0.01
+Reward: -0.780
+Average throughput: 36.65 Mbps
+95th percentile one-way delay: 86 ms
+Loss rate: 0.01
+Reward: -0.853
+Average throughput: 36.61 Mbps
+95th percentile one-way delay: 88 ms
+Loss rate: 0.01
+Reward: -0.877
+Average throughput: 36.59 Mbps
+95th percentile one-way delay: 84 ms
+Loss rate: 0.01
+Reward: -0.831
+Average throughput: 35.97 Mbps
+95th percentile one-way delay: 82 ms
+Loss rate: 0.01
+Reward: -0.824
+Average throughput: 36.70 Mbps
+95th percentile one-way delay: 79 ms
+Loss rate: 0.01
+Reward: -0.767
+Average throughput: 36.10 Mbps
+95th percentile one-way delay: 83 ms
+Loss rate: 0.01
+Reward: -0.833
+Average throughput: 36.66 Mbps
+95th percentile one-way delay: 82 ms
+Loss rate: 0.01
+Reward: -0.805
+Average throughput: 36.05 Mbps
+95th percentile one-way delay: 83 ms
+Loss rate: 0.01
+Reward: -0.834
+Average throughput: 36.55 Mbps
+95th percentile one-way delay: 76 ms
+Loss rate: 0.01
+Reward: -0.732
+Average throughput: 35.47 Mbps
+95th percentile one-way delay: 82 ms
+Loss rate: 0.01
+Reward: -0.838
+Average throughput: 37.00 Mbps
+95th percentile one-way delay: 83 ms
+Loss rate: 0.01
+Reward: -0.808
+Average throughput: 35.41 Mbps
+95th percentile one-way delay: 78 ms
+Loss rate: 0.00
+Reward: -0.790
+Average throughput: 36.84 Mbps
+95th percentile one-way delay: 84 ms
+Loss rate: 0.01
+Reward: -0.824
+Average throughput: 35.69 Mbps
+95th percentile one-way delay: 75 ms
+Loss rate: 0.01
+Reward: -0.743
