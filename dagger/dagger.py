@@ -294,7 +294,8 @@ class DaggerWorker(object):
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        start_time = time.time()
+        if self.is_chief:
+            start_time = time.time()
 
         # For ewma delay, only want first component, the one-way delay
         # For the cwnd, try only the most recent cwnd

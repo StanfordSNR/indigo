@@ -6,18 +6,22 @@ import numpy as np
 import tensorflow as tf
 from os import path
 from env.sender import Sender
-from models import ActorCriticNetwork
+from models import DaggerNetwork
 from helpers.helpers import ewma
+
+
+def softmax(x):
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum(axis=0)
 
 
 class Learner(object):
     def __init__(self, state_dim, action_cnt, restore_vars):
-        with tf.variable_scope('local'):
-            self.pi = ActorCriticNetwork(
-                state_dim=state_dim, action_cnt=action_cnt)
-            # # save the current LSTM state of local network
-            # self.lstm_state = self.pi.lstm_state_init
 
+        with tf.variable_scope('local'):
+            self.pi = DaggerNetwork(state_dim=state_dim, action_cnt=action_cnt)
+
+        self.ewma_window = 3        # alpha = 2 / (window + 1)
         self.session = tf.Session()
 
         # restore saved variables
@@ -29,25 +33,24 @@ class Learner(object):
         self.session.run(tf.variables_initializer(uninit_vars))
 
     def sample_action(self, step_state_buf):
-        # ravel() is a faster flatten()
-        flat_step_state_buf = np.asarray(step_state_buf, dtype=np.float32).ravel()
 
-        # state = EWMA of past step
-        ewma_delay = ewma(flat_step_state_buf, 3)
+        # For ewma delay, only want first component, the one-way delay
+        # For the cwnd, try only the most recent cwnd
+        owd_buf = np.asarray([state[0] for state in step_state_buf])
+        ewma_delay = ewma(owd_buf, self.ewma_window)
+        last_cwnd = step_state_buf[-1][1]
 
-        ops_to_run = [self.pi.action_probs]#, self.pi.lstm_state_out]
-        feed_dict = {
-            self.pi.states: [[ewma_delay]],
-            # self.pi.indices: [len(step_state_buf) - 1],
-            # self.pi.lstm_state_in: self.lstm_state,
-        }
+        # Get probability of each action from the local network.
+        pi = self.local_network
+        action_probs = self.sess.run(pi.action_probs,
+                                     feed_dict={pi.states: [[ewma_delay,
+                                                             last_cwnd]]})
 
-        ret = self.session.run(ops_to_run, feed_dict)
-        action_probs = ret#, lstm_state_out = ret
-
-        action = np.argmax(action_probs[0])
+        # action = np.argmax(action_probs[0])
         # action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
-        # self.lstm_state = lstm_state_out
+        temperature = 1.0
+        temp_probs = softmax(action_probs[0] / temperature)
+        action = np.argmax(np.random.multinomial(1, temp_probs - 1e-5))
         return action
 
 
@@ -58,7 +61,9 @@ def main():
 
     sender = Sender(args.port)
 
-    model_path = path.join(project_root.DIR, 'a3c', 'logs', 'model')
+    model_path = path.join(project_root.DIR, 'dagger', 'logs',
+                           '2017-07-31--06-32-01-true-expert-2',
+                           'checkpoint-1100')
 
     learner = Learner(
         state_dim=Sender.state_dim,
