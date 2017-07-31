@@ -6,8 +6,9 @@ from subprocess import check_call, check_output
 
 def main():
     """ Runs a sequence of commands to perform DAgger training.
-    Removes the past run's history from all workers (saves to the current
-    machine if wanted, adds all edits to the HEAD
+    By default, removes the past run's history from all workers,
+    commits and amends HEAD, updates all machines to latest GIT version,
+    and runs the dagger training command.
     """
     parser = argparse.ArgumentParser()
 

@@ -4,6 +4,7 @@ import errno
 import select
 import socket
 import numpy as np
+import operator
 
 
 READ_FLAGS = select.POLLIN | select.POLLPRI
@@ -11,6 +12,17 @@ WRITE_FLAGS = select.POLLOUT
 ERR_FLAGS = select.POLLERR | select.POLLHUP | select.POLLNVAL
 READ_ERR_FLAGS = READ_FLAGS | ERR_FLAGS
 ALL_FLAGS = READ_FLAGS | WRITE_FLAGS | ERR_FLAGS
+
+math_ops = {
+    '+': operator.add,
+    '-': operator.sub,
+    '*': operator.mul,
+    '/': operator.div,
+}
+
+
+def apply_op(op, op1, op2):
+    return math_ops[op](op1, op2)
 
 
 def curr_ts_ms():

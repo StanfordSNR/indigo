@@ -40,7 +40,7 @@ def prepare_traces(bandwidth):
 def create_env(task_index):
     """ Creates and returns an Environment which contains a single
     sender-receiver connection. The environment is run inside mahimahi
-    shells.
+    shells. The environment knows the best cwnd to pass to the expert policy.
     """
 
     bandwidth = int(np.linspace(30, 60, num=4, dtype=np.int)[task_index])
@@ -56,6 +56,10 @@ def create_env(task_index):
 
     env = Environment(mm_cmd)
     env.setup()
+    
+    if delay == 25:
+        env.best_cwnd = bandwidth * 5
+
     return env
 
 
@@ -81,8 +85,6 @@ def run(args):
         leader = DaggerLeader(cluster, server, worker_tasks)
         try:
             leader.run(debug=True)
-        except KeyboardInterrupt:
-            pass
         finally:
             leader.cleanup()
 

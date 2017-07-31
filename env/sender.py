@@ -6,7 +6,20 @@ from os import path
 import numpy as np
 import project_root
 from helpers.helpers import (
-    curr_ts_ms, READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, WRITE_FLAGS, ALL_FLAGS)
+    curr_ts_ms, apply_op,
+    READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, WRITE_FLAGS, ALL_FLAGS)
+
+
+def format_actions(action_list):
+    """ Returns the action list, initially a list with elements "[op][val]"
+    like /2.0, -3.0, +1.0, formatted as a dictionary.
+
+    The dictionary keys are the unique indices (to retrieve the action) and
+    the values are lists ['op', val], such as ['+', '2.0'].
+    """
+    return {idx: [action[0], float(action[1:])] 
+                  for idx, action 
+                  in enumerate(action_list)}
 
 
 class Sender(object):
@@ -14,7 +27,8 @@ class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
     state_dim = 2
-    action_mapping = [-10.0, -6.0, -3.0, -1.0, 0.0, 1.0, 3.0, 6.0, 10.0]
+    action_mapping = format_actions(
+            ["/2.0", "-10.0", "-3.0", "+0.0", "+3.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False, debug=False):
@@ -41,10 +55,10 @@ class Sender(object):
         self.seq_num = 0
         self.next_ack = 0
         self.cwnd = 10.0
-        self.step_len = 10  # ms
+        self.step_len_ms = 10
 
         self.step_state_buf = []
-        self.step_start_ts = None
+        self.step_start_ms = None
         self.running = True
 
         if self.train:
@@ -100,10 +114,10 @@ class Sender(object):
 
         return state
 
-    def take_action(self, action):
-        delta = self.action_mapping[action]
+    def take_action(self, action_idx):
+        op, val = self.action_mapping[action_idx]
 
-        self.cwnd += delta
+        self.cwnd = apply_op(op, self.cwnd, val)
 
         self.cwnd = min(max(5.0, self.cwnd), 1000.0)
 
@@ -165,15 +179,15 @@ class Sender(object):
         state = self.update_state(ack)
         self.step_state_buf.append(state)
 
-        if self.step_start_ts is None:
-            self.step_start_ts = curr_ts_ms()
+        if self.step_start_ms is None:
+            self.step_start_ms = curr_ts_ms()
 
-        if curr_ts_ms() - self.step_start_ts > self.step_len:  # end of a step
+        if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
             action = self.sample_action(self.step_state_buf)
             self.take_action(action)
 
             self.step_state_buf = []
-            self.step_start_ts = curr_ts_ms()
+            self.step_start_ms = curr_ts_ms()
 
             if self.train:
                 self.step_cnt += 1

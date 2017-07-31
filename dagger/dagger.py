@@ -6,9 +6,9 @@ import tensorflow as tf
 import datetime
 import time
 from tensorflow import contrib
-from random import random
 from os import path
 from models import DaggerNetwork
+from experts import TrueDaggerExpert
 from env.sender import Sender
 from helpers.helpers import make_sure_path_exists, ewma
 
@@ -20,28 +20,8 @@ class Status:
     PS_DONE = 3
 
 
-class DaggerExpert(object):
-    """ Naive LEDBAT implementation """
-    def __init__(self):
-        self.base_delay = float("inf")
-        self.target = 100.0
-        self.gain = 1.0
-        self.actions_index = zip(Sender.action_mapping,
-                                 xrange(len(Sender.action_mapping)))
-
-    def sample_action(self, ewma_delay, cwnd):
-        self.base_delay = min(self.base_delay, ewma_delay)
-        queuing_delay = ewma_delay - self.base_delay
-        off_target = self.target - queuing_delay
-        cwnd_inc = self.gain * off_target / cwnd
-
-        # Gets the action closest to the actual increase to the cwnd
-        action = min(self.actions_index, key=lambda x: abs(x[0]-cwnd_inc))
-        return int(action[1])
-
 class DaggerLeader(object):
     def __init__(self, cluster, server, worker_tasks):
-
         self.cluster = cluster
         self.server = server
         self.worker_tasks = worker_tasks
@@ -77,12 +57,14 @@ class DaggerLeader(object):
         self.setup_tf_ops(server)
 
     def cleanup(self):
-        """ Sends messages to each worker to stop and saves the model """
-        end_worker_msgs = [
+        """ Sends messages to workers to stop. Tries hard to save the model """
+        try:
+            end_worker_msgs = [
                 [idx for idx in self.worker_tasks],
                 [Status.PS_DONE] * len(self.worker_tasks)]
-        self.sess.run(self.sync_q.enqueue_many(end_worker_msgs))
-        self.save_model()
+            self.sess.run(self.sync_q.enqueue_many(end_worker_msgs))
+        finally:
+            self.save_model()
 
     def save_model(self, check_point=None):
         """ Takes care of saving/checkpointing the model. """
@@ -140,10 +122,6 @@ class DaggerLeader(object):
 
         return workers_ep_done
 
-    # TODO Set up summaries, and models training
-    # Should data be queued one by one? All at once? In batches?
-    # Should we switch from queues to tf.train.shuffle_batch?
-    # What about TFRecords and input_producers?
     def train(self, num_examples, states, actions):
         """ Runs the training operator until the loss converges.
         Batches the state action pairs and repeatedly trains on
@@ -187,6 +165,9 @@ class DaggerLeader(object):
             batch_num += 1
             batch_num = min(batch_num, self.num_batches-1)
 
+            if self.curr_train_step == 1100:
+                self.save_model(self.curr_train_step)
+
     def run(self, debug=False):
         for curr_ep in xrange(self.max_eps):
 
@@ -224,6 +205,10 @@ class DaggerLeader(object):
 
 class DaggerWorker(object):
     def __init__(self, cluster, server, task_idx, env):
+        self.is_chief = task_idx == 0
+        if self.is_chief:
+            self.time_file = open('/tmp/sample_action_time', 'w')
+
         # Distributed tensorflow and logging related
         self.cluster = cluster
         self.env = env
@@ -244,7 +229,7 @@ class DaggerWorker(object):
         self.train_queue_capacity = Sender.max_steps * self.num_workers
         self.ewma_window = 3    # alpha = 2 / (window+1)
         self.use_expert_prob = 0.75
-        self.expert = DaggerExpert()
+        self.expert = TrueDaggerExpert(env)
 
         # Must call env.set_sample_action() before env.run()
         env.set_sample_action(self.sample_action)
@@ -309,6 +294,7 @@ class DaggerWorker(object):
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
+        start_time = time.time()
 
         # For ewma delay, only want first component, the one-way delay
         # For the cwnd, try only the most recent cwnd
@@ -321,7 +307,7 @@ class DaggerWorker(object):
         self.action_buf.append(expert_action)
 
         # Exponentially decaying probability to actually use the expert action
-        if random() < (self.use_expert_prob ** self.curr_ep):
+        if np.random.random() < (self.use_expert_prob ** self.curr_ep):
             return expert_action
 
         # Get probability of each action from the local network.
@@ -331,6 +317,11 @@ class DaggerWorker(object):
                                                              last_cwnd]]})
         # Choose an action to take
         action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
+        
+        if self.is_chief:
+            elapsed_time = time.time() - start_time
+            self.time_file.write('sample_action: %s sec\n' % elapsed_time)
+
         return action
 
     def rollout(self):

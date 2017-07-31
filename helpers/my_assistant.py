@@ -26,6 +26,11 @@ def run_cmd(args, host, procs):
     elif cmd == 'rm_history':
         cmd_in_ssh = ('rm -f %s/history' % args.rlcc_dir)
 
+    elif cmd == 'cp_history':
+        cmd_to_run = ('rsync --ignore-missing-args %s:%s/history %s/%s_history'
+                      % (host, args.rlcc_dir, args.local_rlcc_dir, host))
+        check_call(cmd_to_run, shell=True)
+
     else:
         cmd_in_ssh = cmd
 
@@ -45,6 +50,9 @@ def main():
         help='username used in ssh (default: jestinm)')
     parser.add_argument(
         '--rlcc-dir', metavar='DIR', default='~/RLCC',
+        help='path to RLCC/ (default: ~/RLCC)')
+    parser.add_argument(
+        '--local-rlcc-dir', metavar='DIR', default='~/RLCC',
         help='path to RLCC/ (default: ~/RLCC)')
     parser.add_argument('cmd')
     args = parser.parse_args()
