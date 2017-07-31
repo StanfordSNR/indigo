@@ -51,8 +51,6 @@ class TrueDaggerExpert(object):
         self.best_cwnd = env.best_cwnd
 
     def sample_action(self, state, cwnd):
-        ewma_delay = state      # assume this is the state, but DON'T use.
-
         # Gets the action that gives the resulting cwnd closest to the 
         # best cwnd.
         action = get_best_action(Sender.action_mapping, cwnd, self.best_cwnd)

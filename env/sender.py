@@ -32,8 +32,6 @@ class Sender(object):
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False, debug=False):
-        self.step_time_file = open('/tmp/step_time', 'a')
-
         self.train = train
         self.debug = debug
 
@@ -185,7 +183,6 @@ class Sender(object):
             self.step_start_ms = curr_ts_ms()
 
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            self.step_time_file.write('step length: %f ms\n' % (curr_ts_ms() - self.step_start_ms))
             action = self.sample_action(self.step_state_buf)
             self.take_action(action)
 

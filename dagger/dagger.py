@@ -205,15 +205,10 @@ class DaggerLeader(object):
 
 class DaggerWorker(object):
     def __init__(self, cluster, server, task_idx, env):
-        self.is_chief = task_idx == 0
-        if self.is_chief:
-            self.time_file = open('/tmp/sample_action_time', 'w')
-
         # Distributed tensorflow and logging related
         self.cluster = cluster
         self.env = env
         self.task_idx = task_idx
-        self.is_chief = (task_idx == 0)
         self.leader_device = '/job:ps/task:0'
         self.worker_device = '/job:worker/task:%d' % task_idx
         self.num_workers = cluster.num_tasks('worker')
@@ -294,8 +289,6 @@ class DaggerWorker(object):
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        if self.is_chief:
-            start_time = time.time()
 
         # For ewma delay, only want first component, the one-way delay
         # For the cwnd, try only the most recent cwnd
@@ -318,11 +311,6 @@ class DaggerWorker(object):
                                                              last_cwnd]]})
         # Choose an action to take
         action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
-        
-        if self.is_chief:
-            elapsed_time = time.time() - start_time
-            self.time_file.write('sample_action: %s sec\n' % elapsed_time)
-
         return action
 
     def rollout(self):
