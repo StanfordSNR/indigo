@@ -7,11 +7,7 @@ import tensorflow as tf
 from os import path
 from env.sender import Sender
 from models import DaggerNetwork
-
-
-def softmax(x):
-    e_x = np.exp(x - np.max(x))
-    return e_x / e_x.sum(axis=0)
+from helpers.helpers import normalize, softmax
 
 
 class Learner(object):
@@ -32,12 +28,13 @@ class Learner(object):
         self.sess.run(tf.variables_initializer(uninit_vars))
 
     def sample_action(self, step_state_buf):
+        norm_states = normalize(step_state_buf[:-1])
 
         # Get probability of each action from the local network.
         pi = self.model
         action_probs = self.sess.run(pi.action_probs,
                                      feed_dict={
-                                         pi.states: [step_state_buf[:-1]]
+                                         pi.states: [norm_states]
                                      })
 
         action = np.argmax(action_probs[0])
@@ -56,7 +53,7 @@ def main():
     sender = Sender(args.port)
 
     model_path = path.join(project_root.DIR, 'dagger', 'logs',
-                           '2017-08-01--09-26-42-remy-1',
+                           '2017-08-01--15-40-34-remy-2-norm',
                            'checkpoint-48000')
 
     learner = Learner(

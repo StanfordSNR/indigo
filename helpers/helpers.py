@@ -47,6 +47,17 @@ def get_open_udp_port():
     return port
 
 
+def normalize(step_state_buf):
+    """ Normalizes by taking the logarithm """
+    return [np.log(max(1.0, feature)) for feature in step_state_buf]
+    return norm_state_buf
+
+
+def softmax(x):
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum(axis=0)
+
+
 class RingBuffer(object):
     def __init__(self, length):
         self.full_len = length

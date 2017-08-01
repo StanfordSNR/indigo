@@ -9,7 +9,7 @@ from os import path
 from models import DaggerNetwork
 from experts import TrueDaggerExpert
 from env.sender import Sender
-from helpers.helpers import make_sure_path_exists
+from helpers.helpers import make_sure_path_exists, normalize
 
 
 class Status:
@@ -29,7 +29,7 @@ class DaggerLeader(object):
         self.aggregated_actions = []
         self.curr_train_step = 0
         self.max_eps = 500
-        self.checkpoint = 750
+        self.checkpoint = 12000
         self.batch_size = 200
         self.learn_rate = 1e-3
         self.regularization_lambda = 1e-2
@@ -305,7 +305,8 @@ class DaggerWorker(object):
         step_cwnd = step_state_buf[-1]
         expert_action = self.expert.sample_action(step_cwnd)
 
-        step_state_buf = step_state_buf[:-1]
+        # For decision-making, exclude the cwnd and normalize.
+        step_state_buf = normalize(step_state_buf[:-1])
 
         self.state_buf.extend([step_state_buf])
         self.action_buf.append(expert_action)

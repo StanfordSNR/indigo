@@ -114,9 +114,10 @@ class Sender(object):
         # Update the interarrival times of ACKs at the sender.
         # Handles the first ACK in and first interval in.
         new_interarrival_ms = None
+        curr_time_ms = curr_ts_ms()
         if self.past_ack_arrival_ts is not None:
-            new_interarrival_ms = curr_ts_ms() - self.past_ack_arrival_ts
-        self.past_ack_arrival_ts = curr_ts_ms()
+            new_interarrival_ms = curr_time_ms - self.past_ack_arrival_ts
+        self.past_ack_arrival_ts = curr_time_ms
         if self.interarrival_ack_ewma is not None:
             self.interarrival_ack_ewma *= self.alpha
             self.interarrival_ack_ewma += (1-self.alpha) * new_interarrival_ms
