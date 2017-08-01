@@ -18,19 +18,20 @@ def softmax(x):
 class Learner(object):
     def __init__(self, state_dim, action_cnt, restore_vars):
 
-        with tf.variable_scope('local'):
-            self.pi = DaggerNetwork(state_dim=state_dim, action_cnt=action_cnt)
+        with tf.variable_scope('global'):
+            self.model = DaggerNetwork(state_dim=state_dim, action_cnt=action_cnt)
 
         self.ewma_window = 3        # alpha = 2 / (window + 1)
-        self.session = tf.Session()
+        self.sess = tf.Session()
 
         # restore saved variables
-        saver = tf.train.Saver(self.pi.trainable_vars)
-        saver.restore(self.session, restore_vars)
+        saver = tf.train.Saver(self.model.trainable_vars)
+        saver.restore(self.sess, restore_vars)
 
         # init the remaining vars, especially those created by optimizer
-        uninit_vars = set(tf.global_variables()) - set(self.pi.trainable_vars)
-        self.session.run(tf.variables_initializer(uninit_vars))
+        uninit_vars = set(tf.global_variables())
+        uninit_vars -= set(self.model.trainable_vars)
+        self.sess.run(tf.variables_initializer(uninit_vars))
 
     def sample_action(self, step_state_buf):
 
@@ -41,16 +42,16 @@ class Learner(object):
         last_cwnd = step_state_buf[-1][1]
 
         # Get probability of each action from the local network.
-        pi = self.local_network
+        pi = self.model
         action_probs = self.sess.run(pi.action_probs,
                                      feed_dict={pi.states: [[ewma_delay,
                                                              last_cwnd]]})
 
-        # action = np.argmax(action_probs[0])
+        action = np.argmax(action_probs[0])
         # action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
-        temperature = 1.0
-        temp_probs = softmax(action_probs[0] / temperature)
-        action = np.argmax(np.random.multinomial(1, temp_probs - 1e-5))
+        #temperature = 1.0
+        #temp_probs = softmax(action_probs[0] / temperature)
+        #action = np.argmax(np.random.multinomial(1, temp_probs - 1e-5))
         return action
 
 
