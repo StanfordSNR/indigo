@@ -85,6 +85,8 @@ def run(args):
         leader = DaggerLeader(cluster, server, worker_tasks)
         try:
             leader.run(debug=True)
+        except KeyboardInterrupt:
+            pass
         finally:
             leader.cleanup()
 

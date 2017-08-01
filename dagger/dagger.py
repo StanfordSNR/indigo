@@ -26,11 +26,14 @@ class DaggerLeader(object):
         self.server = server
         self.worker_tasks = worker_tasks
         self.num_workers = len(worker_tasks)
+        self.aggregated_states = []
+        self.aggregated_actions = []
         self.curr_train_step = 0
-        self.max_eps = 2000
-        self.check_point = 1000
-        self.num_batches = 10
+        self.max_eps = 500
+        self.checkpoint = 750
+        self.batch_size = 200
         self.learn_rate = 1e-3
+        self.regularization_lambda = 1e-1
         self.loss_delta = 1e-1
 
         # Create the master network and training/sync queues
@@ -58,25 +61,23 @@ class DaggerLeader(object):
 
     def cleanup(self):
         """ Sends messages to workers to stop. Tries hard to save the model """
-        try:
-            end_worker_msgs = [
-                [idx for idx in self.worker_tasks],
-                [Status.PS_DONE] * len(self.worker_tasks)]
-            self.sess.run(self.sync_q.enqueue_many(end_worker_msgs))
-        finally:
-            self.save_model()
+        end_worker_msgs = [
+            [idx for idx in self.worker_tasks],
+            [Status.PS_DONE] * len(self.worker_tasks)]
+        self.sess.run(self.sync_q.enqueue_many(end_worker_msgs))
+        self.save_model()
 
-    def save_model(self, check_point=None):
+    def save_model(self, checkpoint=None):
         """ Takes care of saving/checkpointing the model. """
-        if check_point is None:
+        if checkpoint is None:
             model_path = path.join(self.logdir, 'model')
         else:
-            model_path = path.join(self.logdir, 'checkpoint-%d' % check_point)
+            model_path = path.join(self.logdir, 'checkpoint-%d' % checkpoint)
 
         # save local parameters to worker-0
         saver = tf.train.Saver(self.global_network.trainable_vars)
         saver.save(self.sess, model_path)
-        sys.stderr.write('\nModel saved to pserver at %s\n' % model_path)
+        sys.stderr.write('\nModel saved to param. server at %s\n' % model_path)
 
     def setup_tf_ops(self, server):
         """ Sets up Tensorboard operators and tools, such as the optimizer,
@@ -84,14 +85,25 @@ class DaggerLeader(object):
         """
 
         self.actions = tf.placeholder(tf.int32, [None])
-        self.cross_entropy_loss = tf.reduce_mean(
+
+        reg_loss = 0.0
+        for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+            reg_loss += tf.nn.l2_loss(x)
+        reg_loss *= self.regularization_lambda
+
+        cross_entropy_loss = tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
                     labels=self.actions, 
                     logits=self.global_network.action_scores))
-        optimizer = tf.train.AdamOptimizer(self.learn_rate)
-        self.train_step = optimizer.minimize(self.cross_entropy_loss)
 
-        tf.summary.scalar('reduced_ce_loss', self.cross_entropy_loss)
+        self.total_loss = cross_entropy_loss + reg_loss
+
+        optimizer = tf.train.AdamOptimizer(self.learn_rate)
+        self.train_step = optimizer.minimize(self.total_loss)
+
+        tf.summary.scalar('reduced_ce_loss', cross_entropy_loss)
+        tf.summary.scalar('reg_loss', reg_loss)
+        tf.summary.scalar('total_loss', self.total_loss)
         self.summary_op = tf.summary.merge_all()
 
         self.sess = tf.Session(server.target)
@@ -122,39 +134,41 @@ class DaggerLeader(object):
 
         return workers_ep_done
 
-    def train(self, num_examples, states, actions):
+    def train(self):
         """ Runs the training operator until the loss converges.
         Batches the state action pairs and repeatedly trains on
         those batches.
         """
 
-        # In case number of batches > number of examples
-        self.num_batches = min(num_examples, self.num_batches)
-        batch_size = num_examples / self.num_batches
+        dataset_size = len(self.aggregated_states)
+        # In case the dataset is smaller than the batch size
+        self.batch_size = min(dataset_size, self.batch_size)
+        num_batches = dataset_size / self.batch_size 
+        min_train_steps = num_batches * 2
+
         prev_loss = float("inf")
         curr_loss = 1e10
-        self.loss_delta = 1e-1
         batch_num = 0
         curr_ep_train_step = 0
-        min_train_steps = self.num_batches * 2
 
         while ((prev_loss - curr_loss > self.loss_delta) or
                (curr_ep_train_step < min_train_steps)):
 
-            ops_to_run = [self.train_step, self.cross_entropy_loss]
+            ops_to_run = [self.train_step, self.total_loss]
 
-            if self.curr_train_step % self.num_batches == 0: 
+            # Display summary on tensorboard multiple times per episode
+            if self.curr_train_step % num_batches == 0: 
                 ops_to_run.append(self.summary_op)
-                sys.stderr.write('On %d training step\n' % self.curr_train_step)
+                sys.stderr.write('On training step %d\n' % self.curr_train_step)
 
-            start = batch_size * batch_num
-            end = start + batch_size
+            start = self.batch_size * batch_num
+            end = start + self.batch_size
             ret = self.sess.run(ops_to_run, feed_dict={
-                self.global_network.states: states[start:end],
-                self.actions: actions[start:end]}
+                self.global_network.states: self.aggregated_states[start:end],
+                self.actions: self.aggregated_actions[start:end]}
             )
 
-            if self.curr_train_step % self.num_batches == 0:
+            if self.curr_train_step % num_batches == 0:
                 summary = ret[2]
                 self.train_writer.add_summary(summary, self.curr_train_step)
 
@@ -162,11 +176,11 @@ class DaggerLeader(object):
             curr_loss = ret[1]
             self.curr_train_step += 1
             curr_ep_train_step += 1
-            batch_num += 1
-            batch_num = min(batch_num, self.num_batches-1)
+            batch_num = (batch_num + 1) % num_batches
 
-            if self.curr_train_step == 1100:
+            if self.curr_train_step == self.checkpoint:
                 self.save_model(self.curr_train_step)
+                self.checkpoint *= 2
 
     def run(self, debug=False):
         for curr_ep in xrange(self.max_eps):
@@ -179,21 +193,20 @@ class DaggerLeader(object):
         
             # If workers had data, dequeue ALL the examples and train
             if workers_ep_done > 0:
-                if debug:
-                    sys.stderr.write('[PSERVER EP %d]: dequeueing\n' % curr_ep)
 
                 num_examples = self.sess.run(self.train_q.size())
                 states, actions = self.sess.run(
                         self.train_q.dequeue_many(num_examples))
+                self.aggregated_states.extend(states)
+                self.aggregated_actions.extend(actions)
 
                 if debug:
-                    sys.stderr.write('[PSERVER EP %d]: starting training\n' % curr_ep)
+                    sys.stderr.write('[PSERVER]: start training\n')
 
-                self.train(num_examples, states, actions)
+                self.train()
             else:
                 if debug:
-                    sys.stderr.write('[PSERVER ep %d]: quitting...\n' 
-                                     % curr_ep)
+                    sys.stderr.write('[PSERVER]: quitting...\n' % curr_ep)
                 break
 
             # After training, tell workers to start another episode
