@@ -63,8 +63,8 @@ def main():
     sender = Sender(args.port)
 
     model_path = path.join(project_root.DIR, 'dagger', 'logs',
-                           '2017-07-31--06-32-01-true-expert-2',
-                           'checkpoint-1100')
+                           '2017-08-01--01-11-44-true-expert-3',
+                           'checkpoint-24000')
 
     learner = Learner(
         state_dim=Sender.state_dim,
