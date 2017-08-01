@@ -1,5 +1,5 @@
 from env.sender import Sender
-from helpers.helpers import ewma, apply_op
+from helpers.helpers import apply_op
 
 
 def action_error(actions, idx, cwnd, target):
@@ -50,7 +50,7 @@ class TrueDaggerExpert(object):
                                            'the environment in worker.py.')
         self.best_cwnd = env.best_cwnd
 
-    def sample_action(self, state, cwnd):
+    def sample_action(self, cwnd):
         # Gets the action that gives the resulting cwnd closest to the 
         # best cwnd.
         action = get_best_action(Sender.action_mapping, cwnd, self.best_cwnd)

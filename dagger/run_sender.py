@@ -7,7 +7,6 @@ import tensorflow as tf
 from os import path
 from env.sender import Sender
 from models import DaggerNetwork
-from helpers.helpers import ewma
 
 
 def softmax(x):
@@ -21,7 +20,6 @@ class Learner(object):
         with tf.variable_scope('global'):
             self.model = DaggerNetwork(state_dim=state_dim, action_cnt=action_cnt)
 
-        self.ewma_window = 3        # alpha = 2 / (window + 1)
         self.sess = tf.Session()
 
         # restore saved variables
@@ -35,17 +33,12 @@ class Learner(object):
 
     def sample_action(self, step_state_buf):
 
-        # For ewma delay, only want first component, the one-way delay
-        # For the cwnd, try only the most recent cwnd
-        owd_buf = np.asarray([state[0] for state in step_state_buf])
-        ewma_delay = ewma(owd_buf, self.ewma_window)
-        last_cwnd = step_state_buf[-1][1]
-
         # Get probability of each action from the local network.
         pi = self.model
         action_probs = self.sess.run(pi.action_probs,
-                                     feed_dict={pi.states: [[ewma_delay,
-                                                             last_cwnd]]})
+                                     feed_dict={
+                                         pi.states: [step_state_buf[:-1]]
+                                     })
 
         action = np.argmax(action_probs[0])
         # action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
@@ -63,8 +56,8 @@ def main():
     sender = Sender(args.port)
 
     model_path = path.join(project_root.DIR, 'dagger', 'logs',
-                           '2017-08-01--01-11-44-true-expert-3',
-                           'checkpoint-24000')
+                           '2017-08-01--09-26-42-remy-1',
+                           'checkpoint-48000')
 
     learner = Learner(
         state_dim=Sender.state_dim,

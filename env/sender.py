@@ -26,7 +26,7 @@ class Sender(object):
 
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 2
+    state_dim = 3
     action_mapping = format_actions(
             ["/2.0", "-10.0", "-3.0", "+0.0", "+3.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
@@ -57,7 +57,14 @@ class Sender(object):
         self.cwnd = 10.0
         self.step_len_ms = 10
 
-        self.step_state_buf = []
+        # state variables for RLCC
+        self.past_ack_arrival_ts = None
+        self.past_ack_send_ts = None
+        self.interarrival_ack_ewma = None
+        self.intersend_pkt_ewma = None
+        self.owd_ewma = None
+        self.alpha = 0.875  #  how much weight to give to the current avg 
+
         self.step_start_ms = None
         self.running = True
 
@@ -98,21 +105,49 @@ class Sender(object):
         self.sample_action = sample_action
 
     def update_state(self, ack):
+        """ Update the state variables listed in __init__(), usually just 
+        updates to an set of EWMAverages.
+        """
         send_ts = ack['ack_send_ts']
         recv_ts = ack['ack_recv_ts']
 
-        # state is [one-way delay, cwnd]
-        curr_delay = recv_ts - send_ts
-        state = [curr_delay, self.cwnd]
+        # Update the interarrival times of ACKs at the sender.
+        # Handles the first ACK in and first interval in.
+        new_interarrival_ms = None
+        if self.past_ack_arrival_ts is not None:
+            new_interarrival_ms = curr_ts_ms() - self.past_ack_arrival_ts
+        self.past_ack_arrival_ts = curr_ts_ms()
+        if self.interarrival_ack_ewma is not None:
+            self.interarrival_ack_ewma *= self.alpha
+            self.interarrival_ack_ewma += (1-self.alpha) * new_interarrival_ms
+        elif new_interarrival_ms is not None:
+            self.interarrival_ack_ewma = new_interarrival_ms
+
+        # Update the interarrival packet send times         
+        # Handles the first ACK sent time and first interval.
+        new_intersend_ms = None
+        if self.past_ack_send_ts is not None:
+            new_intersend_ms = send_ts - self.past_ack_send_ts
+        self.past_ack_send_ts = send_ts
+        if self.intersend_pkt_ewma is not None:
+            self.intersend_pkt_ewma *= self.alpha
+            self.intersend_pkt_ewma += (1-self.alpha) * new_intersend_ms
+        elif new_intersend_ms is not None:
+            self.intersend_pkt_ewma = new_intersend_ms
+
+        # Update the one-way delay
+        curr_owd = recv_ts - send_ts
+        if self.owd_ewma is not None:
+            self.owd_ewma = self.alpha * self.owd_ewma + (1-self.alpha) * curr_owd
+        else:
+            self.owd_ewma = curr_owd
 
         if self.train:
             self.acked_bytes += ack['ack_bytes']
-            self.total_delays.append(curr_delay)
+            self.total_delays.append(curr_owd)
 
             self.first_recv_ts = min(recv_ts, self.first_recv_ts)
             self.last_recv_ts = max(recv_ts, self.last_recv_ts)
-
-        return state
 
     def take_action(self, action_idx):
         op, val = self.action_mapping[action_idx]
@@ -176,17 +211,22 @@ class Sender(object):
 
         self.next_ack = max(self.next_ack, int(ack['ack_seq_num']) + 1)
 
-        state = self.update_state(ack)
-        self.step_state_buf.append(state)
+        self.update_state(ack)
 
         if self.step_start_ms is None:
             self.step_start_ms = curr_ts_ms()
 
+        # At each step end, feed the state: 
+        # [EWMA interarrival ack time, EWMA intersend time, EWMA OWD, cwnd]
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            action = self.sample_action(self.step_state_buf)
+            action = self.sample_action(
+                    [self.interarrival_ack_ewma, 
+                     self.intersend_pkt_ewma, 
+                     self.owd_ewma, 
+                     self.cwnd])
+
             self.take_action(action)
 
-            self.step_state_buf = []
             self.step_start_ms = curr_ts_ms()
 
             if self.train:

@@ -4,13 +4,12 @@ import project_root
 import numpy as np
 import tensorflow as tf
 import datetime
-import time
 from tensorflow import contrib
 from os import path
 from models import DaggerNetwork
 from experts import TrueDaggerExpert
 from env.sender import Sender
-from helpers.helpers import make_sure_path_exists, ewma
+from helpers.helpers import make_sure_path_exists
 
 
 class Status:
@@ -33,7 +32,7 @@ class DaggerLeader(object):
         self.checkpoint = 750
         self.batch_size = 200
         self.learn_rate = 1e-3
-        self.regularization_lambda = 1e-1
+        self.regularization_lambda = 1e-2
         self.loss_delta = 1e-1
 
         # Create the master network and training/sync queues
@@ -121,6 +120,9 @@ class DaggerLeader(object):
         """
         workers_ep_done = 0
         while workers_ep_done < len(self.worker_tasks):
+            # Let the workers dequeue their start tokens
+            time.sleep(1)
+
             worker, msg = self.sess.run(self.sync_q.dequeue())
 
             if worker not in self.worker_tasks:
@@ -206,7 +208,7 @@ class DaggerLeader(object):
                 self.train()
             else:
                 if debug:
-                    sys.stderr.write('[PSERVER]: quitting...\n' % curr_ep)
+                    sys.stderr.write('[PSERVER]: quitting...\n')
                 break
 
             # After training, tell workers to start another episode
@@ -235,8 +237,6 @@ class DaggerWorker(object):
 
         # Hyperparameters
         self.train_queue_capacity = Sender.max_steps * self.num_workers
-        self.ewma_window = 3    # alpha = 2 / (window+1)
-        self.use_expert_prob = 0.75
         self.expert = TrueDaggerExpert(env)
 
         # Must call env.set_sample_action() before env.run()
@@ -296,32 +296,29 @@ class DaggerWorker(object):
             local_vars, global_vars)])
 
     def sample_action(self, step_state_buf):
-        """ Given a buffer of states in the past step, returns an action
+        """ Given a state buffer in the past step, returns an action
         to perform.
 
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
+        step_cwnd = step_state_buf[-1]
+        expert_action = self.expert.sample_action(step_cwnd)
 
-        # For ewma delay, only want first component, the one-way delay
-        # For the cwnd, try only the most recent cwnd
-        owd_buf = np.asarray([state[0] for state in step_state_buf])
-        ewma_delay = ewma(owd_buf, self.ewma_window)
-        last_cwnd = step_state_buf[-1][1]
-        expert_action = self.expert.sample_action(ewma_delay, last_cwnd)
+        step_state_buf = step_state_buf[:-1]
 
-        self.state_buf.extend([[ewma_delay, last_cwnd]])
+        self.state_buf.extend([step_state_buf])
         self.action_buf.append(expert_action)
 
-        # Exponentially decaying probability to actually use the expert action
-        if np.random.random() < (self.use_expert_prob ** self.curr_ep):
+        # Always use the expert on the first episode to get our bearings.
+        if self.curr_ep == 0:
             return expert_action
 
         # Get probability of each action from the local network.
         pi = self.local_network
         action_probs = self.sess.run(pi.action_probs,
-                                     feed_dict={pi.states: [[ewma_delay,
-                                                             last_cwnd]]})
+                                     feed_dict={pi.states: [step_state_buf]})
+
         # Choose an action to take
         action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
         return action
@@ -370,6 +367,9 @@ class DaggerWorker(object):
             if debug:
                 sys.stderr.write('[WORKER %d Ep %d]: waiting for server\n' %
                                 (self.task_idx, self.curr_ep))
+
+            # Let the leader dequeue EP_DONE
+            time.sleep(1)
 
             # Wait until pserver finishes training by blocking on sync_q
             # Only proceeds when it finds its own message from the pserver.
