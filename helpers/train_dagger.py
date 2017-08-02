@@ -22,14 +22,14 @@ def main():
             '--table', default='TABLE',
             help='table for my_gce_helper.py (default: TABLE)')
     parser.add_argument(
-            '--rm-history', action='store_false',
-            help='delete history from all workers (default: True)')
+            '--rm-history', action='store_true',
+            help='delete history from all workers (default: False)')
     parser.add_argument(
-            '--git-push', action='store_false',
-            help='git push and amend on all workers (default: True)')
+            '--git-push', action='store_true',
+            help='git force push and amend latest commit (default: False)')
     parser.add_argument(
-            '--git-pull', action='store_false',
-            help='whether to do a git pull from all workers (default: True)')
+            '--git-pull', action='store_true',
+            help='whether to do a git pull from all workers (default: False)')
         
     args = parser.parse_args()
 
