@@ -26,7 +26,7 @@ class Sender(object):
 
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 3
+    state_dim = 2
     action_mapping = format_actions(
             ["/2.0", "-10.0", "-3.0", "+0.0", "+3.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
@@ -58,6 +58,7 @@ class Sender(object):
         self.step_len_ms = 10
 
         # state variables for RLCC
+        self.num_acks_in_step = 0
         self.past_ack_arrival_ts = None
         self.past_ack_send_ts = None
         self.interarrival_ack_ewma = None
@@ -217,18 +218,20 @@ class Sender(object):
         if self.step_start_ms is None:
             self.step_start_ms = curr_ts_ms()
 
+        self.num_acks_in_step += 1
+
         # At each step end, feed the state: 
         # [EWMA interarrival ack time, EWMA intersend time, EWMA OWD, cwnd]
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
             action = self.sample_action(
-                    [self.interarrival_ack_ewma, 
-                     self.intersend_pkt_ewma, 
-                     self.owd_ewma, 
+                    [self.num_acks_in_step, 
+                     self.owd_ewma,
                      self.cwnd])
 
             self.take_action(action)
 
             self.step_start_ms = curr_ts_ms()
+            self.num_acks_in_step = 0
 
             if self.train:
                 self.step_cnt += 1
