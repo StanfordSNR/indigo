@@ -28,7 +28,7 @@ class Learner(object):
         self.sess.run(tf.variables_initializer(uninit_vars))
 
     def sample_action(self, step_state_buf):
-        norm_states = normalize(step_state_buf[:-1])
+        norm_states = normalize(step_state_buf)
 
         # Get probability of each action from the local network.
         pi = self.model

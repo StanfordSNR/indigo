@@ -304,8 +304,8 @@ class DaggerWorker(object):
         step_cwnd = step_state_buf[-1]
         expert_action = self.expert.sample_action(step_cwnd)
 
-        # For decision-making, exclude the cwnd and normalize.
-        step_state_buf = normalize(step_state_buf[:-1])
+        # For decision-making, normalize.
+        step_state_buf = normalize(step_state_buf)
 
         self.state_buf.extend([step_state_buf])
         self.action_buf.append(expert_action)
