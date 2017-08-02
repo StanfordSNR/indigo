@@ -28,7 +28,7 @@ class Sender(object):
     max_steps = 1000
     state_dim = 3
     action_mapping = format_actions(
-            ["/2.0", "-10.0", "-3.0", "+0.0", "+3.0", "+10.0", "*2.0"])
+            ["/2.0", "-10.0", "-4.0", "+0.0", "+4.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False, debug=False):
@@ -224,7 +224,8 @@ class Sender(object):
         # [EWMA interarrival ack time, EWMA intersend time, EWMA OWD, cwnd]
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
             action = self.sample_action(
-                    [self.num_acks_in_step, 
+                    [self.interarrival_ack_ewma,
+                     self.intersend_pkt_ewma,
                      self.owd_ewma,
                      self.cwnd])
 
