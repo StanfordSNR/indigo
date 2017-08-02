@@ -30,7 +30,7 @@ class DaggerLeader(object):
         self.curr_train_step = 0
         self.max_eps = 500
         self.checkpoint = 12000
-        self.batch_size = 200
+        self.batch_size = 100
         self.learn_rate = 1e-3
         self.regularization_lambda = 1e-2
         self.loss_delta = 1e-1
@@ -49,21 +49,20 @@ class DaggerLeader(object):
                 shapes=[[Sender.state_dim],[]],
                 shared_name='training_feed')
 
-        # Elements: [worker index, status message)
-        # Extra space in the queue to take care of race conditions
-        self.sync_q_capacity = self.num_workers * 2
-        self.sync_q = tf.FIFOQueue(
-                self.sync_q_capacity, [tf.int16, tf.int16],
-                shared_name='sync_queue')
+        # Keys: worker indices, values: Tensorflow messaging queues
+        # Queue Elements: Status message)
+        self.sync_queues = {}
+        for idx in worker_tasks:
+            queue_name = 'sync_q_%d' % idx
+            self.sync_queues[idx] = tf.FIFOQueue(3, [tf.int16],
+                                                 shared_name=queue_name)
 
         self.setup_tf_ops(server)
 
     def cleanup(self):
-        """ Sends messages to workers to stop. Tries hard to save the model """
-        end_worker_msgs = [
-            [idx for idx in self.worker_tasks],
-            [Status.PS_DONE] * len(self.worker_tasks)]
-        self.sess.run(self.sync_q.enqueue_many(end_worker_msgs))
+        """ Sends messages to workers to stop and saves the model. """
+        for idx in self.worker_tasks:
+            self.sess.run(self.sync_queues[idx].enqueue(Status.PS_DONE))
         self.save_model()
 
     def save_model(self, checkpoint=None):
@@ -121,18 +120,20 @@ class DaggerLeader(object):
         workers_ep_done = 0
         while workers_ep_done < len(self.worker_tasks):
             # Let the workers dequeue their start tokens
-            time.sleep(1)
+            time.sleep(0.5)
 
-            worker, msg = self.sess.run(self.sync_q.dequeue())
+            # check in each queue for worker messages and update workers
+            for idx in self.worker_tasks:
+                worker_queue = self.sync_queues[idx]
+                msg = self.sess.run(worker_queue.dequeue())
 
-            if worker not in self.worker_tasks:
-                pass
-            elif msg == Status.EP_DONE:
-                workers_ep_done += 1
-            elif msg == Status.WORKER_DONE:
-                self.worker_tasks.remove(worker)
-            else:
-                self.sess.run(self.sync_q.enqueue([worker, msg]))
+                if msg == Status.EP_DONE:
+                    workers_ep_done += 1
+                elif msg == Status.WORKER_DONE:
+                    self.worker_tasks.remove(worker)
+                    self.sess.run(worker_queue.close())
+                else:
+                    self.sess.run(worker_queue.enqueue(msg))
 
         return workers_ep_done
 
@@ -146,7 +147,7 @@ class DaggerLeader(object):
         # In case the dataset is smaller than the batch size
         self.batch_size = min(dataset_size, self.batch_size)
         num_batches = dataset_size / self.batch_size 
-        min_train_steps = num_batches * 2
+        min_train_steps = num_batches * 3
 
         prev_loss = float("inf")
         curr_loss = 1e10
@@ -212,10 +213,9 @@ class DaggerLeader(object):
                 break
 
             # After training, tell workers to start another episode
-            worker_start_msgs = [
-                    [idx for idx in self.worker_tasks],
-                    [Status.WORKER_START] * len(self.worker_tasks)]
-            self.sess.run(self.sync_q.enqueue_many(worker_start_msgs))
+            for idx in self.worker_tasks:
+                worker_queue = self.sync_queues[idx]
+                self.sess.run(worker_queue.enqueue(Status.WORKER_START))
 
 
 class DaggerWorker(object):
@@ -249,7 +249,7 @@ class DaggerWorker(object):
 
     def cleanup(self):
         self.env.cleanup()
-        self.sess.run(self.sync_q.enqueue([self.task_idx, Status.WORKER_DONE]))
+        self.sess.run(self.sync_q.enqueue(Status.WORKER_DONE))
 
     def setup_tf_ops(self):
         """ Sets up the shared Tensorflow operators and structures
@@ -278,9 +278,8 @@ class DaggerWorker(object):
                     shapes=[[self.state_dim],[]],
                     shared_name='training_feed')
 
-            self.sync_q = tf.FIFOQueue(
-                    self.num_workers * 2, [tf.int16, tf.int16],
-                    shared_name='sync_queue')
+            self.sync_q = tf.FIFOQueue(3, [tf.int16],
+                    shared_name=('sync_q_%d' % self.task_idx))
 
         # Training data is [[state]], [action]
         self.states_data = tf.placeholder(tf.float32, 
@@ -357,7 +356,7 @@ class DaggerWorker(object):
             self.sess.run(self.enqueue_train_op, feed_dict={
                 self.states_data: self.state_buf,
                 self.action_data: self.action_buf})
-            self.sess.run(self.sync_q.enqueue([self.task_idx, Status.EP_DONE]))
+            self.sess.run(self.sync_q.enqueue(Status.EP_DONE))
 
             if debug:
                 queue_size = self.sess.run(self.train_q.size())
@@ -370,15 +369,15 @@ class DaggerWorker(object):
                                 (self.task_idx, self.curr_ep))
 
             # Let the leader dequeue EP_DONE
-            time.sleep(1)
+            time.sleep(0.5)
 
             # Wait until pserver finishes training by blocking on sync_q
-            # Only proceeds when it finds its own message from the pserver.
-            idx, msg = self.sess.run(self.sync_q.dequeue())
-            while (idx != self.task_idx or
-                    (msg != Status.WORKER_START and msg != Status.PS_DONE)):
-                self.sess.run(self.sync_q.enqueue([idx, msg]))
-                idx, msg = self.sess.run(self.sync_q.dequeue())
+            # Only proceeds when it finds a message from the pserver.
+            msg = self.sess.run(self.sync_q.dequeue())
+            while (msg != Status.WORKER_START and msg != Status.PS_DONE):
+                self.sess.run(self.sync_q.enqueue(msg))
+                time.sleep(0.5)
+                msg = self.sess.run(self.sync_q.dequeue())
 
             if msg == Status.PS_DONE:
                 break
