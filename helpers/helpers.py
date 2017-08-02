@@ -52,7 +52,7 @@ def normalize(step_state_buf):
     Assumes max values of 20, 10, 1200 for the features.
     """
     step_state_buf[0] = max(1.0, step_state_buf[0] / 10.0 - 1.0)
-    step_state_buf[1] = max(1.0, step_state_buf[1] / 10.0 - 1.0)
+    step_state_buf[1] = max(1.0, step_state_buf[1] / 5.0 - 1.0)
     step_state_buf[2] = max(1.0, step_state_buf[2] / 600.0 - 1.0)
     return step_state_buf
 

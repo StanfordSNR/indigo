@@ -59,10 +59,16 @@ class Sender(object):
 
         # state variables for RLCC
         self.num_acks_in_step = 0
+
         self.past_ack_arrival_ts = None
-        self.past_ack_send_ts = None
         self.interarrival_ack_ewma = None
+
+        self.past_ack_send_ts = None
         self.intersend_pkt_ewma = None
+
+        self.past_recv_arrival_ts = None
+        self.recv_interval_ewma = None
+
         self.owd_ewma = None
         self.alpha = 0.875  #  how much weight to give to the current avg 
 
@@ -125,8 +131,8 @@ class Sender(object):
         elif new_interarrival_ms is not None:
             self.interarrival_ack_ewma = new_interarrival_ms
 
-        # Update the interarrival packet send times         
-        # Handles the first ACK sent time and first interval.
+        # Update the packet intersend times
+        # Handles the first packet sent time and first interval.
         new_intersend_ms = None
         if self.past_ack_send_ts is not None:
             new_intersend_ms = send_ts - self.past_ack_send_ts
@@ -136,6 +142,17 @@ class Sender(object):
             self.intersend_pkt_ewma += (1-self.alpha) * new_intersend_ms
         elif new_intersend_ms is not None:
             self.intersend_pkt_ewma = new_intersend_ms
+
+        # Update the interarrival time of packets at the receiver.
+        new_recv_interval = None
+        if self.past_recv_arrival_ts is not None:
+            new_recv_interval  = recv_ts - self.past_recv_arrival_ts
+        self.past_recv_arrival_ts = recv_ts
+        if self.recv_interval_ewma is not None:
+            self.recv_interval_ewma *= self.alpha
+            self.recv_interval_ewma += (1-self.alpha) * new_recv_interval
+        elif new_recv_interval is not None:
+            self.recv_interval_ewma = new_recv_interval
 
         # Update the one-way delay
         curr_owd = recv_ts - send_ts
@@ -224,8 +241,8 @@ class Sender(object):
         # [EWMA interarrival ack time, EWMA intersend time, EWMA OWD, cwnd]
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
             action = self.sample_action(
-                    [self.interarrival_ack_ewma,
-                     self.intersend_pkt_ewma,
+                    [self.intersend_pkt_ewma,
+                     self.recv_interval_ewma,
                      self.owd_ewma,
                      self.cwnd])
 
