@@ -48,12 +48,15 @@ def get_open_udp_port():
 
 
 def normalize(step_state_buf):
-    """ Normalizes by centering along -1 to 1
-    Assumes max values of 20, 10, 1200 for the features.
-    """
+    """ Normalizes by centering along -1 to 1 
     step_state_buf[0] = max(1.0, step_state_buf[0] / 10.0 - 1.0)
     step_state_buf[1] = max(1.0, step_state_buf[1] / 5.0 - 1.0)
-    step_state_buf[2] = max(1.0, step_state_buf[2] / 600.0 - 1.0)
+    step_state_buf[2] = max(1.0, step_state_buf[2] / 5.0 - 1.0)
+    step_state_buf[3] = max(1.0, step_state_buf[3] / 600.0 - 1.0)
+    step_state_buf[5] = max(1.0, step_state_buf[5] / 600.0 - 1.0)
+    step_state_buf[6] = max(1.0, step_state_buf[6] / 600.0 - 1.0)
+    step_state_buf[8] = max(1.0, step_state_buf[8] / 500.0 - 1.0)
+    """
     return step_state_buf
 
 

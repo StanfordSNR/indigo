@@ -26,7 +26,7 @@ class Sender(object):
 
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 4
+    state_dim = 9
     action_mapping = format_actions(
             ["/2.0", "-10.0", "-4.0", "+0.0", "+4.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
@@ -60,14 +60,19 @@ class Sender(object):
         # state variables for RLCC
         self.num_acks_in_step = 0
 
-        self.past_ack_arrival_ts = None
-        self.interarrival_ack_ewma = None
-
         self.past_ack_send_ts = None
         self.intersend_pkt_ewma = None
 
+        self.past_ack_arrival_ts = None
+        self.interarrival_ack_ewma = None
+
         self.past_recv_arrival_ts = None
         self.recv_interval_ewma = None
+
+        self.min_rtt = float("inf")
+        self.rtt_ewma = None
+
+        self.tput_estimate_ewma = None
 
         self.owd_ewma = None
         self.alpha = 0.875  #  how much weight to give to the current avg 
@@ -154,6 +159,23 @@ class Sender(object):
         elif new_recv_interval is not None:
             self.recv_interval_ewma = new_recv_interval
 
+        # Update the RTT and minRTT
+        rtt = curr_time_ms - send_ts
+        self.min_rtt = min(self.min_rtt, rtt)
+        if self.rtt_ewma is not None:
+            self.rtt_ewma *= self.alpha
+            self.rtt_ewma += (1-self.alpha) * rtt
+        else:
+            self.rtt_ewma = rtt
+
+        # Update the estimate of TPUT ewma
+        tput_est = ack['ack_bytes'] / rtt
+        if self.tput_estimate_ewma is not None:
+            self.tput_estimate_ewma *= self.alpha
+            self.tput_estimate_ewma += (1-self.alpha) * tput_est
+        else:
+            self.tput_estimate_ewma = tput_est
+
         # Update the one-way delay
         curr_owd = recv_ts - send_ts
         if self.owd_ewma is not None:
@@ -238,12 +260,16 @@ class Sender(object):
         self.num_acks_in_step += 1
 
         # At each step end, feed the state: 
-        # [EWMA interarrival ack time, EWMA intersend time, EWMA OWD, cwnd]
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
             action = self.sample_action(
                     [self.intersend_pkt_ewma,
+                     self.interarrival_ack_ewma,
                      self.recv_interval_ewma,
                      self.owd_ewma,
+                     self.num_acks_in_step,
+                     self.min_rtt,
+                     self.rtt_ewma,
+                     self.tput_estimate_ewma,
                      self.cwnd])
 
             self.take_action(action)

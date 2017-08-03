@@ -130,7 +130,7 @@ class DaggerLeader(object):
                 if msg == Status.EP_DONE:
                     workers_ep_done += 1
                 elif msg == Status.WORKER_DONE:
-                    self.worker_tasks.remove(worker)
+                    self.worker_tasks.remove(idx)
                     self.sess.run(worker_queue.close())
                 else:
                     self.sess.run(worker_queue.enqueue(msg))
