@@ -26,7 +26,7 @@ class Sender(object):
 
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 5
+    state_dim = 4
     action_mapping = format_actions(
             ["/2.0", "-10.0", "-4.0", "+0.0", "+4.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
@@ -62,7 +62,7 @@ class Sender(object):
         self.rtt_ewma = None
 
         self.delivered_time = 0
-        self.delivered_so_far = 0
+        self.delivered = 0
         self.delivery_rate_ewma = None  # BBR's delivery rate
 
         self.sent_so_far = 0
@@ -146,6 +146,7 @@ class Sender(object):
             self.send_rate_ewma = send_rate
 
         if self.train:
+            curr_owd = recv_ts - send_ts
             self.acked_bytes += ack['ack_bytes']
             self.total_delays.append(curr_owd)
 
@@ -226,7 +227,7 @@ class Sender(object):
         # At each step end, feed the state: 
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
             action = self.sample_action(
-                    [self.rtt_ewma / min_rtt,
+                    [self.rtt_ewma / self.min_rtt,
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
                      self.cwnd])

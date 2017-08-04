@@ -33,7 +33,8 @@ class DaggerLeader(object):
         self.batch_size = 100
         self.learn_rate = 1e-3
         self.regularization_lambda = 1e-2
-        self.loss_delta = 1e-1
+        self.loss_epsilon = 1e-2
+        self.steps_threshold = 0.25
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
@@ -137,53 +138,69 @@ class DaggerLeader(object):
 
         return workers_ep_done
 
+    def run_one_train_step(self, num_batches, batch_num):
+        """ Runs one step of the training operator on the given batch.
+        At times will update Tensorboard and save a checkpointed model.
+        Returns the total loss calculated.
+        """
+        ops_to_run = [self.train_step, self.total_loss]
+
+        # Display summary on tensorboard multiple times per episode
+        if self.curr_train_step % num_batches == 0: 
+            ops_to_run.append(self.summary_op)
+            sys.stderr.write('On training step %d\n' % self.curr_train_step)
+
+        start = self.batch_size * batch_num
+        end = start + self.batch_size
+        ret = self.sess.run(ops_to_run, feed_dict={
+            self.global_network.states: self.aggregated_states[start:end],
+            self.actions: self.aggregated_actions[start:end]}
+        )
+
+        if self.curr_train_step % num_batches == 0:
+            self.train_writer.add_summary(ret[2], self.curr_train_step)
+
+        # Save the network model for testing every so often
+        if self.curr_train_step == self.checkpoint:
+            self.save_model(self.curr_train_step)
+            self.checkpoint *= 2
+
+        return ret[1]
+
     def train(self):
         """ Runs the training operator until the loss converges.
         Batches the state action pairs and repeatedly trains on
         those batches.
         """
-
         dataset_size = len(self.aggregated_states)
         # In case the dataset is smaller than the batch size
         self.batch_size = min(dataset_size, self.batch_size)
         num_batches = dataset_size / self.batch_size 
         min_train_steps = num_batches * 3
 
-        prev_loss = float("inf")
-        curr_loss = 1e10
         batch_num = 0
-        curr_ep_train_step = 0
+        min_loss = float("inf")
+        min_loss_step = -1
+        steps_since_min_loss = -1
+        curr_ep_step = 0
 
-        while ((prev_loss - curr_loss > self.loss_delta) or
-               (curr_ep_train_step < min_train_steps)):
+        # Stop condition: min # of steps and no smaller loss seen in a while
+        while ((steps_since_min_loss < self.steps_threshold * curr_ep_step) or
+               (curr_ep_step < min_train_steps)):
 
-            ops_to_run = [self.train_step, self.total_loss]
+            curr_loss = self.run_one_train_step(num_batches, batch_num)
 
-            # Display summary on tensorboard multiple times per episode
-            if self.curr_train_step % num_batches == 0: 
-                ops_to_run.append(self.summary_op)
-                sys.stderr.write('On training step %d\n' % self.curr_train_step)
+            # Update training counters, next batch used.
+            if curr_loss < min_loss - self.loss_epsilon:
+                min_loss = curr_loss
+                min_loss_step = curr_ep_step
+                steps_since_min_loss = 0
+            else:
+                steps_since_min_loss += 1
 
-            start = self.batch_size * batch_num
-            end = start + self.batch_size
-            ret = self.sess.run(ops_to_run, feed_dict={
-                self.global_network.states: self.aggregated_states[start:end],
-                self.actions: self.aggregated_actions[start:end]}
-            )
-
-            if self.curr_train_step % num_batches == 0:
-                summary = ret[2]
-                self.train_writer.add_summary(summary, self.curr_train_step)
-
-            prev_loss = curr_loss
-            curr_loss = ret[1]
             self.curr_train_step += 1
-            curr_ep_train_step += 1
+            curr_ep_step += 1
             batch_num = (batch_num + 1) % num_batches
-
-            if self.curr_train_step == self.checkpoint:
-                self.save_model(self.curr_train_step)
-                self.checkpoint *= 2
 
     def run(self, debug=False):
         for curr_ep in xrange(self.max_eps):
