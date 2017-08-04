@@ -30,6 +30,10 @@ class Receiver(object):
             return None
 
         ack = {}
+        ack['sent_so_far'] = data['sent_so_far']
+        ack['delivered_time'] = data['delivered_time']
+        ack['delivered'] = data['delivered']
+        ack['last_ack_recv'] = data['last_ack_recv']
         ack['ack_seq_num'] = data['seq_num']
         ack['ack_send_ts'] = data['send_ts']
         ack['ack_recv_ts'] = curr_ts_ms()
