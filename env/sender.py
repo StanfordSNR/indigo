@@ -65,7 +65,7 @@ class Sender(object):
         self.delivered = 0
         self.delivery_rate_ewma = None  # BBR's delivery rate
 
-        self.sent_so_far = 0
+        self.sent_bytes = 0
         self.send_rate_ewma = None    # Vegas sending rate
 
         self.alpha = 0.875  #  how much weight to give to the current avg 
@@ -76,9 +76,6 @@ class Sender(object):
         if self.train:
             self.step_cnt = 0
 
-            # statistics variables to compute rewards
-            self.sent_bytes = 0
-            self.acked_bytes = 0
             self.first_recv_ts = float('inf')
             self.last_recv_ts = 0
             self.total_delays = []
@@ -110,9 +107,9 @@ class Sender(object):
         self.sample_action = sample_action
 
     def update_state(self, ack):
-        """ Update the state variables listed in __init__(), usually just 
-        updates to an set of EWMAverages.
-        """
+        """ Update the state variables listed in __init__() """
+        self.next_ack = max(self.next_ack, int(ack['ack_seq_num']) + 1)
+
         send_ts = ack['ack_send_ts']
         recv_ts = ack['ack_recv_ts']
 
@@ -129,25 +126,26 @@ class Sender(object):
         # Update BBR's delivery rate
         self.delivered += ack['ack_bytes']
         self.delivered_time = float(curr_time_ms)
-        delivery_rate = (self.delivered - ack['delivered']) /\
-                        (self.delivered_time - ack['delivered_time'])
+        delivery_rate = float((self.delivered - ack['delivered'])) /\
+                              (self.delivered_time - ack['delivered_time'])
+        delivery_rate  = delivery_rate * 8 * 0.001      # B/s to Mb/s
         if self.delivery_rate_ewma is not None:
             self.delivery_rate_ewma *= self.alpha
-            self.delivery_rate_ewma += (1-self.alpha) * delivery_rate
+            self.delivery_rate_ewma += (1 - self.alpha) * delivery_rate
         else:
             self.delivery_rate_ewma = delivery_rate
 
         # Update Vegas sending rate
-        send_rate = (self.sent_so_far - ack['sent_so_far']) / float(rtt)
+        send_rate = (self.sent_bytes - ack['sent_bytes']) / float(rtt)
+        send_rate = send_rate * 8 * 0.001      # B/s to Mb/s
         if self.send_rate_ewma is not None:
             self.send_rate_ewma *= self.alpha
-            self.send_rate_ewma += (1-self.alpha) * send_rate
+            self.send_rate_ewma += (1 - self.alpha) * send_rate
         else:
             self.send_rate_ewma = send_rate
 
         if self.train:
             curr_owd = recv_ts - send_ts
-            self.acked_bytes += ack['ack_bytes']
             self.total_delays.append(curr_owd)
 
             self.first_recv_ts = min(recv_ts, self.first_recv_ts)
@@ -166,12 +164,12 @@ class Sender(object):
         duration = self.last_recv_ts - self.first_recv_ts
 
         if duration > 0:
-            avg_throughput = float(self.acked_bytes * 8) * 0.001 / duration
+            avg_throughput = float(self.delivered * 8) * 0.001 / duration
         else:
             avg_throughput = 0.0
 
         delay_percentile = float(np.percentile(self.total_delays, 95))
-        loss_rate = 1.0 - float(self.acked_bytes) / self.sent_bytes
+        loss_rate = 1.0 - float(self.delivered) / self.sent_bytes
 
         reward = np.log(max(1e-3, avg_throughput))
         reward -= np.log(max(1.0, delay_percentile))
@@ -188,8 +186,7 @@ class Sender(object):
         return self.seq_num - self.next_ack < self.cwnd
 
     def send(self):
-        self.data['sent_so_far'] = self.sent_so_far
-        self.sent_so_far += 1
+        self.data['sent_bytes'] = self.sent_bytes
         self.data['delivered'] = self.delivered
         self.data['delivered_time'] = self.delivered_time
         self.data['seq_num'] = str(self.seq_num).zfill(10)
@@ -199,8 +196,7 @@ class Sender(object):
         serialized_data = json.dumps(self.data)
         self.sock.sendto(serialized_data, self.peer_addr)
 
-        if self.train:
-            self.sent_bytes += len(serialized_data)
+        self.sent_bytes += len(serialized_data)
 
         if self.debug:
             sys.stderr.write('Sent seq_num %d\n' % int(self.data['seq_num']))
@@ -215,8 +211,6 @@ class Sender(object):
             ack = json.loads(serialized_ack)
         except ValueError:
             return
-
-        self.next_ack = max(self.next_ack, int(ack['ack_seq_num']) + 1)
 
         self.update_state(ack)
 
