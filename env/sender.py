@@ -72,6 +72,8 @@ class Sender(object):
 
         self.step_start_ms = None
         self.running = True
+        self.cwnd_file = open('/tmp/cwnd_file', 'a')
+        self.cwnd_file.write('=' * 20 + '\n')
 
         if self.train:
             self.step_cnt = 0
@@ -154,11 +156,14 @@ class Sender(object):
             self.last_recv_ts = max(recv_ts, self.last_recv_ts)
 
     def take_action(self, action_idx):
+        old_cwnd = self.cwnd
         op, val = self.action_mapping[action_idx]
 
         self.cwnd = apply_op(op, self.cwnd, val)
-
         self.cwnd = min(max(5.0, self.cwnd), 1000.0)
+
+        self.cwnd_file.write('action %d: cwnd %f -> %f\n'
+                             % (action_idx, old_cwnd, self.cwnd))
 
         if self.debug:
             sys.stderr.write('cwnd %.2f\n' % self.cwnd)
