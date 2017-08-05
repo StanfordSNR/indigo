@@ -27,10 +27,10 @@ def main():
 
     try:
         sender.handshake()
-        for i in xrange(1, 3):
+        for i in xrange(1, 4):
             sys.stderr.write('\nEpisode %d\n' % i)
             sender.run()
-            final_reward = sender.compute_reward()
+            # final_reward = sender.compute_reward()
             sender.reset()
     except KeyboardInterrupt:
         pass

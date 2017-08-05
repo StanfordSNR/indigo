@@ -89,6 +89,45 @@ class Sender(object):
     def cleanup(self):
         self.sock.close()
 
+    def reset(self):
+        """Reset the sender. Must be called after every training iteration."""
+
+        self.seq_num = 0
+        self.next_ack = 0
+        self.cwnd = 10.0
+
+        if self.train:
+            self.running = True
+            self.step_cnt = 0
+            self.sent_bytes = 0
+            self.acked_bytes = 0
+            self.first_recv_ts = float('inf')
+            self.last_recv_ts = 0
+            self.total_delays = []
+
+            self.drain_packets()
+
+    def drain_packets(self):
+        """Drain all the packets left in the channel."""
+
+        TIMEOUT = 1000  # ms
+        self.poller.modify(self.sock, READ_ERR_FLAGS)
+
+        while True:
+            events = self.poller.poll(TIMEOUT)
+
+            if not events:  # timed out
+                break
+
+            for fd, flag in events:
+                assert self.sock.fileno() == fd
+
+                if flag & ERR_FLAGS:
+                    sys.exit('Channel closed or error occurred')
+
+                if flag & READ_FLAGS:
+                    self.sock.recvfrom(1600)
+
     def handshake(self):
         """Handshake with peer receiver. Must be called before run()."""
 
@@ -226,12 +265,14 @@ class Sender(object):
 
         # At each step end, feed the state: 
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            action = self.sample_action(
-                    [self.rtt_ewma / self.min_rtt,
-                     self.delivery_rate_ewma,
-                     self.send_rate_ewma,
-                     self.cwnd])
+            features = [self.rtt_ewma / self.min_rtt,
+                        self.delivery_rate_ewma,
+                        self.send_rate_ewma,
+                        self.cwnd]
 
+            print '%f %f %f %f' % tuple(features)
+
+            action = self.sample_action(features)
             self.take_action(action)
 
             self.step_start_ms = curr_ts_ms()
