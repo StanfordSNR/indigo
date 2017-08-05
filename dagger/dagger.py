@@ -131,7 +131,7 @@ class DaggerLeader(object):
                 if msg == Status.EP_DONE:
                     workers_ep_done += 1
                 elif msg == Status.WORKER_DONE:
-                    self.worker_tasks.remove(worker)
+                    self.worker_tasks.remove(idx)
                     self.sess.run(worker_queue.close())
                 else:
                     self.sess.run(worker_queue.enqueue(msg))
@@ -188,7 +188,7 @@ class DaggerLeader(object):
         while ((steps_since_min_loss < self.steps_threshold * curr_ep_step) or
                (curr_ep_step < min_train_steps)):
 
-            curr_loss = self.run_one_step(num_batches, batch_num)
+            curr_loss = self.run_one_train_step(num_batches, batch_num)
 
             # Update training counters, next batch used.
             if curr_loss < min_loss - self.loss_epsilon:

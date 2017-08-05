@@ -26,7 +26,7 @@ class Sender(object):
 
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 3
+    state_dim = 4
     action_mapping = format_actions(
             ["/2.0", "-10.0", "-3.0", "+0.0", "+3.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
@@ -58,11 +58,16 @@ class Sender(object):
         self.step_len_ms = 10
 
         # state variables for RLCC
-        self.past_ack_arrival_ts = None
-        self.past_ack_send_ts = None
-        self.interarrival_ack_ewma = None
-        self.intersend_pkt_ewma = None
-        self.owd_ewma = None
+        self.min_rtt = float("inf")
+        self.rtt_ewma = None
+
+        self.delivered_time = 0
+        self.delivered = 0
+        self.delivery_rate_ewma = None  # BBR's delivery rate
+
+        self.sent_so_far = 0
+        self.send_rate_ewma = None    # Vegas sending rate
+
         self.alpha = 0.875  #  how much weight to give to the current avg 
 
         self.step_start_ms = None
@@ -111,39 +116,37 @@ class Sender(object):
         send_ts = ack['ack_send_ts']
         recv_ts = ack['ack_recv_ts']
 
-        # Update the interarrival times of ACKs at the sender.
-        # Handles the first ACK in and first interval in.
-        new_interarrival_ms = None
+        # Update the RTT and minRTT
         curr_time_ms = curr_ts_ms()
-        if self.past_ack_arrival_ts is not None:
-            new_interarrival_ms = curr_time_ms - self.past_ack_arrival_ts
-        self.past_ack_arrival_ts = curr_time_ms
-        if self.interarrival_ack_ewma is not None:
-            self.interarrival_ack_ewma *= self.alpha
-            self.interarrival_ack_ewma += (1-self.alpha) * new_interarrival_ms
-        elif new_interarrival_ms is not None:
-            self.interarrival_ack_ewma = new_interarrival_ms
-
-        # Update the interarrival packet send times         
-        # Handles the first ACK sent time and first interval.
-        new_intersend_ms = None
-        if self.past_ack_send_ts is not None:
-            new_intersend_ms = send_ts - self.past_ack_send_ts
-        self.past_ack_send_ts = send_ts
-        if self.intersend_pkt_ewma is not None:
-            self.intersend_pkt_ewma *= self.alpha
-            self.intersend_pkt_ewma += (1-self.alpha) * new_intersend_ms
-        elif new_intersend_ms is not None:
-            self.intersend_pkt_ewma = new_intersend_ms
-
-        # Update the one-way delay
-        curr_owd = recv_ts - send_ts
-        if self.owd_ewma is not None:
-            self.owd_ewma = self.alpha * self.owd_ewma + (1-self.alpha) * curr_owd
+        rtt = curr_time_ms - send_ts
+        self.min_rtt = min(self.min_rtt, rtt)
+        if self.rtt_ewma is not None:
+            self.rtt_ewma *= self.alpha
+            self.rtt_ewma += (1-self.alpha) * rtt
         else:
-            self.owd_ewma = curr_owd
+            self.rtt_ewma = rtt
+
+        # Update BBR's delivery rate
+        self.delivered += ack['ack_bytes']
+        self.delivered_time = float(curr_time_ms)
+        delivery_rate = (self.delivered - ack['delivered']) /\
+                        (self.delivered_time - ack['delivered_time'])
+        if self.delivery_rate_ewma is not None:
+            self.delivery_rate_ewma *= self.alpha
+            self.delivery_rate_ewma += (1-self.alpha) * delivery_rate
+        else:
+            self.delivery_rate_ewma = delivery_rate
+
+        # Update Vegas sending rate
+        send_rate = (self.sent_so_far - ack['sent_so_far']) / float(rtt)
+        if self.send_rate_ewma is not None:
+            self.send_rate_ewma *= self.alpha
+            self.send_rate_ewma += (1-self.alpha) * send_rate
+        else:
+            self.send_rate_ewma = send_rate
 
         if self.train:
+            curr_owd = recv_ts - send_ts
             self.acked_bytes += ack['ack_bytes']
             self.total_delays.append(curr_owd)
 
@@ -154,7 +157,6 @@ class Sender(object):
         op, val = self.action_mapping[action_idx]
 
         self.cwnd = apply_op(op, self.cwnd, val)
-
         self.cwnd = min(max(5.0, self.cwnd), 1000.0)
 
         if self.debug:
@@ -186,6 +188,10 @@ class Sender(object):
         return self.seq_num - self.next_ack < self.cwnd
 
     def send(self):
+        self.data['sent_so_far'] = self.sent_so_far
+        self.sent_so_far += 1
+        self.data['delivered'] = self.delivered
+        self.data['delivered_time'] = self.delivered_time
         self.data['seq_num'] = str(self.seq_num).zfill(10)
         self.seq_num += 1
         self.data['send_ts'] = curr_ts_ms()
@@ -218,12 +224,11 @@ class Sender(object):
             self.step_start_ms = curr_ts_ms()
 
         # At each step end, feed the state: 
-        # [EWMA interarrival ack time, EWMA intersend time, EWMA OWD, cwnd]
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
             action = self.sample_action(
-                    [self.interarrival_ack_ewma, 
-                     self.intersend_pkt_ewma, 
-                     self.owd_ewma, 
+                    [self.rtt_ewma / self.min_rtt,
+                     self.delivery_rate_ewma,
+                     self.send_rate_ewma,
                      self.cwnd])
 
             self.take_action(action)
