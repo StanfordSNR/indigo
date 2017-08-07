@@ -72,8 +72,7 @@ class Sender(object):
 
         self.step_start_ms = None
         self.running = True
-        self.cwnd_file = open('/tmp/cwnd_file', 'a')
-        self.cwnd_file.write('=' * 20 + '\n')
+        self.cwnd_file = open('/tmp/cwnd_file', 'w')
 
         if self.train:
             self.step_cnt = 0
@@ -160,8 +159,7 @@ class Sender(object):
         self.cwnd = apply_op(op, self.cwnd, val)
         self.cwnd = min(max(5.0, self.cwnd), 1000.0)
 
-        self.cwnd_file.write('action %d: cwnd %f -> %f\n'
-                             % (action_idx, old_cwnd, self.cwnd))
+        self.cwnd_file.write('%f %f\n' % (old_cwnd, self.cwnd))
 
         if self.debug:
             sys.stderr.write('cwnd %.2f\n' % self.cwnd)
