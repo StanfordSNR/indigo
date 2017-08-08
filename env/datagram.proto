@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+message Data {
+  int32 seq_num = 1;
+  int32 send_ts = 2;
+  int32 sent_bytes = 3;
+  int32 delivered_time = 4;
+  int32 delivered = 5;
+  string payload = 6;
+}
+
+message Ack {
+  int32 seq_num = 1;
+  int32 send_ts = 2;
+  int32 sent_bytes = 3;
+  int32 delivered_time = 4;
+  int32 delivered = 5;
+  int32 ack_bytes = 6;
+}

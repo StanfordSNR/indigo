@@ -27,11 +27,7 @@ def main():
 
     try:
         sender.handshake()
-        for i in xrange(1, 3):
-            sys.stderr.write('\nEpisode %d\n' % i)
-            sender.run()
-            final_reward = sender.compute_reward()
-            sender.reset()
+        sender.run()
     except KeyboardInterrupt:
         pass
     finally:

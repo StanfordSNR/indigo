@@ -2,9 +2,9 @@ import sys
 import json
 import socket
 import select
+import datagram_pb2
 import project_root
-from helpers.helpers import (
-    curr_ts_ms, READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, ALL_FLAGS)
+from helpers.helpers import READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, ALL_FLAGS
 
 
 class Receiver(object):
@@ -24,20 +24,18 @@ class Receiver(object):
     def construct_ack_from_data(self, serialized_data):
         """Construct a serialized ACK that acks a serialized datagram."""
 
-        try:
-            data = json.loads(serialized_data)
-        except ValueError:
-            return None
+        data = datagram_pb2.Data()
+        data.ParseFromString(serialized_data)
 
-        ack = {}
-        ack['sent_bytes'] = data['sent_bytes']
-        ack['delivered_time'] = data['delivered_time']
-        ack['delivered'] = data['delivered']
-        ack['ack_seq_num'] = data['seq_num']
-        ack['ack_send_ts'] = data['send_ts']
-        ack['ack_recv_ts'] = curr_ts_ms()
-        ack['ack_bytes'] = len(serialized_data)
-        return json.dumps(ack)
+        ack = datagram_pb2.Ack()
+        ack.seq_num = data.seq_num
+        ack.send_ts = data.send_ts
+        ack.sent_bytes = data.sent_bytes
+        ack.delivered_time = data.delivered_time
+        ack.delivered = data.delivered
+        ack.ack_bytes = len(serialized_data)
+
+        return ack.SerializeToString()
 
     def handshake(self):
         """Handshake with peer sender. Must be called before run()."""

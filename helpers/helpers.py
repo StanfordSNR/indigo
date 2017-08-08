@@ -26,7 +26,10 @@ def apply_op(op, op1, op2):
 
 
 def curr_ts_ms():
-    return int(time.time() * 1000)
+    if not hasattr(curr_ts_ms, 'epoch'):
+        curr_ts_ms.epoch = time.time()
+
+    return int((time.time() - curr_ts_ms.epoch) * 1000)
 
 
 def make_sure_path_exists(path):
