@@ -6,9 +6,8 @@ from subprocess import check_call, check_output
 
 def main():
     """ Runs a sequence of commands to perform DAgger training.
-    By default, removes the past run's history from all workers,
-    commits and amends HEAD, updates all machines to latest GIT version,
-    and runs the dagger training command.
+    By default, commits and amends HEAD, updates all machines to latest
+    GIT version, and runs the dagger training command.
     """
     parser = argparse.ArgumentParser()
 
@@ -21,9 +20,6 @@ def main():
     parser.add_argument(
             '--table', default='TABLE',
             help='table for my_gce_helper.py (default: TABLE)')
-    parser.add_argument(
-            '--rm-history', action='store_true',
-            help='delete history from all workers (default: False)')
     parser.add_argument(
             '--git-push', action='store_true',
             help='git force push and amend latest commit (default: False)')
@@ -43,9 +39,6 @@ def main():
                      '--rlcc-dir=%s ' 
                      % (args.rlcc_dir, remote_ip,
                         args.username, args.rlcc_dir))
-
-    if args.rm_history:
-        check_call(assistant_cmd + 'rm_history', shell=True)
 
     if args.git_push:
         check_call('git add -A && '

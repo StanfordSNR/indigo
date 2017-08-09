@@ -124,6 +124,7 @@ class DaggerLeader(object):
             time.sleep(0.5)
 
             # check in each queue for worker messages and update workers
+            workers_done = []
             for idx in self.worker_tasks:
                 worker_queue = self.sync_queues[idx]
                 msg = self.sess.run(worker_queue.dequeue())
@@ -131,10 +132,13 @@ class DaggerLeader(object):
                 if msg == Status.EP_DONE:
                     workers_ep_done += 1
                 elif msg == Status.WORKER_DONE:
-                    self.worker_tasks.remove(idx)
+                    workers_done.append(idx)
                     self.sess.run(worker_queue.close())
                 else:
                     self.sess.run(worker_queue.enqueue(msg))
+
+            for worker in workers_done:
+                self.worker_tasks.remove(worker)
 
         return workers_ep_done
 

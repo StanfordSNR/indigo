@@ -51,11 +51,7 @@ class Environment(object):
         """Run sender in env, get final reward of an episode, reset sender."""
 
         sys.stderr.write('Obtaining an episode from environment...\n')
-
         self.sender.run()
-        final_reward = self.sender.compute_reward()
-
-        return final_reward
 
     def cleanup(self):
         if self.sender:
