@@ -21,7 +21,7 @@ def main():
     parser.add_argument('port', type=int)
     args = parser.parse_args()
 
-    sender = Sender(args.port, train=True)
+    sender = Sender(args.port, train=False)
     policy = Policy(sender.state_dim, sender.action_cnt)
     sender.set_sample_action(policy.sample_action)
 
