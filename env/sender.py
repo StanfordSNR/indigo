@@ -174,11 +174,13 @@ class Sender(object):
 
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            action = self.sample_action(
-                    [self.rtt_ewma / self.min_rtt,
-                     self.delivery_rate_ewma,
-                     self.send_rate_ewma,
-                     self.cwnd])
+            features = [self.rtt_ewma / self.min_rtt,
+                        self.delivery_rate_ewma,
+                        self.send_rate_ewma,
+                        self.cwnd]
+            print '%f %f %f %f' % tuple(features)
+
+            action = self.sample_action(features)
 
             self.take_action(action)
 
