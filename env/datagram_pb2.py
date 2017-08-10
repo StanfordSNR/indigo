@@ -19,8 +19,9 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='datagram.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0e\x64\x61tagram.proto\"x\n\x04\x44\x61ta\x12\x0f\n\x07seq_num\x18\x01 \x01(\x07\x12\x0f\n\x07send_ts\x18\x02 \x01(\x07\x12\x12\n\nsent_bytes\x18\x03 \x01(\x07\x12\x16\n\x0e\x64\x65livered_time\x18\x04 \x01(\x07\x12\x11\n\tdelivered\x18\x05 \x01(\x07\x12\x0f\n\x07payload\x18\x06 \x01(\t\"y\n\x03\x41\x63k\x12\x0f\n\x07seq_num\x18\x01 \x01(\x07\x12\x0f\n\x07send_ts\x18\x02 \x01(\x07\x12\x12\n\nsent_bytes\x18\x03 \x01(\x07\x12\x16\n\x0e\x64\x65livered_time\x18\x04 \x01(\x07\x12\x11\n\tdelivered\x18\x05 \x01(\x07\x12\x11\n\tack_bytes\x18\x06 \x01(\x07\x62\x06proto3')
+  serialized_pb=_b('\n\x0e\x64\x61tagram.proto\"x\n\x04\x44\x61ta\x12\x0f\n\x07seq_num\x18\x01 \x01(\x07\x12\x0f\n\x07send_ts\x18\x02 \x01(\x07\x12\x12\n\nsent_bytes\x18\x03 \x01(\x06\x12\x16\n\x0e\x64\x65livered_time\x18\x04 \x01(\x07\x12\x11\n\tdelivered\x18\x05 \x01(\x06\x12\x0f\n\x07payload\x18\x06 \x01(\t\"y\n\x03\x41\x63k\x12\x0f\n\x07seq_num\x18\x01 \x01(\x07\x12\x0f\n\x07send_ts\x18\x02 \x01(\x07\x12\x12\n\nsent_bytes\x18\x03 \x01(\x06\x12\x16\n\x0e\x64\x65livered_time\x18\x04 \x01(\x07\x12\x11\n\tdelivered\x18\x05 \x01(\x06\x12\x11\n\tack_bytes\x18\x06 \x01(\x07\x62\x06proto3')
 )
+_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 
 
@@ -48,7 +49,7 @@ _DATA = _descriptor.Descriptor(
       options=None),
     _descriptor.FieldDescriptor(
       name='sent_bytes', full_name='Data.sent_bytes', index=2,
-      number=3, type=7, cpp_type=3, label=1,
+      number=3, type=6, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -62,7 +63,7 @@ _DATA = _descriptor.Descriptor(
       options=None),
     _descriptor.FieldDescriptor(
       name='delivered', full_name='Data.delivered', index=4,
-      number=5, type=7, cpp_type=3, label=1,
+      number=5, type=6, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -114,7 +115,7 @@ _ACK = _descriptor.Descriptor(
       options=None),
     _descriptor.FieldDescriptor(
       name='sent_bytes', full_name='Ack.sent_bytes', index=2,
-      number=3, type=7, cpp_type=3, label=1,
+      number=3, type=6, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -128,7 +129,7 @@ _ACK = _descriptor.Descriptor(
       options=None),
     _descriptor.FieldDescriptor(
       name='delivered', full_name='Ack.delivered', index=4,
-      number=5, type=7, cpp_type=3, label=1,
+      number=5, type=6, cpp_type=4, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -158,7 +159,6 @@ _ACK = _descriptor.Descriptor(
 
 DESCRIPTOR.message_types_by_name['Data'] = _DATA
 DESCRIPTOR.message_types_by_name['Ack'] = _ACK
-_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 Data = _reflection.GeneratedProtocolMessageType('Data', (_message.Message,), dict(
   DESCRIPTOR = _DATA,
