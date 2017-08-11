@@ -27,7 +27,7 @@ class Sender(object):
     max_steps = 1000
     state_dim = 4
     action_mapping = format_actions(
-            ["/2.0", "-10.0", "-4.0", "+0.0", "+4.0", "+10.0", "*2.0"])
+            ["/2.0", "-10.0", "-4.0", "-1.0", "+0.0", "+1.0", "+4.0", "+10.0", "*1.3"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False):
