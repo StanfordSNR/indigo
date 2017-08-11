@@ -23,7 +23,7 @@ def main():
     parser.add_argument(
             '--commit', default='HEAD',
             help='commit to use on all machines (default: HEAD)')
-        
+
     args = parser.parse_args()
 
     gce_helper_cmd = ('%s/helpers/my_gce_helper.py --table %s'
@@ -33,7 +33,7 @@ def main():
     remote_ip = gce_helper_out[1]
 
     assistant_cmd = ('%s/helpers/my_assistant.py --remote=%s --username=%s '
-                     '--rlcc-dir=%s ' 
+                     '--rlcc-dir=%s '
                      % (args.rlcc_dir, remote_ip,
                         args.username, args.rlcc_dir))
 
