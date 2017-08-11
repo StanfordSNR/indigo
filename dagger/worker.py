@@ -39,9 +39,10 @@ def prepare_traces(bandwidth):
 
 def lookup_best_cwnd(bandwidth, delay):
     d = {
-        40: {40: 290, 50: 330, 60: 410},
-        50: {40: 350, 50: 460, 60: 500},
-        60: {40: 440, 50: 510, 60: 610},
+        30: {30: 170, 40: 210, 50: 270, 60: 320},
+        40: {30: 220, 40: 280, 50: 350, 60: 400},
+        50: {30: 270, 40: 350, 50: 430, 60: 520},
+        60: {30: 320, 40: 420, 50: 510, 60: 610},
     }
 
     return d[bandwidth][delay]
@@ -52,8 +53,8 @@ def create_env(task_index):
     shells. The environment knows the best cwnd to pass to the expert policy.
     """
 
-    bandwidth = [40, 50, 60]
-    delay = [40, 50, 60]
+    bandwidth = [30, 40, 50, 60]
+    delay = [30, 40, 50, 60]
 
     cartesian = [(b,d) for b in bandwidth for d in delay]
     bandwidth, delay = cartesian[task_index]
