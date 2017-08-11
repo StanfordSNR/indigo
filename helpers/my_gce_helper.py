@@ -15,8 +15,8 @@ def main():
     cmd = 'grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}" ' + args.table
     ip_list = check_output(cmd, shell=True).split()
 
-    ret_cmd = ('~/RLCC/dagger/train.py --username jestinm --rlcc-dir '
-               '/home/jestinm/RLCC --ps-hosts ')
+    ret_cmd = ('~/RLCC/dagger/train.py --username francisyyan --rlcc-dir '
+               '/home/francisyyan/RLCC --ps-hosts ')
     ret_int_ip_list = ''
     ret_ext_ip_list = ''
 

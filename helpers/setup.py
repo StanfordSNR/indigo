@@ -72,11 +72,11 @@ def main():
         '--install-deps', action='store_true',
         help='install dependencies: tensorflow, mahimahi, etc.')
     parser.add_argument(
-        '--username', default='jestinm',
-        help='username used in ssh connection (default: jestinm)')
+        '--username', default='francisyyan',
+        help='username used in ssh connection (default: francisyyan)')
     parser.add_argument(
-        '--rlcc-dir', metavar='DIR', default='/home/jestinm/RLCC',
-        help='absolute path to RLCC/ (default: /home/jestinm/RLCC)')
+        '--rlcc-dir', metavar='DIR', default='/home/francisyyan/RLCC',
+        help='absolute path to RLCC/ (default: /home/francisyyan/RLCC)')
     args = parser.parse_args()
 
     setup(args)

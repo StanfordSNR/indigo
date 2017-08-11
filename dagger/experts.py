@@ -16,7 +16,7 @@ def get_best_action(actions, cwnd, target):
     """ Returns the best action by finding the action that leads to the
     closest resulting cwnd to target.
     """
-    return min(actions, 
+    return min(actions,
                key=lambda idx: action_error(actions, idx, cwnd, target))
 
 
@@ -36,7 +36,7 @@ class NaiveDaggerExpert(object):
         cwnd_inc = self.gain * off_target / cwnd
         target_cwnd = cwnd + cwnd_inc
 
-        # Gets the action that gives the resulting cwnd closest to the 
+        # Gets the action that gives the resulting cwnd closest to the
         # expert target cwnd.
         action = get_best_action(Sender.action_mapping, cwnd, target_cwnd)
         return action
@@ -51,7 +51,7 @@ class TrueDaggerExpert(object):
         self.best_cwnd = env.best_cwnd
 
     def sample_action(self, cwnd):
-        # Gets the action that gives the resulting cwnd closest to the 
+        # Gets the action that gives the resulting cwnd closest to the
         # best cwnd.
         action = get_best_action(Sender.action_mapping, cwnd, self.best_cwnd)
         return action

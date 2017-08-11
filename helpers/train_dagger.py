@@ -12,8 +12,8 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-            '--username', default='jestinm',
-            help='username used in ssh (default: jestinm)')
+            '--username', default='francisyyan',
+            help='username used in ssh (default: francisyyan)')
     parser.add_argument(
             '--rlcc-dir', default='~/RLCC',
             help='path to RLCC/ (default: ~/RLCC)')
@@ -26,7 +26,7 @@ def main():
     parser.add_argument(
             '--git-pull', action='store_true',
             help='whether to do a git pull from all workers (default: False)')
-        
+
     args = parser.parse_args()
 
     gce_helper_cmd = ('%s/helpers/my_gce_helper.py --table %s'
@@ -36,7 +36,7 @@ def main():
     remote_ip = gce_helper_out[1]
 
     assistant_cmd = ('%s/helpers/my_assistant.py --remote=%s --username=%s '
-                     '--rlcc-dir=%s ' 
+                     '--rlcc-dir=%s '
                      % (args.rlcc_dir, remote_ip,
                         args.username, args.rlcc_dir))
 

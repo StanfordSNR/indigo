@@ -20,7 +20,7 @@ def run_cmd(args, host, procs):
         cmd_in_ssh = 'git clone https://github.com/StanfordSNR/RLCC.git'
 
     elif cmd == 'git_pull':
-        cmd_in_ssh = ('cd %s && git checkout sync_dagger_test && '
+        cmd_in_ssh = ('cd %s && git checkout fyy-test && '
                       'git reset --hard @~1 && git pull' % args.rlcc_dir)
 
     elif cmd == 'rm_history':
@@ -46,8 +46,8 @@ def main():
         '--remote', required=True, metavar='IP,...',
         help='comma-separated list of IP addresses of remote hosts')
     parser.add_argument(
-        '--username', default='jestinm',
-        help='username used in ssh (default: jestinm)')
+        '--username', default='francisyyan',
+        help='username used in ssh (default: francisyyan)')
     parser.add_argument(
         '--rlcc-dir', metavar='DIR', default='~/RLCC',
         help='path to RLCC/ (default: ~/RLCC)')
