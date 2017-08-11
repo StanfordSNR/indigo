@@ -21,11 +21,8 @@ def main():
             '--table', default='TABLE',
             help='table for my_gce_helper.py (default: TABLE)')
     parser.add_argument(
-            '--git-push', action='store_true',
-            help='git force push and amend latest commit (default: False)')
-    parser.add_argument(
-            '--git-pull', action='store_true',
-            help='whether to do a git pull from all workers (default: False)')
+            '--commit', default='HEAD',
+            help='commit to use on all machines (default: HEAD)')
         
     args = parser.parse_args()
 
@@ -40,13 +37,10 @@ def main():
                      % (args.rlcc_dir, remote_ip,
                         args.username, args.rlcc_dir))
 
-    if args.git_push:
-        check_call('git add -A && '
-                   'git commit --amend --no-edit && '
-                   'git push -f', shell=True)
-
-    if args.git_pull:
+    if args.commit == 'HEAD':
         check_call(assistant_cmd + 'git_pull', shell=True)
+    else:
+        check_call(assistant_cmd + '"git_checkout %s"' % args.commit)
 
     check_call(train_cmd, shell=True)
 

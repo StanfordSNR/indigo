@@ -22,15 +22,9 @@ def run_cmd(args, host, procs):
     elif cmd == 'git_pull':
         cmd_in_ssh = ('cd %s && git checkout sync_dagger_test && '
                       'git reset --hard @~1 && git pull' % args.rlcc_dir)
-
-    elif cmd == 'rm_history':
-        cmd_in_ssh = ('rm -f %s/history' % args.rlcc_dir)
-
-    elif cmd == 'cp_history':
-        cmd_to_run = ('rsync --ignore-missing-args %s:%s/history %s/%s_history'
-                      % (host, args.rlcc_dir, args.local_rlcc_dir, host))
-        check_call(cmd_to_run, shell=True)
-
+    elif cmd.startswith('git_checkout'):
+        cmd_in_ssh = ('cd %s && git checkout %s'
+                      % (args.rlcc_dir, cmd.split()[1]))
     else:
         cmd_in_ssh = cmd
 
