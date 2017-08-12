@@ -92,7 +92,7 @@ class DaggerLeader(object):
 
         cross_entropy_loss = tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
-                    labels=self.actions, 
+                    labels=self.actions,
                     logits=self.global_network.action_scores))
 
         self.total_loss = cross_entropy_loss + reg_loss
@@ -115,7 +115,7 @@ class DaggerLeader(object):
 
     def wait_on_workers(self):
         """ Update which workers are done or dead. Stale tokens will 
-        eventually be cleaned out. 
+        eventually be cleaned out.
         Returns the number of workers that finished their episode.
         """
         workers_ep_done = 0
@@ -150,7 +150,7 @@ class DaggerLeader(object):
         ops_to_run = [self.train_step, self.total_loss]
 
         # Display summary on tensorboard multiple times per episode
-        if self.curr_train_step % num_batches == 0: 
+        if self.curr_train_step % num_batches == 0:
             ops_to_run.append(self.summary_op)
             sys.stderr.write('On training step %d\n' % self.curr_train_step)
 
@@ -179,7 +179,7 @@ class DaggerLeader(object):
         dataset_size = len(self.aggregated_states)
         # In case the dataset is smaller than the batch size
         self.batch_size = min(dataset_size, self.batch_size)
-        num_batches = dataset_size / self.batch_size 
+        num_batches = dataset_size / self.batch_size
         min_train_steps = num_batches * 3
 
         batch_num = 0
@@ -214,7 +214,7 @@ class DaggerLeader(object):
                                 (curr_ep, self.worker_tasks))
 
             workers_ep_done = self.wait_on_workers()
-        
+
             # If workers had data, dequeue ALL the examples and train
             if workers_ep_done > 0:
 
@@ -303,7 +303,7 @@ class DaggerWorker(object):
                     shared_name=('sync_q_%d' % self.task_idx))
 
         # Training data is [[state]], [action]
-        self.states_data = tf.placeholder(tf.float32, 
+        self.states_data = tf.placeholder(tf.float32,
                                           shape=(None, self.state_dim))
         self.action_data = tf.placeholder(tf.int32, shape=(None))
         self.enqueue_train_op = self.train_q.enqueue_many(

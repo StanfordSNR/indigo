@@ -37,17 +37,31 @@ def prepare_traces(bandwidth):
     return uplink_trace, downlink_trace
 
 
+def lookup_best_cwnd(bandwidth, delay):
+    d = {
+        30: {30: 170, 40: 210, 50: 270, 60: 320},
+        40: {30: 220, 40: 280, 50: 350, 60: 400},
+        50: {30: 270, 40: 350, 50: 430, 60: 520},
+        60: {30: 320, 40: 420, 50: 510, 60: 610},
+    }
+
+    return d[bandwidth][delay]
+
+
 def create_env(task_index):
     """ Creates and returns an Environment which contains a single
     sender-receiver connection. The environment is run inside mahimahi
     shells. The environment knows the best cwnd to pass to the expert policy.
     """
 
-    bandwidth = int(np.linspace(30, 60, num=4, dtype=np.int)[task_index])
-    delay = 25
+    bandwidth = [30, 40, 50, 60]
+    delay = [30, 40, 50, 60]
     queue = None
 
+    cartesian = [(b,d) for b in bandwidth for d in delay]
+    bandwidth, delay = cartesian[task_index]
     uplink_trace, downlink_trace = prepare_traces(bandwidth)
+
     mm_cmd = ('mm-delay %d mm-link %s %s' %
               (delay, uplink_trace, downlink_trace))
     if queue is not None:
@@ -59,12 +73,14 @@ def create_env(task_index):
     
     if delay == 25:
         env.best_cwnd = bandwidth * 5
+    else:
+        env.best_cwnd = lookup_best_cwnd(bandwidth, delay)
 
     return env
 
 
 def run(args):
-    """ For each worker/parameter server, starts the appropriate job 
+    """ For each worker/parameter server, starts the appropriate job
     associated with the cluster and server.
     """
 
