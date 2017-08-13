@@ -40,7 +40,8 @@ def main():
     if args.commit == 'HEAD':
         check_call(assistant_cmd + 'git_pull', shell=True)
     else:
-        check_call(assistant_cmd + '"git_checkout %s"' % args.commit)
+        checkout_cmd = '"git_checkout %s"' % args.commit
+        check_call(assistant_cmd + checkout_cmd, shell=True)
 
     check_call(train_cmd, shell=True)
 
