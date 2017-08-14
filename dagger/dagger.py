@@ -6,10 +6,10 @@ import tensorflow as tf
 import datetime
 from tensorflow import contrib
 from os import path
-from models import DaggerNetwork
+from models import DaggerLSTM
 from experts import TrueDaggerExpert
 from env.sender import Sender
-from helpers.helpers import make_sure_path_exists, normalize
+from helpers.helpers import make_sure_path_exists, normalize, curr_ts_ms
 
 
 class Status:
@@ -25,33 +25,26 @@ class DaggerLeader(object):
         self.server = server
         self.worker_tasks = worker_tasks
         self.num_workers = len(worker_tasks)
-        self.aggregated_states = []
-        self.aggregated_actions = []
-        self.curr_train_step = 0
-        self.max_eps = 500
-        self.checkpoint = 12000
-        self.batch_size = 100
+        self.aggregated_dataset = []
+        self.max_eps = 100
+        self.checkpoint = 2
         self.learn_rate = 1e-3
-        self.regularization_lambda = 1e-2
+        self.regularization_lambda = 1e-4
         self.loss_epsilon = 1e-2
-        self.steps_threshold = 0.25
+        self.train_step = 0
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
-            self.global_network = DaggerNetwork(
+            self.global_network = DaggerLSTM(
                     state_dim=Sender.state_dim, action_cnt=Sender.action_cnt)
 
-        # Each element is [state], action
-        # Queue capacity = maximum possible training samples
-        self.train_queue_capacity = Sender.max_steps * self.num_workers
-        self.train_q = tf.RandomShuffleQueue(
-                self.train_queue_capacity, 0,
-                [tf.float32, tf.int32],
-                shapes=[[Sender.state_dim],[]],
+        # Each element is [[state]], [index], [action]
+        self.train_q = tf.FIFOQueue(
+                self.num_workers, [tf.float32, tf.int32, tf.int32],
                 shared_name='training_feed')
 
         # Keys: worker indices, values: Tensorflow messaging queues
-        # Queue Elements: Status message)
+        # Queue Elements: Status message
         self.sync_queues = {}
         for idx in worker_tasks:
             queue_name = 'sync_q_%d' % idx
@@ -73,7 +66,7 @@ class DaggerLeader(object):
         else:
             model_path = path.join(self.logdir, 'checkpoint-%d' % checkpoint)
 
-        # save local parameters to worker-0
+        # save parameters to parameter server
         saver = tf.train.Saver(self.global_network.trainable_vars)
         saver.save(self.sess, model_path)
         sys.stderr.write('\nModel saved to param. server at %s\n' % model_path)
@@ -98,7 +91,7 @@ class DaggerLeader(object):
         self.total_loss = cross_entropy_loss + reg_loss
 
         optimizer = tf.train.AdamOptimizer(self.learn_rate)
-        self.train_step = optimizer.minimize(self.total_loss)
+        self.train_op = optimizer.minimize(self.total_loss)
 
         tf.summary.scalar('reduced_ce_loss', cross_entropy_loss)
         tf.summary.scalar('reg_loss', reg_loss)
@@ -111,7 +104,7 @@ class DaggerLeader(object):
         date_time = datetime.datetime.now().strftime('%Y-%m-%d--%H-%M-%S')
         self.logdir = path.join(project_root.DIR, 'dagger', 'logs', date_time)
         make_sure_path_exists(self.logdir)
-        self.train_writer = tf.summary.FileWriter(self.logdir, self.sess.graph)
+        self.summary_writer = tf.summary.FileWriter(self.logdir)
 
     def wait_on_workers(self):
         """ Update which workers are done or dead. Stale tokens will
@@ -142,87 +135,85 @@ class DaggerLeader(object):
 
         return workers_ep_done
 
-    def run_one_train_step(self, num_batches, batch_num):
-        """ Runs one step of the training operator on the given batch.
+    def run_one_train_step(self, data):
+        """ Runs one step of the training operator on the given data.
         At times will update Tensorboard and save a checkpointed model.
         Returns the total loss calculated.
         """
-        ops_to_run = [self.train_step, self.total_loss]
 
-        # Display summary on tensorboard multiple times per episode
-        if self.curr_train_step % num_batches == 0:
+        summary = True if self.train_step % 10 == 0 else False
+
+        ops_to_run = [self.train_op, self.total_loss]
+
+        if summary:
             ops_to_run.append(self.summary_op)
-            sys.stderr.write('On training step %d\n' % self.curr_train_step)
 
-        start = self.batch_size * batch_num
-        end = start + self.batch_size
+        pi = self.global_network
+
+        start_ts = curr_ts_ms()
         ret = self.sess.run(ops_to_run, feed_dict={
-            self.global_network.states: self.aggregated_states[start:end],
-            self.actions: self.aggregated_actions[start:end]}
-        )
+            pi.states: data[0],
+            pi.indices: data[1],
+            self.actions: data[2],
+            pi.lstm_state_in: pi.lstm_state_init})
 
-        if self.curr_train_step % num_batches == 0:
-            self.train_writer.add_summary(ret[2], self.curr_train_step)
+        elapsed = (curr_ts_ms() - start_ts) / 1000.0
+        sys.stderr.write('train step %d: time %.2f s, data len %d %d %d\n' %
+                         (self.train_step, elapsed,
+                          len(data[0]), len(data[1]), len(data[2])))
 
-        # Save the network model for testing every so often
-        if self.curr_train_step == self.checkpoint:
-            self.save_model(self.curr_train_step)
-            self.checkpoint *= 2
+        if summary:
+            self.summary_writer.add_summary(ret[2], self.train_step)
 
         return ret[1]
 
     def train(self):
         """ Runs the training operator until the loss converges.
-        Batches the state action pairs and repeatedly trains on
-        those batches.
         """
-        dataset_size = len(self.aggregated_states)
-        # In case the dataset is smaller than the batch size
-        self.batch_size = min(dataset_size, self.batch_size)
-        num_batches = dataset_size / self.batch_size
-        min_train_steps = num_batches * 3
+        curr_iter = 0
+        min_iter_cnt = 5
 
-        batch_num = 0
-        min_loss = float("inf")
-        min_loss_step = -1
-        steps_since_min_loss = -1
-        curr_ep_step = 0
+        min_loss = float('inf')
+        iters_since_min_loss = 0
 
-        # Stop condition: min # of steps and no smaller loss seen in a while
-        while ((steps_since_min_loss < self.steps_threshold * curr_ep_step) or
-               (curr_ep_step < min_train_steps)):
+        while True:
+            curr_iter += 1
 
-            curr_loss = self.run_one_train_step(num_batches, batch_num)
+            curr_loss = 0.0
+            for data in self.aggregated_dataset:
+                self.train_step += 1
+                curr_loss += self.run_one_train_step(data)
+            curr_loss /= len(self.aggregated_dataset)
 
-            # Update training counters, next batch used.
+            sys.stderr.write('--- iter %d: mean loss %.3f\n' %
+                             (curr_iter, curr_loss))
+
             if curr_loss < min_loss - self.loss_epsilon:
                 min_loss = curr_loss
-                min_loss_step = curr_ep_step
-                steps_since_min_loss = 0
+                iters_since_min_loss = 0
             else:
-                steps_since_min_loss += 1
+                iters_since_min_loss += 1
 
-            self.curr_train_step += 1
-            curr_ep_step += 1
-            batch_num = (batch_num + 1) % num_batches
+            if curr_iter >= min_iter_cnt and iters_since_min_loss >= 2:
+                break
 
     def run(self, debug=False):
         for curr_ep in xrange(self.max_eps):
-
             if debug:
                 sys.stderr.write('[PSERVER EP %d]: waiting for workers %s\n' %
-                                (curr_ep, self.worker_tasks))
+                                 (curr_ep, self.worker_tasks))
 
             workers_ep_done = self.wait_on_workers()
 
-            # If workers had data, dequeue ALL the examples and train
+            # If workers had data, dequeue ALL the samples and train
             if workers_ep_done > 0:
+                while True:
+                    num_samples = self.sess.run(self.train_q.size())
+                    if num_samples == 0:
+                        break
 
-                num_examples = self.sess.run(self.train_q.size())
-                states, actions = self.sess.run(
-                        self.train_q.dequeue_many(num_examples))
-                self.aggregated_states.extend(states)
-                self.aggregated_actions.extend(actions)
+                    data = self.sess.run(self.train_q.dequeue())
+                    self.aggregated_dataset.append(data)
 
                 if debug:
                     sys.stderr.write('[PSERVER]: start training\n')
@@ -232,6 +223,11 @@ class DaggerLeader(object):
                 if debug:
                     sys.stderr.write('[PSERVER]: quitting...\n')
                 break
+
+            # Save the network model for testing every so often
+            if curr_ep == self.checkpoint:
+                self.save_model(curr_ep)
+                self.checkpoint += 10
 
             # After training, tell workers to start another episode
             for idx in self.worker_tasks:
@@ -252,15 +248,13 @@ class DaggerWorker(object):
         # Buffers and parameters required to train
         self.curr_ep = 0
         self.state_buf = []
+        self.index_buf = []
         self.action_buf = []
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
 
-        # Hyperparameters
-        self.train_queue_capacity = Sender.max_steps * self.num_workers
         self.expert = TrueDaggerExpert(env)
-
-        # Must call env.set_sample_action() before env.run()
+        # Must call env.set_sample_action() before env.rollout()
         env.set_sample_action(self.sample_action)
 
         # Set up Tensorflow for synchronization, training
@@ -283,31 +277,32 @@ class DaggerWorker(object):
                 cluster=self.cluster)):
 
             with tf.variable_scope('global'):
-                self.global_network = DaggerNetwork(
+                self.global_network = DaggerLSTM(
                         state_dim=self.state_dim, action_cnt=self.action_cnt)
 
         with tf.device(self.worker_device):
             with tf.variable_scope('local'):
-                self.local_network = DaggerNetwork(
+                self.local_network = DaggerLSTM(
                         state_dim=self.state_dim, action_cnt=self.action_cnt)
+
+        self.lstm_state = self.local_network.lstm_state_init
 
         # Build shared queues for training data and synchronization
         with tf.device(self.leader_device):
-            self.train_q = tf.RandomShuffleQueue(
-                    self.train_queue_capacity, 0,
-                    [tf.float32, tf.int32],
-                    shapes=[[self.state_dim],[]],
+            self.train_q = tf.FIFOQueue(
+                    self.num_workers, [tf.float32, tf.int32, tf.int32],
                     shared_name='training_feed')
 
             self.sync_q = tf.FIFOQueue(3, [tf.int16],
                     shared_name=('sync_q_%d' % self.task_idx))
 
-        # Training data is [[state]], [action]
-        self.states_data = tf.placeholder(tf.float32,
+        # Training data is [[state]], [index], [action]
+        self.state_data = tf.placeholder(tf.float32,
                                           shape=(None, self.state_dim))
+        self.index_data = tf.placeholder(tf.int32, shape=(None))
         self.action_data = tf.placeholder(tf.int32, shape=(None))
-        self.enqueue_train_op = self.train_q.enqueue_many(
-                [self.states_data, self.action_data])
+        self.enqueue_train_op = self.train_q.enqueue(
+                (self.state_data, self.index_data, self.action_data))
 
         # Sync local network to global network
         local_vars = self.local_network.trainable_vars
@@ -322,14 +317,18 @@ class DaggerWorker(object):
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        step_cwnd = step_state_buf[-1]
+        step_cwnd = step_state_buf[-1][-1]
         expert_action = self.expert.sample_action(step_cwnd)
 
         # For decision-making, normalize.
         step_state_buf = normalize(step_state_buf)
 
-        self.state_buf.extend([step_state_buf])
+        # Fill in state_buf, action_buf, index_buf
+        self.state_buf.extend(step_state_buf)
         self.action_buf.append(expert_action)
+
+        last_index = self.index_buf[-1] if len(self.index_buf) > 0 else -1
+        self.index_buf.append(len(step_state_buf) + last_index)
 
         # Always use the expert on the first episode to get our bearings.
         if self.curr_ep == 0:
@@ -337,17 +336,27 @@ class DaggerWorker(object):
 
         # Get probability of each action from the local network.
         pi = self.local_network
-        action_probs = self.sess.run(pi.action_probs,
-                                     feed_dict={pi.states: [step_state_buf]})
+        feed_dict = {
+            pi.states: step_state_buf,
+            pi.indices: [len(step_state_buf) - 1],
+            pi.lstm_state_in: self.lstm_state,
+        }
+        ops_to_run = [pi.action_probs, pi.lstm_state_out]
+        action_probs, lstm_state_out = self.sess.run(ops_to_run, feed_dict)
 
-        # Choose an action to take
+        # Choose an action to take and update current LSTM state
         action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
+        self.lstm_state = lstm_state_out
+
         return action
 
     def rollout(self):
         """ Start an episode/flow with an empty dataset/environment. """
         self.state_buf = []
+        self.index_buf = []
         self.action_buf = []
+        self.lstm_state = self.local_network.lstm_state_init
+
         self.env.reset()
         self.env.rollout()
 
@@ -367,27 +376,28 @@ class DaggerWorker(object):
 
             if debug:
                 queue_size = self.sess.run(self.train_q.size())
-                num_examples = len(self.action_buf)
-                sys.stderr.write(('[WORKER %d Ep %d]: enqueueing %d examples '
-                                  'into queue of size %d\n')
-                                  % (self.task_idx, self.curr_ep,
-                                     num_examples, queue_size))
+                sys.stderr.write(
+                    '[WORKER %d Ep %d]: enqueueing a sequence of data '
+                    'into queue of size %d\n' %
+                    (self.task_idx, self.curr_ep, queue_size))
 
-            # Enqueue all of the state/action pairs into the training queue.
+            # Enqueue a sequence of data into the training queue.
             self.sess.run(self.enqueue_train_op, feed_dict={
-                self.states_data: self.state_buf,
+                self.state_data: self.state_buf,
+                self.index_data: self.index_buf,
                 self.action_data: self.action_buf})
             self.sess.run(self.sync_q.enqueue(Status.EP_DONE))
 
             if debug:
                 queue_size = self.sess.run(self.train_q.size())
-                sys.stderr.write(('[WORKER %d Ep %d]: finished queueing data. '
-                                  'queue size now %d\n')
-                                  % (self.task_idx, self.curr_ep, queue_size))
+                sys.stderr.write(
+                    '[WORKER %d Ep %d]: finished queueing data. '
+                    'queue size now %d\n' %
+                    (self.task_idx, self.curr_ep, queue_size))
 
             if debug:
                 sys.stderr.write('[WORKER %d Ep %d]: waiting for server\n' %
-                                (self.task_idx, self.curr_ep))
+                                 (self.task_idx, self.curr_ep))
 
             # Let the leader dequeue EP_DONE
             time.sleep(0.5)

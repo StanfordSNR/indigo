@@ -6,15 +6,16 @@ import numpy as np
 import tensorflow as tf
 from os import path
 from env.sender import Sender
-from models import DaggerNetwork
+from models import DaggerLSTM
 from helpers.helpers import normalize, softmax
 
 
 class Learner(object):
     def __init__(self, state_dim, action_cnt, restore_vars):
-
         with tf.variable_scope('global'):
-            self.model = DaggerNetwork(state_dim=state_dim, action_cnt=action_cnt)
+            self.model = DaggerLSTM(state_dim=state_dim, action_cnt=action_cnt)
+
+        self.lstm_state = self.model.lstm_state_init
 
         self.sess = tf.Session()
 
@@ -32,16 +33,22 @@ class Learner(object):
 
         # Get probability of each action from the local network.
         pi = self.model
-        action_probs = self.sess.run(pi.action_probs,
-                                     feed_dict={
-                                         pi.states: [norm_states]
-                                     })
+        feed_dict = {
+            pi.states: step_state_buf,
+            pi.indices: [len(step_state_buf) - 1],
+            pi.lstm_state_in: self.lstm_state,
+        }
+        ops_to_run = [pi.action_probs, pi.lstm_state_out]
+        action_probs, lstm_state_out = self.sess.run(ops_to_run, feed_dict)
 
+        # Choose an action to take and update current LSTM state
+        self.lstm_state = lstm_state_out
         action = np.argmax(action_probs[0])
+
         # action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
-        #temperature = 1.0
-        #temp_probs = softmax(action_probs[0] / temperature)
-        #action = np.argmax(np.random.multinomial(1, temp_probs - 1e-5))
+        # temperature = 1.0
+        # temp_probs = softmax(action_probs[0] / temperature)
+        # action = np.argmax(np.random.multinomial(1, temp_probs - 1e-5))
         return action
 
 

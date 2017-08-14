@@ -25,7 +25,7 @@ def format_actions(action_list):
 class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 5
+    state_dim = 4
     action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
@@ -53,17 +53,10 @@ class Sender(object):
         self.step_len_ms = 10
 
         # state variables for RLCC
-        self.min_rtt = float("inf")
-        self.rtt_ewma = None
-
         self.delivered_time = 0
         self.delivered = 0
-        self.delivery_rate_ewma = None  # BBR's delivery rate
-
         self.sent_bytes = 0
-        self.send_rate_ewma = None    # Vegas sending rate
-
-        self.alpha = 0.875  #  how much weight to give to the current avg
+        self.state_buf = []
 
         self.step_start_ms = None
         self.running = True
@@ -84,7 +77,7 @@ class Sender(object):
             if msg == 'Hello from receiver' and self.peer_addr is None:
                 self.peer_addr = addr
                 self.sock.sendto('Hello from sender', self.peer_addr)
-                sys.stderr.write('[sender]: Handshake success! '
+                sys.stderr.write('[sender] Handshake success! '
                                  'Receiver\'s address is %s:%s\n' % addr)
                 break
 
@@ -100,35 +93,19 @@ class Sender(object):
         self.next_ack = max(self.next_ack, ack.seq_num + 1)
         curr_time_ms = curr_ts_ms()
 
-        # Update the RTT and minRTT
+        # Update RTT
         rtt = float(curr_time_ms - ack.send_ts)
-        self.min_rtt = min(self.min_rtt, rtt)
-        if self.rtt_ewma is not None:
-            self.rtt_ewma *= self.alpha
-            self.rtt_ewma += (1 - self.alpha) * rtt
-        else:
-            self.rtt_ewma = rtt
 
         # Update BBR's delivery rate
         self.delivered += ack.ack_bytes
         self.delivered_time = curr_time_ms
-        delivery_rate = (1.0 * (self.delivered - ack.delivered) /
+        delivery_rate = (0.008 * (self.delivered - ack.delivered) /
                          (self.delivered_time - ack.delivered_time))
-        delivery_rate = delivery_rate * 8 * 0.001      # B/ms to Mb/s
-        if self.delivery_rate_ewma is not None:
-            self.delivery_rate_ewma *= self.alpha
-            self.delivery_rate_ewma += (1 - self.alpha) * delivery_rate
-        else:
-            self.delivery_rate_ewma = delivery_rate
 
         # Update Vegas sending rate
-        send_rate = (self.sent_bytes - ack.sent_bytes) / rtt
-        send_rate = send_rate * 8 * 0.001      # B/ms to Mb/s
-        if self.send_rate_ewma is not None:
-            self.send_rate_ewma *= self.alpha
-            self.send_rate_ewma += (1 - self.alpha) * send_rate
-        else:
-            self.send_rate_ewma = send_rate
+        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / rtt
+
+        self.state_buf.append([rtt, delivery_rate, send_rate, self.cwnd])
 
     def take_action(self, action_idx):
         old_cwnd = self.cwnd
@@ -136,7 +113,6 @@ class Sender(object):
 
         self.cwnd = apply_op(op, self.cwnd, val)
         self.cwnd = max(5.0, self.cwnd)
-
         self.cwnd_file.write('%f %f\n' % (old_cwnd, self.cwnd))
 
     def window_is_open(self):
@@ -173,12 +149,9 @@ class Sender(object):
 
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            action = self.sample_action(
-                    [self.min_rtt,
-                     self.rtt_ewma,
-                     self.delivery_rate_ewma,
-                     self.send_rate_ewma,
-                     self.cwnd])
+            action = self.sample_action(self.state_buf)
+
+            self.state_buf = []
 
             self.take_action(action)
 
