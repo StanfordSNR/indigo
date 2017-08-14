@@ -16,7 +16,6 @@ def create_env():
         (uplink_trace, downlink_trace))
 
     env = Environment(mahimahi_cmd)
-    env.setup()
     return env
 
 
@@ -37,16 +36,16 @@ class Learner(object):
 
     def run(self):
         for episode_i in xrange(1, 3):
-            sys.stderr.write('\nEpisode %d\n' % episode_i)
+            sys.stderr.write('--- Episode %d\n' % episode_i)
             self.env.reset()
 
             # get an episode of experience
-            final_reward = self.env.rollout()
+            self.env.rollout()
 
             # update model
-            self.update_model(final_reward)
+            self.update_model()
 
-    def update_model(self, final_reward):
+    def update_model(self):
         sys.stderr.write('Updating model...\n')
 
 
