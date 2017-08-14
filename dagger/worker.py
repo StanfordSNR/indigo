@@ -43,8 +43,8 @@ def create_env(task_index):
     shells. The environment knows the best cwnd to pass to the expert policy.
     """
 
-    bandwidth = [10, 30, 50, 70, 90]
-    delay = [10, 30, 50, 70, 90]
+    bandwidth = [10, 30, 50, 70, 100]
+    delay = [10, 30, 50, 70, 100]
     queue = None
 
     cartesian = [(b,d) for b in bandwidth for d in delay]
