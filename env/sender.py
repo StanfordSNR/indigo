@@ -24,11 +24,13 @@ def format_actions(action_list):
 
 class Sender(object):
     # RL exposed class/static variables
-    max_steps = 1000
-    state_dim = 5
+    MAX_STEPS = 1000
+    STATE_DIM = 5
+    ALPHA = 0.875  #  how much weight to give to the current avg
+
     action_mapping = format_actions(
-            ["/2.0", "-10.0", "-1.0", "+0.0", "+1.0", "+10.0", "*2.0"])
-    action_cnt = len(action_mapping)
+            ["/2.0", "/1.5", "-10.0", "+0.0", "+10.0", "*1.5", "*2.0"])
+    ACTION_CNT = len(action_mapping)
 
     def __init__(self, port=0, train=False):
         self.train = train
@@ -63,8 +65,6 @@ class Sender(object):
 
         self.sent_bytes = 0
         self.send_rate_ewma = None    # Vegas sending rate
-
-        self.alpha = 0.875  #  how much weight to give to the current avg
 
         self.step_start_ms = None
         self.running = True
@@ -105,8 +105,8 @@ class Sender(object):
         rtt = float(curr_time_ms - ack.send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
         if self.rtt_ewma is not None:
-            self.rtt_ewma *= self.alpha
-            self.rtt_ewma += (1 - self.alpha) * rtt
+            self.rtt_ewma *= Sender.ALPHA
+            self.rtt_ewma += (1 - Sender.ALPHA) * rtt
         else:
             self.rtt_ewma = rtt
 
@@ -117,8 +117,8 @@ class Sender(object):
                          (self.delivered_time - ack.delivered_time))
         delivery_rate = delivery_rate * 8 * 0.001      # B/ms to Mb/s
         if self.delivery_rate_ewma is not None:
-            self.delivery_rate_ewma *= self.alpha
-            self.delivery_rate_ewma += (1 - self.alpha) * delivery_rate
+            self.delivery_rate_ewma *= Sender.ALPHA
+            self.delivery_rate_ewma += (1 - Sender.ALPHA) * delivery_rate
         else:
             self.delivery_rate_ewma = delivery_rate
 
@@ -126,8 +126,8 @@ class Sender(object):
         send_rate = (self.sent_bytes - ack.sent_bytes) / rtt
         send_rate = send_rate * 8 * 0.001      # B/ms to Mb/s
         if self.send_rate_ewma is not None:
-            self.send_rate_ewma *= self.alpha
-            self.send_rate_ewma += (1 - self.alpha) * send_rate
+            self.send_rate_ewma *= Sender.ALPHA
+            self.send_rate_ewma += (1 - Sender.ALPHA) * send_rate
         else:
             self.send_rate_ewma = send_rate
 
@@ -187,7 +187,7 @@ class Sender(object):
 
             if self.train:
                 self.step_cnt += 1
-                if self.step_cnt >= Sender.max_steps:
+                if self.step_cnt >= Sender.MAX_STEPS:
                     self.step_cnt = 0
                     self.running = False
 

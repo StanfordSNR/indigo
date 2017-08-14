@@ -20,6 +20,15 @@ class Status:
 
 
 class DaggerLeader(object):
+    MAX_EPS = 500
+    NEXT_CHECKPOINT = 50
+    LEARN_RATE = 1e-3
+    REGULARIZATION_LAMBDA = 1e-2
+    DEFAULT_BATCH_SIZE = 100
+    LOSS_EPSILON = 1e-2
+    MIN_ITERS = 5
+    ITERS_FRAC = 0.25
+
     def __init__(self, cluster, server, worker_tasks):
         self.cluster = cluster
         self.server = server
@@ -28,26 +37,20 @@ class DaggerLeader(object):
         self.aggregated_states = []
         self.aggregated_actions = []
         self.curr_train_step = 0
-        self.max_eps = 500
-        self.checkpoint = 12000
-        self.batch_size = 100
-        self.learn_rate = 1e-3
-        self.regularization_lambda = 1e-2
-        self.loss_epsilon = 1e-2
-        self.steps_threshold = 0.25
+        self.checkpoint = 50
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
             self.global_network = DaggerNetwork(
-                    state_dim=Sender.state_dim, action_cnt=Sender.action_cnt)
+                    state_dim=Sender.STATE_DIM, action_cnt=Sender.ACTION_CNT)
 
         # Each element is [state], action
         # Queue capacity = maximum possible training samples
-        self.train_queue_capacity = Sender.max_steps * self.num_workers
+        self.train_queue_capacity = Sender.MAX_STEPS * self.num_workers
         self.train_q = tf.RandomShuffleQueue(
                 self.train_queue_capacity, 0,
                 [tf.float32, tf.int32],
-                shapes=[[Sender.state_dim],[]],
+                shapes=[[Sender.STATE_DIM],[]],
                 shared_name='training_feed')
 
         # Keys: worker indices, values: Tensorflow messaging queues
@@ -88,7 +91,7 @@ class DaggerLeader(object):
         reg_loss = 0.0
         for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
             reg_loss += tf.nn.l2_loss(x)
-        reg_loss *= self.regularization_lambda
+        reg_loss *= DaggerLeader.REGULARIZATION_LAMBDA
 
         cross_entropy_loss = tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -97,7 +100,7 @@ class DaggerLeader(object):
 
         self.total_loss = cross_entropy_loss + reg_loss
 
-        optimizer = tf.train.AdamOptimizer(self.learn_rate)
+        optimizer = tf.train.AdamOptimizer(DaggerLeader.LEARN_RATE)
         self.train_step = optimizer.minimize(self.total_loss)
 
         tf.summary.scalar('reduced_ce_loss', cross_entropy_loss)
@@ -142,20 +145,20 @@ class DaggerLeader(object):
 
         return workers_ep_done
 
-    def run_one_train_step(self, num_batches, batch_num):
+    def run_one_train_step(self, num_batches, batch_num, batch_size):
         """ Runs one step of the training operator on the given batch.
         At times will update Tensorboard and save a checkpointed model.
         Returns the total loss calculated.
         """
         ops_to_run = [self.train_step, self.total_loss]
 
-        # Display summary on tensorboard multiple times per episode
+        # Display summary on tensorboard once per iteration
         if self.curr_train_step % num_batches == 0:
             ops_to_run.append(self.summary_op)
-            sys.stderr.write('On training step %d\n' % self.curr_train_step)
+            sys.stderr.write('[PSERVER] Train step %d\n' % self.curr_train_step)
 
-        start = self.batch_size * batch_num
-        end = start + self.batch_size
+        start = batch_size * batch_num
+        end = start + batch_size
         ret = self.sess.run(ops_to_run, feed_dict={
             self.global_network.states: self.aggregated_states[start:end],
             self.actions: self.aggregated_actions[start:end]}
@@ -164,50 +167,46 @@ class DaggerLeader(object):
         if self.curr_train_step % num_batches == 0:
             self.train_writer.add_summary(ret[2], self.curr_train_step)
 
-        # Save the network model for testing every so often
-        if self.curr_train_step == self.checkpoint:
-            self.save_model(self.curr_train_step)
-            self.checkpoint *= 2
+        self.curr_train_step += 1
 
         return ret[1]
 
     def train(self):
         """ Runs the training operator until the loss converges.
-        Batches the state action pairs and repeatedly trains on
-        those batches.
+        Batches the state action pairs in the dataset D. Each pass
+        over all batches is an iteration.
         """
-        dataset_size = len(self.aggregated_states)
         # In case the dataset is smaller than the batch size
-        self.batch_size = min(dataset_size, self.batch_size)
-        num_batches = dataset_size / self.batch_size
-        min_train_steps = num_batches * 3
+        dataset_size = len(self.aggregated_states)
+        batch_size = min(dataset_size, DaggerLeader.DEFAULT_BATCH_SIZE)
+        num_batches = dataset_size / batch_size
 
-        batch_num = 0
-        min_loss = float("inf")
-        min_loss_step = -1
-        steps_since_min_loss = -1
-        curr_ep_step = 0
+        min_iter_loss = float("inf")
+        iters_since_min_loss = -1
+        curr_iter = 0
 
-        # Stop condition: min # of steps and no smaller loss seen in a while
-        while ((steps_since_min_loss < self.steps_threshold * curr_ep_step) or
-               (curr_ep_step < min_train_steps)):
+        # Stop when min # iterations met and no smaller loss seen in a while
+        while ((iters_since_min_loss < DaggerLeader.ITERS_FRAC * curr_iter) or
+               (curr_iter < DaggerLeader.MIN_ITERS)):
 
-            curr_loss = self.run_one_train_step(num_batches, batch_num)
+            # Run one iteration over the entire dataset and compute mean loss
+            curr_mean_loss = 0.0
+            for i in xrange(num_batches):
+                loss = self.run_one_train_step(num_batches, i, batch_size)
+                curr_mean_loss += loss
+            curr_mean_loss /= num_batches
 
-            # Update training counters, next batch used.
-            if curr_loss < min_loss - self.loss_epsilon:
-                min_loss = curr_loss
-                min_loss_step = curr_ep_step
-                steps_since_min_loss = 0
+            # Update min loss and iteration counters
+            if curr_mean_loss < min_iter_loss - DaggerLeader.LOSS_EPSILON:
+                min_iter_loss = curr_mean_loss
+                iters_since_min_loss = 0
             else:
-                steps_since_min_loss += 1
+                iters_since_min_loss += 1
 
-            self.curr_train_step += 1
-            curr_ep_step += 1
-            batch_num = (batch_num + 1) % num_batches
+            curr_iter += 1
 
     def run(self, debug=False):
-        for curr_ep in xrange(self.max_eps):
+        for curr_ep in xrange(DaggerLeader.MAX_EPS):
 
             if debug:
                 sys.stderr.write('[PSERVER EP %d]: waiting for workers %s\n' %
@@ -228,6 +227,13 @@ class DaggerLeader(object):
                     sys.stderr.write('[PSERVER]: start training\n')
 
                 self.train()
+
+                # Save the network model for testing every few episodes
+                # The name indicates how long it trained for (# train steps)
+                if curr_ep == self.checkpoint:
+                    self.save_model(self.curr_train_step)
+                    self.checkpoint += DaggerLeader.NEXT_CHECKPOINT
+
             else:
                 if debug:
                     sys.stderr.write('[PSERVER]: quitting...\n')
@@ -257,7 +263,7 @@ class DaggerWorker(object):
         self.action_cnt = env.action_cnt
 
         # Hyperparameters
-        self.train_queue_capacity = Sender.max_steps * self.num_workers
+        self.train_queue_capacity = Sender.MAX_STEPS * self.num_workers
         self.expert = TrueDaggerExpert(env)
 
         # Must call env.set_sample_action() before env.run()
@@ -322,10 +328,7 @@ class DaggerWorker(object):
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        step_cwnd = step_state_buf[-1]
-        expert_action = self.expert.sample_action(step_cwnd)
-
-        # For decision-making, normalize.
+        expert_action = self.expert.sample_action(step_state_buf)
         step_state_buf = normalize(step_state_buf)
 
         self.state_buf.extend([step_state_buf])
@@ -357,7 +360,7 @@ class DaggerWorker(object):
         pi = self.local_network
         while True:
             if debug:
-                sys.stderr.write('[WORKER %d Ep %d] Starting...\n' %
+                sys.stderr.write('[WORKER %d EP %d] Starting...\n' %
                                 (self.task_idx, self.curr_ep))
 
             # Reset local parameters to global
@@ -368,7 +371,7 @@ class DaggerWorker(object):
             if debug:
                 queue_size = self.sess.run(self.train_q.size())
                 num_examples = len(self.action_buf)
-                sys.stderr.write(('[WORKER %d Ep %d]: enqueueing %d examples '
+                sys.stderr.write(('[WORKER %d EP %d]: enqueueing %d examples '
                                   'into queue of size %d\n')
                                   % (self.task_idx, self.curr_ep,
                                      num_examples, queue_size))
@@ -381,13 +384,9 @@ class DaggerWorker(object):
 
             if debug:
                 queue_size = self.sess.run(self.train_q.size())
-                sys.stderr.write(('[WORKER %d Ep %d]: finished queueing data. '
-                                  'queue size now %d\n')
+                sys.stderr.write(('[WORKER %d EP %d]: waiting for server. '
+                                  'queue size: %d\n')
                                   % (self.task_idx, self.curr_ep, queue_size))
-
-            if debug:
-                sys.stderr.write('[WORKER %d Ep %d]: waiting for server\n' %
-                                (self.task_idx, self.curr_ep))
 
             # Let the leader dequeue EP_DONE
             time.sleep(0.5)

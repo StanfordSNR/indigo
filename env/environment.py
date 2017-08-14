@@ -26,8 +26,8 @@ class Environment(object):
         # start sender as an instance of Sender class
         sys.stderr.write('Starting sender...\n')
         self.sender = Sender(self.port, train=True)
-        self.state_dim = Sender.state_dim
-        self.action_cnt = Sender.action_cnt
+        self.state_dim = Sender.STATE_DIM
+        self.action_cnt = Sender.ACTION_CNT
 
         # start receiver in a subprocess
         sys.stderr.write('Starting receiver...\n')

@@ -28,8 +28,8 @@ class NaiveDaggerExpert(object):
         self.target = 100.0
         self.gain = 1.0
 
-    def sample_action(self, state, cwnd):
-        ewma_delay = state      # assume this is the state
+    def sample_action(self, state):
+        ewma_delay, cwnd = state      # assume this is the state
         self.base_delay = min(self.base_delay, ewma_delay)
         queuing_delay = ewma_delay - self.base_delay
         off_target = self.target - queuing_delay
@@ -50,8 +50,9 @@ class TrueDaggerExpert(object):
                                            'the environment in worker.py.')
         self.best_cwnd = env.best_cwnd
 
-    def sample_action(self, cwnd):
+    def sample_action(self, state):
         # Gets the action that gives the resulting cwnd closest to the
         # best cwnd.
+        cwnd = state[-1]
         action = get_best_action(Sender.action_mapping, cwnd, self.best_cwnd)
         return action

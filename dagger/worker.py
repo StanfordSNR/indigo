@@ -10,7 +10,6 @@ from subprocess import check_call
 from os import path
 from dagger import DaggerLeader, DaggerWorker
 from env.environment import Environment
-from env.sender import Sender
 
 
 def prepare_traces(bandwidth):
