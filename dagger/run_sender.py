@@ -53,12 +53,12 @@ def main():
     sender = Sender(args.port)
 
     model_path = path.join(project_root.DIR, 'dagger', 'logs',
-            '2017-08-12--20-46-06',
-                           'checkpoint-384000')
+            '2017-08-14--21-54-04',
+                           'checkpoint-1684250')
 
     learner = Learner(
-        state_dim=Sender.state_dim,
-        action_cnt=Sender.action_cnt,
+        state_dim=Sender.STATE_DIM,
+        action_cnt=Sender.ACTION_CNT,
         restore_vars=model_path)
 
     sender.set_sample_action(learner.sample_action)

@@ -21,7 +21,7 @@ class Status:
 
 class DaggerLeader(object):
     MAX_EPS = 500
-    NEXT_CHECKPOINT = 50
+    NEXT_CHECKPOINT = 25
     LEARN_RATE = 1e-3
     REGULARIZATION_LAMBDA = 1e-2
     DEFAULT_BATCH_SIZE = 100
@@ -37,7 +37,7 @@ class DaggerLeader(object):
         self.aggregated_states = []
         self.aggregated_actions = []
         self.curr_train_step = 0
-        self.checkpoint = 50
+        self.checkpoint = 25
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
@@ -117,9 +117,9 @@ class DaggerLeader(object):
         self.train_writer = tf.summary.FileWriter(self.logdir, self.sess.graph)
 
     def wait_on_workers(self):
-        """ Update which workers are done or dead. Stale tokens will 
+        """ Update which workers are done or dead. Stale tokens will
         eventually be cleaned out.
-        Returns the number of workers that finished their episode.
+        Returns whether any worker successfully finished their episode.
         """
         workers_ep_done = 0
         while workers_ep_done < len(self.worker_tasks):
@@ -143,7 +143,7 @@ class DaggerLeader(object):
             for worker in workers_done:
                 self.worker_tasks.remove(worker)
 
-        return workers_ep_done
+        return workers_ep_done > 0
 
     def run_one_train_step(self, num_batches, batch_num, batch_size):
         """ Runs one step of the training operator on the given batch.
@@ -212,10 +212,10 @@ class DaggerLeader(object):
                 sys.stderr.write('[PSERVER EP %d]: waiting for workers %s\n' %
                                 (curr_ep, self.worker_tasks))
 
-            workers_ep_done = self.wait_on_workers()
+            any_workers_done = self.wait_on_workers()
 
             # If workers had data, dequeue ALL the examples and train
-            if workers_ep_done > 0:
+            if any_workers_done > 0:
 
                 num_examples = self.sess.run(self.train_q.size())
                 states, actions = self.sess.run(
@@ -229,9 +229,9 @@ class DaggerLeader(object):
                 self.train()
 
                 # Save the network model for testing every few episodes
-                # The name indicates how long it trained for (# train steps)
+                # The name indicates how long it trained for (# episodes)
                 if curr_ep == self.checkpoint:
-                    self.save_model(self.curr_train_step)
+                    self.save_model(self.curr_ep)
                     self.checkpoint += DaggerLeader.NEXT_CHECKPOINT
 
             else:
