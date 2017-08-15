@@ -22,7 +22,7 @@ def main():
     parser.add_argument(
             "--bandwidths",
             help="(link rates)")
-        
+
     args = parser.parse_args()
 
     # Make sure the bandwidth traces exist in trace folder
@@ -42,7 +42,7 @@ def main():
 
             recv = Popen("mm-delay %s mm-link %s/%smbps.trace %s/%smbps.trace -- "
                          "sh -c '%s/env/run_receiver.py $MAHIMAHI_BASE 12345'"
-                          % (delay, args.trace_folder, bandwidth, 
+                          % (delay, args.trace_folder, bandwidth,
                              args.trace_folder, bandwidth, args.rlcc_dir),
                           shell=True,
                           preexec_fn = os.setsid)
@@ -53,7 +53,7 @@ def main():
     check_call('%s/tests/analyze_states.py --states-log=%s/tests/states.log'
                 % (args.rlcc_dir, args.rlcc_dir),
                 shell=True)
-            
+
 
 if __name__ == '__main__':
     main()

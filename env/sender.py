@@ -26,9 +26,9 @@ class Sender(object):
 
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 4
+    state_dim = 7
     action_mapping = format_actions(
-            ["/2.0", "-10.0", "-4.0", "+0.0", "+4.0", "+10.0", "*2.0"])
+            ["/2.0", "/1.5", "-10.0", "-4.0", "+0.0", "+4.0", "+10.0", "*1.5", "*2.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False, debug=False):
@@ -60,6 +60,12 @@ class Sender(object):
         # state variables for RLCC
         self.min_rtt = float("inf")
         self.rtt_ewma = None
+
+        self.past_ack_arrival_ts = None
+        self.interarrival_ack_ewma = None   # time between acks arriving
+
+        self.past_ack_send_ts = None
+        self.intersend_pkt_ewma = None      # time between packet sent ts
 
         self.delivered_time = 0
         self.delivered = 0
@@ -148,17 +154,42 @@ class Sender(object):
     def update_state(self, ack):
         """ Update the state variables listed in __init__() """
         self.next_ack = max(self.next_ack, int(ack['ack_seq_num']) + 1)
+        curr_time_ms = curr_ts_ms()
 
         send_ts = ack['ack_send_ts']
         recv_ts = ack['ack_recv_ts']
 
+        # Update the interarrival times of ACKs at the sender.
+        # Handles the first ACK in and first interval in.
+        new_ack_interval = None
+        if self.past_ack_arrival_ts is not None:
+            new_ack_interval = curr_time_ms - self.past_ack_arrival_ts
+        self.past_ack_arrival_ts = curr_time_ms
+        if self.interarrival_ack_ewma is not None:
+            self.interarrival_ack_ewma *= self.alpha
+            self.interarrival_ack_ewma += (1 - self.alpha) * new_ack_interval
+        elif new_ack_interval is not None:
+            self.interarrival_ack_ewma = new_ack_interval
+
+
+        # Update the packet intersend times
+        # Handles the first packet sent time and first interval.
+        new_intersend_ms = None
+        if self.past_ack_send_ts is not None:
+            new_intersend_ms = send_ts - self.past_ack_send_ts
+        self.past_ack_send_ts = send_ts
+        if self.intersend_pkt_ewma is not None:
+            self.intersend_pkt_ewma *= self.alpha
+            self.intersend_pkt_ewma += (1 - self.alpha) * new_intersend_ms
+        elif new_intersend_ms is not None:
+            self.intersend_pkt_ewma = new_intersend_ms
+
         # Update the RTT and minRTT
-        curr_time_ms = curr_ts_ms()
         rtt = curr_time_ms - send_ts
         self.min_rtt = min(self.min_rtt, rtt)
         if self.rtt_ewma is not None:
             self.rtt_ewma *= self.alpha
-            self.rtt_ewma += (1-self.alpha) * rtt
+            self.rtt_ewma += (1 - self.alpha) * rtt
         else:
             self.rtt_ewma = rtt
 
@@ -259,12 +290,15 @@ class Sender(object):
 
         # At each step end, feed the state: 
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            features = [self.rtt_ewma / self.min_rtt,
+            features = [self.rtt_ewma,
+                        self.min_rtt,
                         self.delivery_rate_ewma,
                         self.send_rate_ewma,
+                        self.interarrival_ack_ewma,
+                        self.intersend_pkt_ewma,
                         self.cwnd]
 
-            print '%f %f %f %f' % tuple(features)
+            print '%f %f %f %f %f %f %f' % tuple(features)
 
             action = self.sample_action(features)
             self.take_action(action)
