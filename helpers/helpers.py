@@ -51,10 +51,10 @@ def get_open_udp_port():
 
 
 def normalize(step_state_buf):
-    for i in xrange(len(step_state_buf)):
-        for j in xrange(3):
-            step_state_buf[i][j] /= 100.0
-        step_state_buf[i][3] /= 1000.0
+    for i in xrange(3):
+        step_state_buf[i] /= 100.0
+    step_state_buf[3] /= 1000.0
+
     return step_state_buf
 
 

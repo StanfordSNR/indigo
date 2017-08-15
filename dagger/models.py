@@ -20,7 +20,6 @@ class DaggerNetwork(object):
 class DaggerLSTM(object):
     def __init__(self, state_dim, action_cnt):
         self.states = tf.placeholder(tf.float32, [None, state_dim])
-        self.indices = tf.placeholder(tf.int32, [None])
         rnn_in = tf.expand_dims(self.states, [0])  # shape=(1, ?, state_dim)
 
         lstm_layers = 1
@@ -65,7 +64,6 @@ class DaggerLSTM(object):
 
         # output: shape=(?, lstm_state_dim)
         output = tf.reshape(rnn_out, [-1, lstm_state_dim])
-        output = tf.gather(output, self.indices)
 
         self.action_scores = layers.linear(output, action_cnt)
         self.action_probs = tf.nn.softmax(self.action_scores)

@@ -26,7 +26,8 @@ class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
     state_dim = 4
-    action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
+    action_mapping = format_actions([
+        "-50.0", "-30.0", "-10.0", "+0.0", "+10.0", "+30.0", "+50.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False):
@@ -56,7 +57,10 @@ class Sender(object):
         self.delivered_time = 0
         self.delivered = 0
         self.sent_bytes = 0
-        self.state_buf = []
+
+        self.rtt_ewma = None
+        self.send_rate_ewma = None
+        self.delivery_rate_ewma = None
 
         self.step_start_ms = None
         self.running = True
@@ -96,16 +100,31 @@ class Sender(object):
         # Update RTT
         rtt = float(curr_time_ms - ack.send_ts)
 
+        if self.rtt_ewma is None:
+            self.rtt_ewma = rtt
+        else:
+            self.rtt_ewma = 0.875 * self.rtt_ewma + 0.125 * rtt
+
         # Update BBR's delivery rate
         self.delivered += ack.ack_bytes
         self.delivered_time = curr_time_ms
         delivery_rate = (0.008 * (self.delivered - ack.delivered) /
                          (self.delivered_time - ack.delivered_time))
 
+        if self.delivery_rate_ewma is None:
+            self.delivery_rate_ewma = delivery_rate
+        else:
+            self.delivery_rate_ewma = (
+                0.875 * self.delivery_rate_ewma + 0.125 * delivery_rate)
+
         # Update Vegas sending rate
         send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / rtt
 
-        self.state_buf.append([rtt, delivery_rate, send_rate, self.cwnd])
+        if self.send_rate_ewma is None:
+            self.send_rate_ewma = send_rate
+        else:
+            self.send_rate_ewma = (
+                0.875 * self.send_rate_ewma + 0.125 * send_rate)
 
     def take_action(self, action_idx):
         old_cwnd = self.cwnd
@@ -149,11 +168,16 @@ class Sender(object):
 
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            action = self.sample_action(self.state_buf)
-
-            self.state_buf = []
-
+            state = [self.rtt_ewma,
+                     self.delivery_rate_ewma,
+                     self.send_rate_ewma,
+                     self.cwnd]
+            action = self.sample_action(state)
             self.take_action(action)
+
+            self.rtt_ewma = None
+            self.delivery_rate_ewma = None
+            self.send_rate_ewma = None
 
             self.step_start_ms = curr_ts_ms()
 

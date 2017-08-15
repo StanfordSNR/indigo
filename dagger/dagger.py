@@ -27,10 +27,9 @@ class DaggerLeader(object):
         self.num_workers = len(worker_tasks)
         self.aggregated_dataset = []
         self.max_eps = 100
-        self.checkpoint = 2
+        self.checkpoint = 10
         self.learn_rate = 1e-3
         self.regularization_lambda = 1e-4
-        self.loss_epsilon = 1e-2
         self.train_step = 0
 
         # Create the master network and training/sync queues
@@ -38,9 +37,9 @@ class DaggerLeader(object):
             self.global_network = DaggerLSTM(
                     state_dim=Sender.state_dim, action_cnt=Sender.action_cnt)
 
-        # Each element is [[state]], [index], [action]
+        # Each element is [[state]], [action]
         self.train_q = tf.FIFOQueue(
-                self.num_workers, [tf.float32, tf.int32, tf.int32],
+                self.num_workers, [tf.float32, tf.int32],
                 shared_name='training_feed')
 
         # Keys: worker indices, values: Tensorflow messaging queues
@@ -153,14 +152,12 @@ class DaggerLeader(object):
         start_ts = curr_ts_ms()
         ret = self.sess.run(ops_to_run, feed_dict={
             pi.states: data[0],
-            pi.indices: data[1],
-            self.actions: data[2],
+            self.actions: data[1],
             pi.lstm_state_in: pi.lstm_state_init})
 
         elapsed = (curr_ts_ms() - start_ts) / 1000.0
         sys.stderr.write('train step %d: time %.2f s, data len %d %d %d\n' %
-                         (self.train_step, elapsed,
-                          len(data[0]), len(data[1]), len(data[2])))
+                         (self.train_step, elapsed, len(data[0]), len(data[1])))
 
         if summary:
             self.summary_writer.add_summary(ret[2], self.train_step)
@@ -171,7 +168,6 @@ class DaggerLeader(object):
         """ Runs the training operator until the loss converges.
         """
         curr_iter = 0
-        min_iter_cnt = 5
 
         min_loss = float('inf')
         iters_since_min_loss = 0
@@ -188,13 +184,13 @@ class DaggerLeader(object):
             sys.stderr.write('--- iter %d: mean loss %.3f\n' %
                              (curr_iter, curr_loss))
 
-            if curr_loss < min_loss - self.loss_epsilon:
+            if curr_loss < min_loss - 0.01:
                 min_loss = curr_loss
                 iters_since_min_loss = 0
             else:
                 iters_since_min_loss += 1
 
-            if curr_iter >= min_iter_cnt and iters_since_min_loss >= 2:
+            if iters_since_min_loss >= 3:
                 break
 
     def run(self, debug=False):
@@ -248,7 +244,6 @@ class DaggerWorker(object):
         # Buffers and parameters required to train
         self.curr_ep = 0
         self.state_buf = []
-        self.index_buf = []
         self.action_buf = []
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
@@ -290,19 +285,18 @@ class DaggerWorker(object):
         # Build shared queues for training data and synchronization
         with tf.device(self.leader_device):
             self.train_q = tf.FIFOQueue(
-                    self.num_workers, [tf.float32, tf.int32, tf.int32],
+                    self.num_workers, [tf.float32, tf.int32],
                     shared_name='training_feed')
 
             self.sync_q = tf.FIFOQueue(3, [tf.int16],
                     shared_name=('sync_q_%d' % self.task_idx))
 
-        # Training data is [[state]], [index], [action]
-        self.state_data = tf.placeholder(tf.float32,
-                                          shape=(None, self.state_dim))
-        self.index_data = tf.placeholder(tf.int32, shape=(None))
+        # Training data is [[state]], [action]
+        self.state_data = tf.placeholder(
+                tf.float32, shape=(None, self.state_dim))
         self.action_data = tf.placeholder(tf.int32, shape=(None))
         self.enqueue_train_op = self.train_q.enqueue(
-                (self.state_data, self.index_data, self.action_data))
+                (self.state_data, self.action_data))
 
         # Sync local network to global network
         local_vars = self.local_network.trainable_vars
@@ -317,18 +311,15 @@ class DaggerWorker(object):
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        step_cwnd = step_state_buf[-1][-1]
+        step_cwnd = step_state_buf[-1]
         expert_action = self.expert.sample_action(step_cwnd)
 
         # For decision-making, normalize.
         step_state_buf = normalize(step_state_buf)
 
-        # Fill in state_buf, action_buf, index_buf
-        self.state_buf.extend(step_state_buf)
+        # Fill in state_buf, action_buf
+        self.state_buf.append(step_state_buf)
         self.action_buf.append(expert_action)
-
-        last_index = self.index_buf[-1] if len(self.index_buf) > 0 else -1
-        self.index_buf.append(len(step_state_buf) + last_index)
 
         # Always use the expert on the first episode to get our bearings.
         if self.curr_ep == 0:
@@ -337,8 +328,7 @@ class DaggerWorker(object):
         # Get probability of each action from the local network.
         pi = self.local_network
         feed_dict = {
-            pi.states: step_state_buf,
-            pi.indices: [len(step_state_buf) - 1],
+            pi.states: [step_state_buf],
             pi.lstm_state_in: self.lstm_state,
         }
         ops_to_run = [pi.action_probs, pi.lstm_state_out]
@@ -353,7 +343,6 @@ class DaggerWorker(object):
     def rollout(self):
         """ Start an episode/flow with an empty dataset/environment. """
         self.state_buf = []
-        self.index_buf = []
         self.action_buf = []
         self.lstm_state = self.local_network.lstm_state_init
 
@@ -384,7 +373,6 @@ class DaggerWorker(object):
             # Enqueue a sequence of data into the training queue.
             self.sess.run(self.enqueue_train_op, feed_dict={
                 self.state_data: self.state_buf,
-                self.index_data: self.index_buf,
                 self.action_data: self.action_buf})
             self.sess.run(self.sync_q.enqueue(Status.EP_DONE))
 

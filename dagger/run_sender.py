@@ -34,8 +34,7 @@ class Learner(object):
         # Get probability of each action from the local network.
         pi = self.model
         feed_dict = {
-            pi.states: step_state_buf,
-            pi.indices: [len(step_state_buf) - 1],
+            pi.states: [step_state_buf],
             pi.lstm_state_in: self.lstm_state,
         }
         ops_to_run = [pi.action_probs, pi.lstm_state_out]
