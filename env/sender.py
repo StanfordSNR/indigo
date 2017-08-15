@@ -25,11 +25,11 @@ def format_actions(action_list):
 class Sender(object):
     # RL exposed class/static variables
     MAX_STEPS = 1000
-    STATE_DIM = 5
+    STATE_DIM = 7
     ALPHA = 0.875  #  how much weight to give to the current avg
 
     action_mapping = format_actions(
-            ["/2.0", "/1.5", "-10.0", "+0.0", "+10.0", "*1.5", "*2.0"])
+            ["/2.0", "/1.5", "-10.0", "-4.0", "+0.0", "+4.0", "+10.0", "*1.5", "*2.0"])
     ACTION_CNT = len(action_mapping)
 
     def __init__(self, port=0, train=False):
@@ -58,6 +58,12 @@ class Sender(object):
         # state variables for RLCC
         self.min_rtt = float("inf")
         self.rtt_ewma = None
+
+        self.past_ack_arrival_ts = None
+        self.interarrival_ack_ewma = None   # time between acks arriving
+
+        self.past_ack_send_ts = None
+        self.intersend_pkt_ewma = None      # time between packet sent ts
 
         self.delivered_time = 0
         self.delivered = 0
@@ -100,9 +106,34 @@ class Sender(object):
         """ Update the state variables listed in __init__() """
         self.next_ack = max(self.next_ack, ack.seq_num + 1)
         curr_time_ms = curr_ts_ms()
+        send_ts = ack.send_ts
+
+        # Update the interarrival times of ACKs at the sender.
+        # Handles the first ACK in and first interval in.
+        new_ack_interval = None
+        if self.past_ack_arrival_ts is not None:
+            new_ack_interval = curr_time_ms - self.past_ack_arrival_ts
+        self.past_ack_arrival_ts = curr_time_ms
+        if self.interarrival_ack_ewma is not None:
+            self.interarrival_ack_ewma *= Sender.ALPHA
+            self.interarrival_ack_ewma += (1 - Sender.ALPHA) * new_ack_interval
+        elif new_ack_interval is not None:
+            self.interarrival_ack_ewma = new_ack_interval
+
+        # Update the packet intersend times
+        # Handles the first packet sent time and first interval.
+        new_intersend_ms = None
+        if self.past_ack_send_ts is not None:
+            new_intersend_ms = send_ts - self.past_ack_send_ts
+        self.past_ack_send_ts = send_ts
+        if self.intersend_pkt_ewma is not None:
+            self.intersend_pkt_ewma *= Sender.ALPHA
+            self.intersend_pkt_ewma += (1 - Sender.ALPHA) * new_intersend_ms
+        elif new_intersend_ms is not None:
+            self.intersend_pkt_ewma = new_intersend_ms
 
         # Update the RTT and minRTT
-        rtt = float(curr_time_ms - ack.send_ts)
+        rtt = float(curr_time_ms - send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
         if self.rtt_ewma is not None:
             self.rtt_ewma *= Sender.ALPHA
@@ -113,9 +144,8 @@ class Sender(object):
         # Update BBR's delivery rate
         self.delivered += ack.ack_bytes
         self.delivered_time = curr_time_ms
-        delivery_rate = (1.0 * (self.delivered - ack.delivered) /
-                         (self.delivered_time - ack.delivered_time))
-        delivery_rate = delivery_rate * 8 * 0.001      # B/ms to Mb/s
+        delivery_rate = (0.008 * (self.delivered - ack.delivered) /
+                        (self.delivered_time - ack.delivered_time))
         if self.delivery_rate_ewma is not None:
             self.delivery_rate_ewma *= Sender.ALPHA
             self.delivery_rate_ewma += (1 - Sender.ALPHA) * delivery_rate
@@ -123,8 +153,7 @@ class Sender(object):
             self.delivery_rate_ewma = delivery_rate
 
         # Update Vegas sending rate
-        send_rate = (self.sent_bytes - ack.sent_bytes) / rtt
-        send_rate = send_rate * 8 * 0.001      # B/ms to Mb/s
+        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / rtt
         if self.send_rate_ewma is not None:
             self.send_rate_ewma *= Sender.ALPHA
             self.send_rate_ewma += (1 - Sender.ALPHA) * send_rate
@@ -136,7 +165,7 @@ class Sender(object):
         op, val = self.action_mapping[action_idx]
 
         self.cwnd = apply_op(op, self.cwnd, val)
-        self.cwnd = max(5.0, self.cwnd)
+        self.cwnd = min(max(5.0, self.cwnd), 3000)
 
         self.cwnd_file.write('%f %f\n' % (old_cwnd, self.cwnd))
 
@@ -179,6 +208,8 @@ class Sender(object):
                      self.min_rtt,
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
+                     self.interarrival_ack_ewma,
+                     self.intersend_pkt_ewma,
                      self.cwnd])
 
             self.take_action(action)

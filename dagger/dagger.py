@@ -231,7 +231,7 @@ class DaggerLeader(object):
                 # Save the network model for testing every few episodes
                 # The name indicates how long it trained for (# episodes)
                 if curr_ep == self.checkpoint:
-                    self.save_model(self.curr_ep)
+                    self.save_model(curr_ep)
                     self.checkpoint += DaggerLeader.NEXT_CHECKPOINT
 
             else:
