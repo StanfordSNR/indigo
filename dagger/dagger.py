@@ -21,7 +21,7 @@ class Status:
 
 class DaggerLeader(object):
     MAX_EPS = 500
-    NEXT_CHECKPOINT = 25
+    NEXT_CHECKPOINT = 10
     LEARN_RATE = 1e-2
     REGULARIZATION_LAMBDA = 1e-2
     DEFAULT_BATCH_SIZE = 100
@@ -37,7 +37,7 @@ class DaggerLeader(object):
         self.aggregated_states = []
         self.aggregated_actions = []
         self.curr_train_step = 0
-        self.checkpoint = 25
+        self.checkpoint = DaggerLeader.NEXT_CHECKPOINT
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
@@ -61,7 +61,7 @@ class DaggerLeader(object):
             self.sync_queues[idx] = tf.FIFOQueue(3, [tf.int16],
                                                  shared_name=queue_name)
 
-        self.setup_tf_ops(server)
+        self.setup_tf_train_ops(server)
 
     def cleanup(self):
         """ Sends messages to workers to stop and saves the model. """
@@ -81,7 +81,7 @@ class DaggerLeader(object):
         saver.save(self.sess, model_path)
         sys.stderr.write('\nModel saved to param. server at %s\n' % model_path)
 
-    def setup_tf_ops(self, server):
+    def setup_tf_train_ops(self, server):
         """ Sets up Tensorboard operators and tools, such as the optimizer,
         summary values, Tensorboard, and Session.
         """
@@ -176,6 +176,11 @@ class DaggerLeader(object):
         Batches the state action pairs in the dataset D. Each pass
         over all batches is an iteration.
         """
+
+        # Reinitialize the weights of the network
+        self.sess.run(
+                tf.variables_initializer(self.global_network.trainable_vars))
+
         # In case the dataset is smaller than the batch size
         dataset_size = len(self.aggregated_states)
         batch_size = min(dataset_size, DaggerLeader.DEFAULT_BATCH_SIZE)

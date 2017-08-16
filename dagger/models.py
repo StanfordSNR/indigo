@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib import layers, rnn
+from tensorflow.contrib import layers
 
 
 class DaggerNetwork(object):
