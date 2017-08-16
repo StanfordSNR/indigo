@@ -6,6 +6,7 @@ from os import path
 import numpy as np
 import datagram_pb2
 import project_root
+import time
 from helpers.helpers import (
     curr_ts_ms, apply_op,
     READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, WRITE_FLAGS, ALL_FLAGS)
@@ -75,6 +76,7 @@ class Sender(object):
         self.step_start_ms = None
         self.running = True
         self.cwnd_file = open('/tmp/cwnd_file', 'w')
+        self.sample_file = open('/tmp/sample_action_file', 'w')
 
         if self.train:
             self.step_cnt = 0
@@ -203,6 +205,7 @@ class Sender(object):
 
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
+            sample_start = time.time()
             action = self.sample_action(
                     [self.rtt_ewma,
                      self.min_rtt,
@@ -211,6 +214,8 @@ class Sender(object):
                      self.interarrival_ack_ewma,
                      self.intersend_pkt_ewma,
                      self.cwnd])
+            sample_time = time.time() - sample_start
+            self.sample_file.write('%f sec.\n' % sample_time)
 
             self.take_action(action)
 

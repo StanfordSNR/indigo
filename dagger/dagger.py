@@ -22,7 +22,7 @@ class Status:
 class DaggerLeader(object):
     MAX_EPS = 500
     NEXT_CHECKPOINT = 25
-    LEARN_RATE = 1e-3
+    LEARN_RATE = 1e-2
     REGULARIZATION_LAMBDA = 1e-2
     DEFAULT_BATCH_SIZE = 100
     LOSS_EPSILON = 1e-2
