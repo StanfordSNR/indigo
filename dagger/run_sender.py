@@ -15,7 +15,7 @@ class Learner(object):
         with tf.variable_scope('global'):
             self.model = DaggerLSTM(state_dim=state_dim, action_cnt=action_cnt)
 
-        self.lstm_state = self.model.lstm_state_init
+        self.lstm_state = self.model.zero_init_state(1)
 
         self.sess = tf.Session()
 
@@ -34,15 +34,14 @@ class Learner(object):
         # Get probability of each action from the local network.
         pi = self.model
         feed_dict = {
-            pi.states: [step_state_buf],
-            pi.lstm_state_in: self.lstm_state,
+            pi.input: [[step_state_buf]],
+            pi.state_in: self.lstm_state,
         }
-        ops_to_run = [pi.action_probs, pi.lstm_state_out]
-        action_probs, lstm_state_out = self.sess.run(ops_to_run, feed_dict)
+        ops_to_run = [pi.action_probs, pi.state_out]
+        action_probs, self.lstm_state = self.sess.run(ops_to_run, feed_dict)
 
         # Choose an action to take and update current LSTM state
-        self.lstm_state = lstm_state_out
-        action = np.argmax(action_probs[0])
+        action = np.argmax(action_probs[0][0])
 
         # action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
         # temperature = 1.0
@@ -59,8 +58,7 @@ def main():
     sender = Sender(args.port)
 
     model_path = path.join(project_root.DIR, 'dagger', 'logs',
-                           '2017-08-12--07-04-00',
-                           'checkpoint-3072000')
+                           '2017-08-17--20-59-07', 'checkpoint-100')
 
     learner = Learner(
         state_dim=Sender.state_dim,

@@ -25,10 +25,11 @@ class DaggerLeader(object):
         self.server = server
         self.worker_tasks = worker_tasks
         self.num_workers = len(worker_tasks)
-        self.aggregated_dataset = []
-        self.max_eps = 100
-        self.checkpoint = 10
-        self.learn_rate = 1e-3
+        self.aggregated_states = []
+        self.aggregated_actions = []
+        self.max_eps = 200
+        self.checkpoint = 20
+        self.learn_rate = 0.01
         self.regularization_lambda = 1e-4
         self.train_step = 0
 
@@ -36,6 +37,10 @@ class DaggerLeader(object):
         with tf.variable_scope('global'):
             self.global_network = DaggerLSTM(
                     state_dim=Sender.state_dim, action_cnt=Sender.action_cnt)
+
+        self.default_batch_size = 200
+        self.default_init_state = self.global_network.zero_init_state(
+                self.default_batch_size)
 
         # Each element is [[state]], [action]
         self.train_q = tf.FIFOQueue(
@@ -75,7 +80,7 @@ class DaggerLeader(object):
         summary values, Tensorboard, and Session.
         """
 
-        self.actions = tf.placeholder(tf.int32, [None])
+        self.actions = tf.placeholder(tf.int32, [None, None])
 
         reg_loss = 0.0
         for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
@@ -134,7 +139,7 @@ class DaggerLeader(object):
 
         return workers_ep_done
 
-    def run_one_train_step(self, data):
+    def run_one_train_step(self, batch_states, batch_actions):
         """ Runs one step of the training operator on the given data.
         At times will update Tensorboard and save a checkpointed model.
         Returns the total loss calculated.
@@ -151,13 +156,13 @@ class DaggerLeader(object):
 
         start_ts = curr_ts_ms()
         ret = self.sess.run(ops_to_run, feed_dict={
-            pi.states: data[0],
-            self.actions: data[1],
-            pi.lstm_state_in: pi.lstm_state_init})
+            pi.input: batch_states,
+            self.actions: batch_actions,
+            pi.state_in: self.init_state})
 
         elapsed = (curr_ts_ms() - start_ts) / 1000.0
-        sys.stderr.write('train step %d: time %.2f s, data len %d %d %d\n' %
-                         (self.train_step, elapsed, len(data[0]), len(data[1])))
+        sys.stderr.write('train step %d: time %.2f\n' %
+                         (self.train_step, elapsed))
 
         if summary:
             self.summary_writer.add_summary(ret[2], self.train_step)
@@ -172,16 +177,33 @@ class DaggerLeader(object):
         min_loss = float('inf')
         iters_since_min_loss = 0
 
+        batch_size = min(len(self.aggregated_states), self.default_batch_size)
+        num_batches = len(self.aggregated_states) / batch_size
+
+        if batch_size != self.default_batch_size:
+            self.init_state = self.global_network.zero_init_state(batch_size)
+        else:
+            self.init_state = self.default_init_state
+
         while True:
             curr_iter += 1
 
             curr_loss = 0.0
-            for data in self.aggregated_dataset:
-                self.train_step += 1
-                curr_loss += self.run_one_train_step(data)
-            curr_loss /= len(self.aggregated_dataset)
 
-            sys.stderr.write('--- iter %d: mean loss %.3f\n' %
+            for batch_num in xrange(num_batches):
+                self.train_step += 1
+
+                start = batch_num * batch_size
+                end = start + batch_size
+
+                batch_states = self.aggregated_states[start:end]
+                batch_actions = self.aggregated_actions[start:end]
+
+                curr_loss += self.run_one_train_step(batch_states, batch_actions)
+
+            curr_loss /= num_batches
+
+            sys.stderr.write('--- iter %d: mean loss %.4f\n' %
                              (curr_iter, curr_loss))
 
             if curr_loss < min_loss - 0.01:
@@ -190,7 +212,7 @@ class DaggerLeader(object):
             else:
                 iters_since_min_loss += 1
 
-            if iters_since_min_loss >= 3:
+            if iters_since_min_loss >= max(0.25 * curr_iter, 5):
                 break
 
     def run(self, debug=False):
@@ -209,7 +231,8 @@ class DaggerLeader(object):
                         break
 
                     data = self.sess.run(self.train_q.dequeue())
-                    self.aggregated_dataset.append(data)
+                    self.aggregated_states.append(data[0])
+                    self.aggregated_actions.append(data[1])
 
                 if debug:
                     sys.stderr.write('[PSERVER]: start training\n')
@@ -223,7 +246,7 @@ class DaggerLeader(object):
             # Save the network model for testing every so often
             if curr_ep == self.checkpoint:
                 self.save_model(curr_ep)
-                self.checkpoint += 10
+                self.checkpoint += 20
 
             # After training, tell workers to start another episode
             for idx in self.worker_tasks:
@@ -280,7 +303,8 @@ class DaggerWorker(object):
                 self.local_network = DaggerLSTM(
                         state_dim=self.state_dim, action_cnt=self.action_cnt)
 
-        self.lstm_state = self.local_network.lstm_state_init
+        self.init_state = self.local_network.zero_init_state(1)
+        self.lstm_state = self.init_state
 
         # Build shared queues for training data and synchronization
         with tf.device(self.leader_device):
@@ -296,7 +320,7 @@ class DaggerWorker(object):
                 tf.float32, shape=(None, self.state_dim))
         self.action_data = tf.placeholder(tf.int32, shape=(None))
         self.enqueue_train_op = self.train_q.enqueue(
-                (self.state_data, self.action_data))
+                [self.state_data, self.action_data])
 
         # Sync local network to global network
         local_vars = self.local_network.trainable_vars
@@ -328,15 +352,14 @@ class DaggerWorker(object):
         # Get probability of each action from the local network.
         pi = self.local_network
         feed_dict = {
-            pi.states: [step_state_buf],
-            pi.lstm_state_in: self.lstm_state,
+            pi.input: [[step_state_buf]],
+            pi.state_in: self.lstm_state,
         }
-        ops_to_run = [pi.action_probs, pi.lstm_state_out]
-        action_probs, lstm_state_out = self.sess.run(ops_to_run, feed_dict)
+        ops_to_run = [pi.action_probs, pi.state_out]
+        action_probs, self.lstm_state = self.sess.run(ops_to_run, feed_dict)
 
         # Choose an action to take and update current LSTM state
-        action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
-        self.lstm_state = lstm_state_out
+        action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
 
         return action
 
@@ -344,7 +367,7 @@ class DaggerWorker(object):
         """ Start an episode/flow with an empty dataset/environment. """
         self.state_buf = []
         self.action_buf = []
-        self.lstm_state = self.local_network.lstm_state_init
+        self.lstm_state = self.init_state
 
         self.env.reset()
         self.env.rollout()
