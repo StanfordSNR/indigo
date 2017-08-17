@@ -67,7 +67,6 @@ class Sender(object):
 
         self.step_start_ms = None
         self.running = True
-        self.cwnd_file = open('/tmp/cwnd_file', 'w')
 
         if self.train:
             self.step_cnt = 0
@@ -112,9 +111,8 @@ class Sender(object):
         # Update BBR's delivery rate
         self.delivered += ack.ack_bytes
         self.delivered_time = curr_time_ms
-        delivery_rate = (1.0 * (self.delivered - ack.delivered) /
+        delivery_rate = (0.008 * (self.delivered - ack.delivered) /
                          (self.delivered_time - ack.delivered_time))
-        delivery_rate = delivery_rate * 8 * 0.001      # B/ms to Mb/s
         if self.delivery_rate_ewma is not None:
             self.delivery_rate_ewma *= self.alpha
             self.delivery_rate_ewma += (1 - self.alpha) * delivery_rate
@@ -122,8 +120,7 @@ class Sender(object):
             self.delivery_rate_ewma = delivery_rate
 
         # Update Vegas sending rate
-        send_rate = (self.sent_bytes - ack.sent_bytes) / rtt
-        send_rate = send_rate * 8 * 0.001      # B/ms to Mb/s
+        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / rtt
         if self.send_rate_ewma is not None:
             self.send_rate_ewma *= self.alpha
             self.send_rate_ewma += (1 - self.alpha) * send_rate
@@ -135,9 +132,7 @@ class Sender(object):
         op, val = self.action_mapping[action_idx]
 
         self.cwnd = apply_op(op, self.cwnd, val)
-        self.cwnd = max(5.0, self.cwnd)
-
-        self.cwnd_file.write('%f %f\n' % (old_cwnd, self.cwnd))
+        self.cwnd = min(max(5.0, self.cwnd), 5000)
 
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd

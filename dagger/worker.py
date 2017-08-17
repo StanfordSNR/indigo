@@ -39,10 +39,11 @@ def prepare_traces(bandwidth):
 
 def lookup_best_cwnd(bandwidth, delay):
     d = {
-        20: {20: 80, 40: 140, 60: 210, 80: 280},
-        40: {20: 150, 40: 290, 60: 420, 80: 550},
-        60: {20: 220, 40: 420, 60: 630, 80: 830},
-        80: {20: 290, 40: 540, 60: 840, 80: 1070},
+        20:  {20: 80, 40: 140, 60: 210, 80: 280, 100: 340},
+        40:  {20: 150, 40: 290, 60: 420, 80: 550, 100: 690},
+        60:  {20: 220, 40: 420, 60: 630, 80: 830, 100: 1020},
+        80:  {20: 290, 40: 540, 60: 840, 80: 1070, 100: 1340},
+        100: {20: 320, 40: 640, 60: 980, 80: 1310, 100: 1640},
     }
 
     return d[bandwidth][delay]
@@ -53,8 +54,8 @@ def create_env(task_index):
     shells. The environment knows the best cwnd to pass to the expert policy.
     """
 
-    bandwidth = [20, 40, 60, 80]
-    delay = [20, 40, 60, 80]
+    bandwidth = [20, 40, 60, 80, 100]
+    delay = [20, 40, 60, 80, 100]
 
     cartesian = [(b,d) for b in bandwidth for d in delay]
     bandwidth, delay = cartesian[task_index]
@@ -69,7 +70,6 @@ def create_env(task_index):
                    '--downlink-queue-args=packets=%d' % queue)
 
     env = Environment(mm_cmd)
-    env.setup()
     env.best_cwnd = lookup_best_cwnd(bandwidth, delay)
 
     return env

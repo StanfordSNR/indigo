@@ -30,8 +30,8 @@ class DaggerLeader(object):
         self.curr_train_step = 0
         self.max_eps = 500
         self.checkpoint = 50
-        self.default_batch_size = 100
-        self.learn_rate = 1e-3
+        self.default_batch_size = 200
+        self.learn_rate = 0.01
         self.regularization_lambda = 1e-2
 
         # Create the master network and training/sync queues
@@ -176,17 +176,16 @@ class DaggerLeader(object):
         num_batches = dataset_size / batch_size
 
         min_loss = float("inf")
-        min_iters = 10
         iters_since_min_loss = 0
         curr_iter = 0
 
         # Stop condition: min # of steps and no smaller loss seen in a while
-        while (iters_since_min_loss < 0.25 * curr_iter or curr_iter < 5):
-
+        while (iters_since_min_loss < max(0.25 * curr_iter, 5)):
             curr_loss = 0.0
             for i in xrange(num_batches):
                 loss = self.run_one_train_step(num_batches, i, batch_size)
                 curr_loss += loss
+
             curr_loss /= num_batches
 
             sys.stderr.write('[PSERVER] step %d: mean loss %.3f\n' %
