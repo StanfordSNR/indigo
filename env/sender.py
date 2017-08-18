@@ -26,11 +26,11 @@ def format_actions(action_list):
 class Sender(object):
     # RL exposed class/static variables
     MAX_STEPS = 1000
-    STATE_DIM = 5
+    STATE_DIM = 3
     ALPHA = 0.875  #  how much weight to give to the current avg
 
     action_mapping = format_actions(
-            ["/2.0", "/1.5", "-10.0", "-4.0", "+0.0", "+4.0", "+10.0", "*1.5", "*2.0"])
+            ["/2.0", "/1.5", "-10.0", "+0.0", "+10.0", "*1.5", "*2.0"])
     ACTION_CNT = len(action_mapping)
 
     def __init__(self, port=0, train=False):
@@ -176,10 +176,10 @@ class Sender(object):
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
             sample_start = time.time()
             action = self.sample_action(
-                    [self.rtt_ewma,
+                    [#self.rtt_ewma,
                      self.min_rtt,
                      self.delivery_rate_ewma,
-                     self.send_rate_ewma,
+                     #self.send_rate_ewma,
                      self.cwnd])
             sample_time = time.time() - sample_start
             self.sample_file.write('%f sec.\n' % sample_time)
