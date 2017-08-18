@@ -27,8 +27,8 @@ class DaggerLeader(object):
         self.num_workers = len(worker_tasks)
         self.aggregated_states = []
         self.aggregated_actions = []
-        self.max_eps = 200
-        self.checkpoint = 20
+        self.max_eps = 500
+        self.checkpoint = 50
         self.learn_rate = 0.01
         self.regularization_lambda = 1e-4
         self.train_step = 0
@@ -246,7 +246,7 @@ class DaggerLeader(object):
             # Save the network model for testing every so often
             if curr_ep == self.checkpoint:
                 self.save_model(curr_ep)
-                self.checkpoint += 20
+                self.checkpoint += 50
 
             # After training, tell workers to start another episode
             for idx in self.worker_tasks:
