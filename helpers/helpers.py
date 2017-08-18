@@ -56,9 +56,7 @@ def normalize(step_state_buf):
     step_state_buf[1] /= 100.0
     step_state_buf[2] /= 100.0  # 132?
     step_state_buf[3] /= 100.0
-    step_state_buf[4] /= 40.0
-    step_state_buf[5] /= 40.0
-    step_state_buf[6] /= 1000.0
+    step_state_buf[4] /= 1000.0
     return step_state_buf
 
 

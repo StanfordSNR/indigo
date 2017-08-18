@@ -26,7 +26,7 @@ def format_actions(action_list):
 class Sender(object):
     # RL exposed class/static variables
     MAX_STEPS = 1000
-    STATE_DIM = 7
+    STATE_DIM = 5
     ALPHA = 0.875  #  how much weight to give to the current avg
 
     action_mapping = format_actions(
@@ -59,12 +59,6 @@ class Sender(object):
         # state variables for RLCC
         self.min_rtt = float("inf")
         self.rtt_ewma = None
-
-        self.past_ack_arrival_ts = None
-        self.interarrival_ack_ewma = None   # time between acks arriving
-
-        self.past_ack_send_ts = None
-        self.intersend_pkt_ewma = None      # time between packet sent ts
 
         self.delivered_time = 0
         self.delivered = 0
@@ -108,34 +102,9 @@ class Sender(object):
         """ Update the state variables listed in __init__() """
         self.next_ack = max(self.next_ack, ack.seq_num + 1)
         curr_time_ms = curr_ts_ms()
-        send_ts = ack.send_ts
-
-        # Update the interarrival times of ACKs at the sender.
-        # Handles the first ACK in and first interval in.
-        new_ack_interval = None
-        if self.past_ack_arrival_ts is not None:
-            new_ack_interval = curr_time_ms - self.past_ack_arrival_ts
-        self.past_ack_arrival_ts = curr_time_ms
-        if self.interarrival_ack_ewma is not None:
-            self.interarrival_ack_ewma *= Sender.ALPHA
-            self.interarrival_ack_ewma += (1 - Sender.ALPHA) * new_ack_interval
-        elif new_ack_interval is not None:
-            self.interarrival_ack_ewma = new_ack_interval
-
-        # Update the packet intersend times
-        # Handles the first packet sent time and first interval.
-        new_intersend_ms = None
-        if self.past_ack_send_ts is not None:
-            new_intersend_ms = send_ts - self.past_ack_send_ts
-        self.past_ack_send_ts = send_ts
-        if self.intersend_pkt_ewma is not None:
-            self.intersend_pkt_ewma *= Sender.ALPHA
-            self.intersend_pkt_ewma += (1 - Sender.ALPHA) * new_intersend_ms
-        elif new_intersend_ms is not None:
-            self.intersend_pkt_ewma = new_intersend_ms
 
         # Update the RTT and minRTT
-        rtt = float(curr_time_ms - send_ts)
+        rtt = float(curr_time_ms - ack.send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
         if self.rtt_ewma is not None:
             self.rtt_ewma *= Sender.ALPHA
@@ -211,8 +180,6 @@ class Sender(object):
                      self.min_rtt,
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
-                     self.interarrival_ack_ewma,
-                     self.intersend_pkt_ewma,
                      self.cwnd])
             sample_time = time.time() - sample_start
             self.sample_file.write('%f sec.\n' % sample_time)
