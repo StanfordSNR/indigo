@@ -58,7 +58,6 @@ def create_env(task_index):
                    '--downlink-queue-args=packets=%d' % queue)
 
     env = Environment(mm_cmd)
-    env.setup()
 
     if delay == 25:
         env.best_cwnd = bandwidth * 5

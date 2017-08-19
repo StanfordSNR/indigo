@@ -191,8 +191,8 @@ class DaggerLeader(object):
         curr_iter = 0
 
         # Stop when min # iterations met and no smaller loss seen in a while
-        while ((iters_since_min_loss < DaggerLeader.ITERS_FRAC * curr_iter) or
-               (curr_iter < DaggerLeader.MIN_ITERS)):
+        while (iters_since_min_loss < max(DaggerLeader.MIN_ITERS,
+                                          DaggerLeader.ITERS_FRAC * curr_iter)):
 
             # Run one iteration over the entire dataset and compute mean loss
             curr_mean_loss = 0.0

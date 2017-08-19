@@ -13,21 +13,27 @@ class Environment(object):
         self.mahimahi_cmd = mahimahi_cmd
 
         # variables below will be filled in during setup
-        self.state_dim = None
-        self.action_cnt = None
+        self.state_dim = Sender.STATE_DIM
+        self.action_cnt = Sender.ACTION_CNT
         self.sender = None
         self.receiver = None
 
-    def setup(self):
-        """Must be called immediately after initializing."""
+    def set_sample_action(self, sample_action):
+        """Set the sender's policy. Must be called before run()."""
+
+        self.sample_action = sample_action
+
+    def reset(self):
+        """Must becalled before running rollout()."""
+
+        self.cleanup()
 
         self.port = get_open_udp_port()
 
         # start sender as an instance of Sender class
         sys.stderr.write('Starting sender...\n')
         self.sender = Sender(self.port, train=True)
-        self.state_dim = Sender.STATE_DIM
-        self.action_cnt = Sender.ACTION_CNT
+        self.sender.set_sample_action(self.sample_action)
 
         # start receiver in a subprocess
         sys.stderr.write('Starting receiver...\n')
@@ -40,12 +46,6 @@ class Environment(object):
 
         # sender completes the handshake sent from receiver
         self.sender.handshake()
-
-    def set_sample_action(self, sample_action):
-        """Set the sender's policy. Must be called before run()."""
-
-        self.sample_action = sample_action
-        self.sender.set_sample_action(sample_action)
 
     def rollout(self):
         """Run sender in env, get final reward of an episode, reset sender."""
@@ -65,10 +65,3 @@ class Environment(object):
                 sys.stderr.write('%s\n' % e)
             finally:
                 self.receiver = None
-
-    def reset(self):
-        self.cleanup()
-        self.setup()
-
-        if self.sender:
-            self.sender.set_sample_action(self.sample_action)
