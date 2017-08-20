@@ -25,8 +25,8 @@ def format_actions(action_list):
 class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 5
-    action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
+    state_dim = 4
+    action_mapping = format_actions(["/2.0", "-10.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False):
@@ -61,7 +61,6 @@ class Sender(object):
         self.delivery_rate_ewma = None  # BBR's delivery rate
 
         self.sent_bytes = 0
-        self.send_rate_ewma = None    # Vegas sending rate
 
         self.alpha = 0.875  #  how much weight to give to the current avg
 
@@ -119,14 +118,6 @@ class Sender(object):
         else:
             self.delivery_rate_ewma = delivery_rate
 
-        # Update Vegas sending rate
-        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / rtt
-        if self.send_rate_ewma is not None:
-            self.send_rate_ewma *= self.alpha
-            self.send_rate_ewma += (1 - self.alpha) * send_rate
-        else:
-            self.send_rate_ewma = send_rate
-
     def take_action(self, action_idx):
         old_cwnd = self.cwnd
         op, val = self.action_mapping[action_idx]
@@ -172,7 +163,6 @@ class Sender(object):
                     [self.min_rtt,
                      self.rtt_ewma,
                      self.delivery_rate_ewma,
-                     self.send_rate_ewma,
                      self.cwnd])
 
             self.take_action(action)

@@ -29,10 +29,10 @@ class DaggerLeader(object):
         self.aggregated_actions = []
         self.curr_train_step = 0
         self.max_eps = 500
-        self.checkpoint = 50
+        self.checkpoint = 30
         self.default_batch_size = 1000
         self.learn_rate = 0.01
-        self.regularization_lambda = 1e-2
+        self.regularization_lambda = 1e-1
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
@@ -224,7 +224,7 @@ class DaggerLeader(object):
 
                 if curr_ep == self.checkpoint:
                     self.save_model(curr_ep)
-                    self.checkpoint += 50
+                    self.checkpoint += 30
             else:
                 if debug:
                     sys.stderr.write('[PSERVER]: quitting...\n')
