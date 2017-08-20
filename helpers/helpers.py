@@ -51,14 +51,12 @@ def get_open_udp_port():
 
 
 def normalize(state):
-    norm_state = []
-    for i in xrange(len(state)):
-        if i == 3 or i == 6:
-            norm_state.append(state[i] / 1000.0)
-        else:
-            norm_state.append(state[i] / 100.0)
-
-    return norm_state
+    state[0] /= 100.0
+    state[1] /= 100.0
+    state[2] /= 100.0
+    state[3] /= 100.0
+    state[4] /= 1000.0
+    return state
 
 
 def softmax(x):

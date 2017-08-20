@@ -33,9 +33,6 @@ class Receiver(object):
         ack.sent_bytes = data.sent_bytes
         ack.delivered_time = data.delivered_time
         ack.delivered = data.delivered
-        ack.rtt_ewma = data.rtt_ewma
-        ack.delivery_rate_ewma = data.delivery_rate_ewma
-        ack.cwnd = data.cwnd
         ack.ack_bytes = len(serialized_data)
 
         return ack.SerializeToString()

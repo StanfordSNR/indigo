@@ -25,7 +25,7 @@ def format_actions(action_list):
 class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 7
+    state_dim = 5
     action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
@@ -44,7 +44,7 @@ class Sender(object):
         self.poller = select.poll()
         self.poller.register(self.sock, ALL_FLAGS)
 
-        self.dummy_payload = 'x' * 1376
+        self.dummy_payload = 'x' * 1400
 
         # congestion control related
         self.seq_num = 0
@@ -60,11 +60,8 @@ class Sender(object):
         self.delivered = 0
         self.delivery_rate_ewma = None  # BBR's delivery rate
 
-        self.stale_rtt_ewma = None
-        self.stale_delivery_rate_ewma = None
-        self.stale_cwnd = None
-
         self.sent_bytes = 0
+        self.send_rate_ewma = None    # Vegas sending rate
 
         self.alpha = 0.875  #  how much weight to give to the current avg
 
@@ -105,7 +102,6 @@ class Sender(object):
         # Update the RTT and minRTT
         rtt = float(curr_time_ms - ack.send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
-
         if self.rtt_ewma is not None:
             self.rtt_ewma *= self.alpha
             self.rtt_ewma += (1 - self.alpha) * rtt
@@ -123,9 +119,13 @@ class Sender(object):
         else:
             self.delivery_rate_ewma = delivery_rate
 
-        self.stale_rtt_ewma = ack.rtt_ewma / 1000.0
-        self.stale_delivery_rate_ewma = ack.delivery_rate_ewma / 1000.0
-        self.stale_cwnd = ack.cwnd / 10.0
+        # Update Vegas sending rate
+        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / rtt
+        if self.send_rate_ewma is not None:
+            self.send_rate_ewma *= self.alpha
+            self.send_rate_ewma += (1 - self.alpha) * send_rate
+        else:
+            self.send_rate_ewma = send_rate
 
     def take_action(self, action_idx):
         old_cwnd = self.cwnd
@@ -144,15 +144,6 @@ class Sender(object):
         data.sent_bytes = self.sent_bytes
         data.delivered_time = self.delivered_time
         data.delivered = self.delivered
-        if self.rtt_ewma is None:
-            data.rtt_ewma = 0
-        else:
-            data.rtt_ewma = int(self.rtt_ewma * 1000)
-        if self.delivery_rate_ewma is None:
-            data.delivery_rate_ewma = 0
-        else:
-            data.delivery_rate_ewma = int(self.delivery_rate_ewma * 1000)
-        data.cwnd = int(self.cwnd * 10)
         data.payload = self.dummy_payload
 
         serialized_data = data.SerializeToString()
@@ -181,10 +172,8 @@ class Sender(object):
                     [self.min_rtt,
                      self.rtt_ewma,
                      self.delivery_rate_ewma,
-                     self.cwnd,
-                     self.stale_rtt_ewma,
-                     self.stale_delivery_rate_ewma,
-                     self.stale_cwnd])
+                     self.send_rate_ewma,
+                     self.cwnd])
 
             self.take_action(action)
 
