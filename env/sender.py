@@ -59,6 +59,7 @@ class Sender(object):
 
         self.min_rtt = float("inf")
         self.rtt_ewma = None
+        self.send_rate_ewma = None
         self.delivery_rate_ewma = None
 
         self.step_start_ms = None
@@ -116,6 +117,15 @@ class Sender(object):
             self.delivery_rate_ewma = (
                 0.875 * self.delivery_rate_ewma + 0.125 * delivery_rate)
 
+        # Update Vegas sending rate
+        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / rtt
+
+        if self.send_rate_ewma is None:
+            self.send_rate_ewma = send_rate
+        else:
+            self.send_rate_ewma = (
+                0.875 * self.send_rate_ewma + 0.125 * send_rate)
+
     def take_action(self, action_idx):
         old_cwnd = self.cwnd
         op, val = self.action_mapping[action_idx]
@@ -157,15 +167,16 @@ class Sender(object):
 
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            state = [self.min_rtt,
-                     self.rtt_ewma,
+            state = [self.rtt_ewma,
                      self.delivery_rate_ewma,
+                     self.send_rate_ewma,
                      self.cwnd]
             action = self.sample_action(state)
             self.take_action(action)
 
             self.rtt_ewma = None
             self.delivery_rate_ewma = None
+            self.send_rate_ewma = None
 
             self.step_start_ms = curr_ts_ms()
 
