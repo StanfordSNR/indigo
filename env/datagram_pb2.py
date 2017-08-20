@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='datagram.proto',
   package='',
   syntax='proto3',
-  serialized_pb=_b('\n\x0e\x64\x61tagram.proto\"x\n\x04\x44\x61ta\x12\x0f\n\x07seq_num\x18\x01 \x01(\x07\x12\x0f\n\x07send_ts\x18\x02 \x01(\x07\x12\x12\n\nsent_bytes\x18\x03 \x01(\x06\x12\x16\n\x0e\x64\x65livered_time\x18\x04 \x01(\x07\x12\x11\n\tdelivered\x18\x05 \x01(\x06\x12\x0f\n\x07payload\x18\x06 \x01(\t\"y\n\x03\x41\x63k\x12\x0f\n\x07seq_num\x18\x01 \x01(\x07\x12\x0f\n\x07send_ts\x18\x02 \x01(\x07\x12\x12\n\nsent_bytes\x18\x03 \x01(\x06\x12\x16\n\x0e\x64\x65livered_time\x18\x04 \x01(\x07\x12\x11\n\tdelivered\x18\x05 \x01(\x06\x12\x11\n\tack_bytes\x18\x06 \x01(\x07\x62\x06proto3')
+  serialized_pb=_b('\n\x0e\x64\x61tagram.proto\"\xb4\x01\n\x04\x44\x61ta\x12\x0f\n\x07seq_num\x18\x01 \x01(\x07\x12\x0f\n\x07send_ts\x18\x02 \x01(\x07\x12\x12\n\nsent_bytes\x18\x03 \x01(\x06\x12\x16\n\x0e\x64\x65livered_time\x18\x04 \x01(\x07\x12\x11\n\tdelivered\x18\x05 \x01(\x06\x12\x10\n\x08rtt_ewma\x18\x06 \x01(\x07\x12\x1a\n\x12\x64\x65livery_rate_ewma\x18\x07 \x01(\x07\x12\x0c\n\x04\x63wnd\x18\x08 \x01(\x07\x12\x0f\n\x07payload\x18\t \x01(\t\"\xb5\x01\n\x03\x41\x63k\x12\x0f\n\x07seq_num\x18\x01 \x01(\x07\x12\x0f\n\x07send_ts\x18\x02 \x01(\x07\x12\x12\n\nsent_bytes\x18\x03 \x01(\x06\x12\x16\n\x0e\x64\x65livered_time\x18\x04 \x01(\x07\x12\x11\n\tdelivered\x18\x05 \x01(\x06\x12\x10\n\x08rtt_ewma\x18\x06 \x01(\x07\x12\x1a\n\x12\x64\x65livery_rate_ewma\x18\x07 \x01(\x07\x12\x0c\n\x04\x63wnd\x18\x08 \x01(\x07\x12\x11\n\tack_bytes\x18\t \x01(\x07\x62\x06proto3')
 )
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
@@ -69,8 +69,29 @@ _DATA = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='payload', full_name='Data.payload', index=5,
-      number=6, type=9, cpp_type=9, label=1,
+      name='rtt_ewma', full_name='Data.rtt_ewma', index=5,
+      number=6, type=7, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='delivery_rate_ewma', full_name='Data.delivery_rate_ewma', index=6,
+      number=7, type=7, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='cwnd', full_name='Data.cwnd', index=7,
+      number=8, type=7, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='payload', full_name='Data.payload', index=8,
+      number=9, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -87,8 +108,8 @@ _DATA = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=18,
-  serialized_end=138,
+  serialized_start=19,
+  serialized_end=199,
 )
 
 
@@ -135,8 +156,29 @@ _ACK = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='ack_bytes', full_name='Ack.ack_bytes', index=5,
+      name='rtt_ewma', full_name='Ack.rtt_ewma', index=5,
       number=6, type=7, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='delivery_rate_ewma', full_name='Ack.delivery_rate_ewma', index=6,
+      number=7, type=7, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='cwnd', full_name='Ack.cwnd', index=7,
+      number=8, type=7, cpp_type=3, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='ack_bytes', full_name='Ack.ack_bytes', index=8,
+      number=9, type=7, cpp_type=3, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
@@ -153,8 +195,8 @@ _ACK = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=140,
-  serialized_end=261,
+  serialized_start=202,
+  serialized_end=383,
 )
 
 DESCRIPTOR.message_types_by_name['Data'] = _DATA

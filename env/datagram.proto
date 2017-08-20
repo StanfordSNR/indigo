@@ -6,7 +6,10 @@ message Data {
   fixed64 sent_bytes = 3;
   fixed32 delivered_time = 4;
   fixed64 delivered = 5;
-  string payload = 6;
+  fixed32 rtt_ewma = 6;
+  fixed32 delivery_rate_ewma = 7;
+  fixed32 cwnd = 8;
+  string payload = 9;
 }
 
 message Ack {
@@ -15,5 +18,8 @@ message Ack {
   fixed64 sent_bytes = 3;
   fixed32 delivered_time = 4;
   fixed64 delivered = 5;
-  fixed32 ack_bytes = 6;
+  fixed32 rtt_ewma = 6;
+  fixed32 delivery_rate_ewma = 7;
+  fixed32 cwnd = 8;
+  fixed32 ack_bytes = 9;
 }
