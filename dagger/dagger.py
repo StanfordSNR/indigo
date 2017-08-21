@@ -30,9 +30,9 @@ class DaggerLeader(object):
         self.curr_train_step = 0
         self.max_eps = 500
         self.checkpoint = 30
-        self.default_batch_size = 1000
+        self.default_batch_size = 500
         self.learn_rate = 0.01
-        self.regularization_lambda = 1e-1
+        self.regularization_lambda = 0.05
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):

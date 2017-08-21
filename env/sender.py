@@ -24,7 +24,7 @@ def format_actions(action_list):
 
 class Sender(object):
     # RL exposed class/static variables
-    max_steps = 1000
+    max_steps = 500
     state_dim = 5
     action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
@@ -50,7 +50,7 @@ class Sender(object):
         self.seq_num = 0
         self.next_ack = 0
         self.cwnd = 10.0
-        self.step_len_ms = 10
+        self.step_len_ms = 20
 
         # state variables for RLCC
         self.min_rtt = float("inf")
@@ -101,12 +101,13 @@ class Sender(object):
 
         # Update the RTT and minRTT
         rtt = float(curr_time_ms - ack.send_ts)
-        self.min_rtt = min(self.min_rtt, rtt)
         if self.rtt_ewma is not None:
             self.rtt_ewma *= self.alpha
             self.rtt_ewma += (1 - self.alpha) * rtt
         else:
             self.rtt_ewma = rtt
+
+        self.min_rtt = min(self.min_rtt, rtt)
 
         # Update BBR's delivery rate
         self.delivered += ack.ack_bytes
