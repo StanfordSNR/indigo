@@ -28,9 +28,9 @@ class DaggerLeader(object):
         self.aggregated_states = []
         self.aggregated_actions = []
         self.max_eps = 500
-        self.checkpoint = 30
+        self.checkpoint = 20
         self.learn_rate = 0.005
-        self.regularization_lambda = 1e-3
+        self.regularization_lambda = 5e-3
         self.train_step = 0
 
         # Create the master network and training/sync queues
@@ -206,13 +206,13 @@ class DaggerLeader(object):
             sys.stderr.write('--- iter %d: mean loss %.4f\n' %
                              (curr_iter, curr_loss))
 
-            if curr_loss < min_loss - 0.01:
+            if curr_loss < min_loss - 0.005:
                 min_loss = curr_loss
                 iters_since_min_loss = 0
             else:
                 iters_since_min_loss += 1
 
-            if iters_since_min_loss >= max(0.25 * curr_iter, 5):
+            if iters_since_min_loss >= 5:
                 break
 
     def run(self, debug=False):
@@ -246,7 +246,7 @@ class DaggerLeader(object):
             # Save the network model for testing every so often
             if curr_ep == self.checkpoint:
                 self.save_model(curr_ep)
-                self.checkpoint += 30
+                self.checkpoint += 20
 
             # After training, tell workers to start another episode
             for idx in self.worker_tasks:
