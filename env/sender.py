@@ -24,7 +24,7 @@ def format_actions(action_list):
 
 class Sender(object):
     # RL exposed class/static variables
-    max_steps = 500
+    max_steps = 1000
     state_dim = 5
     action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
@@ -50,7 +50,7 @@ class Sender(object):
         self.seq_num = 0
         self.next_ack = 0
         self.cwnd = 10.0
-        self.step_len_ms = 20
+        self.step_len_ms = 10
 
         # state variables for RLCC
         self.min_rtt = float("inf")
