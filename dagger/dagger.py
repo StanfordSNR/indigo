@@ -29,7 +29,7 @@ class DaggerLeader(object):
         self.aggregated_actions = []
         self.max_eps = 500
         self.checkpoint = 30
-        self.learn_rate = 0.01
+        self.learn_rate = 0.005
         self.regularization_lambda = 1e-3
         self.train_step = 0
 
@@ -38,7 +38,7 @@ class DaggerLeader(object):
             self.global_network = DaggerLSTM(
                     state_dim=Sender.state_dim, action_cnt=Sender.action_cnt)
 
-        self.default_batch_size = 200
+        self.default_batch_size = 100
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
