@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import yaml
 import argparse
 import project_root
 import numpy as np
@@ -37,17 +38,6 @@ def prepare_traces(bandwidth):
     return uplink_trace, downlink_trace
 
 
-def lookup_best_cwnd(bandwidth, delay):
-    d = {
-        10: {10: 20,  30: 60,  50: 90,  70: 120,  90: 160 },
-        30: {10: 60,  30: 160, 50: 260, 70: 370,  90: 460 },
-        50: {10: 100, 30: 270, 50: 440, 70: 610,  90: 770 },
-        70: {10: 140, 30: 380, 50: 610, 70: 850,  90: 1090},
-        90: {10: 170, 30: 450, 50: 740, 70: 1040, 90: 1330},
-    }
-
-    return d[bandwidth][delay]
-
 def create_env(task_index):
     """ Creates and returns an Environment which contains a single
     sender-receiver connection. The environment is run inside mahimahi
@@ -70,7 +60,9 @@ def create_env(task_index):
                    '--downlink-queue-args=packets=%d' % queue)
 
     env = Environment(mm_cmd)
-    env.best_cwnd = lookup_best_cwnd(bandwidth, delay)
+
+    cwnds_file = path.join(project_root.DIR, 'dagger', 'best_cwnds.yml')
+    env.best_cwnd = yaml.load(open(cwnds_file))[bandwidth][delay]
 
     return env
 
