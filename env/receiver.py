@@ -53,9 +53,9 @@ class Receiver(object):
 
             if not events:  # timed out
                 retry_times += 1
-                if retry_times > 3:
+                if retry_times > 10:
                     sys.stderr.write(
-                        '[receiver] Handshake failed after three retries\n')
+                        '[receiver] Handshake failed after 10 retries\n')
                     return
                 else:
                     sys.stderr.write(

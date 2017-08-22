@@ -1,3 +1,4 @@
+import project_root
 from env.sender import Sender
 from helpers.helpers import apply_op
 
@@ -41,6 +42,7 @@ class NaiveDaggerExpert(object):
         action = get_best_action(Sender.action_mapping, cwnd, target_cwnd)
         return action
 
+
 class TrueDaggerExpert(object):
     """ Ground truth expert policy """
 
@@ -55,3 +57,43 @@ class TrueDaggerExpert(object):
         # best cwnd.
         action = get_best_action(Sender.action_mapping, cwnd, self.best_cwnd)
         return action
+
+
+class DaggerCoach(object):
+    def __init__(self, env):
+        assert hasattr(env, 'best_cwnd')
+        assert hasattr(env, 'action_cnt')
+
+        self.best_cwnd = env.best_cwnd
+        self.action_cnt = env.action_cnt
+
+    def sample_action(self, eps, cwnd, action_probs=None):
+        if eps == 0:
+            lambd = 0.0
+            action_probs = [0.0 for _ in xrange(self.action_cnt)]
+        else:
+            assert action_probs is not None
+
+            if eps == 1:
+                lambd = 1.0
+            else:
+                lambd = 0.8 ** (eps - 1)
+
+        max_obj = None
+        max_action_idx = None
+
+        for action_idx in xrange(self.action_cnt):
+            immediate_loss = self.immediate_loss(cwnd, action_idx)
+            obj = lambd * action_probs[action_idx] - immediate_loss
+
+            if max_obj is None or obj > max_obj:
+                max_obj = obj
+                max_action_idx = action_idx
+
+        return max_action_idx
+
+    def immediate_loss(self, cwnd, action_idx):
+        op, val = Sender.action_mapping[action_idx]
+        abs_diff = abs(apply_op(op, cwnd, val) - self.best_cwnd)
+
+        return 1.0 * abs_diff / self.best_cwnd

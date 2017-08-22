@@ -7,7 +7,7 @@ import datetime
 from tensorflow import contrib
 from os import path
 from models import DaggerNetwork
-from experts import TrueDaggerExpert
+from experts import DaggerCoach
 from env.sender import Sender
 from helpers.helpers import make_sure_path_exists, normalize
 
@@ -256,7 +256,7 @@ class DaggerWorker(object):
 
         # Hyperparameters
         self.train_queue_capacity = Sender.max_steps * self.num_workers
-        self.expert = TrueDaggerExpert(env)
+        self.expert = DaggerCoach(env)
 
         # Must call env.set_sample_action() before env.run()
         env.set_sample_action(self.sample_action)
@@ -313,33 +313,38 @@ class DaggerWorker(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             local_vars, global_vars)])
 
-    def sample_action(self, step_state_buf):
+    def sample_action(self, state):
         """ Given a state buffer in the past step, returns an action
         to perform.
 
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        step_cwnd = step_state_buf[-1]
-        expert_action = self.expert.sample_action(step_cwnd)
+        step_cwnd = state[-1]
 
         # For decision-making, normalize.
-        step_state_buf = normalize(step_state_buf)
+        state = normalize(state)
 
-        self.state_buf.extend([step_state_buf])
+        if self.curr_ep == 0:
+            expert_action = self.expert.sample_action(self.curr_ep, step_cwnd)
+            # Always use the expert on the first episode to get our bearings.
+            action = expert_action
+        else:
+            # Get probability of each action from the local network.
+            pi = self.local_network
+            action_probs = self.sess.run(
+                    pi.action_probs, feed_dict={pi.states: [state]})[0]
+
+            # Get expert action
+            expert_action = self.expert.sample_action(
+                    self.curr_ep, step_cwnd, action_probs)
+
+            # Choose an action to take
+            action = np.argmax(np.random.multinomial(1, action_probs - 1e-5))
+
+        self.state_buf.extend([state])
         self.action_buf.append(expert_action)
 
-        # Always use the expert on the first episode to get our bearings.
-        if self.curr_ep == 0:
-            return expert_action
-
-        # Get probability of each action from the local network.
-        pi = self.local_network
-        action_probs = self.sess.run(pi.action_probs,
-                                     feed_dict={pi.states: [step_state_buf]})
-
-        # Choose an action to take
-        action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
         return action
 
     def rollout(self):
