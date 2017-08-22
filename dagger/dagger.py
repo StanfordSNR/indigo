@@ -29,7 +29,8 @@ class DaggerLeader(object):
         self.aggregated_actions = []
         self.curr_train_step = 0
         self.max_eps = 500
-        self.checkpoint = 50
+        self.checkpoint_delta = 20
+        self.checkpoint = self.checkpoint_delta
         self.default_batch_size = 100
         self.learn_rate = 1e-3
         self.regularization_lambda = 1e-2
@@ -225,7 +226,7 @@ class DaggerLeader(object):
 
                 if curr_ep == self.checkpoint:
                     self.save_model(curr_ep)
-                    self.checkpoint += 50
+                    self.checkpoint += self.checkpoint_delta
             else:
                 if debug:
                     sys.stderr.write('[PSERVER]: quitting...\n')
