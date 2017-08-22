@@ -177,12 +177,11 @@ class DaggerLeader(object):
         num_batches = dataset_size / batch_size
 
         min_loss = float("inf")
-        min_iters = 10
         iters_since_min_loss = 0
         curr_iter = 0
 
         # Stop condition: min # of steps and no smaller loss seen in a while
-        while (iters_since_min_loss < 0.25 * curr_iter or curr_iter < 5):
+        while (iters_since_min_loss < max(0.25 * curr_iter, 5)):
 
             curr_loss = 0.0
             for i in xrange(num_batches):
