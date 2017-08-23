@@ -7,7 +7,7 @@ import numpy as np
 import datagram_pb2
 import project_root
 from helpers.helpers import (
-    curr_ts_ms, apply_op,
+    curr_ts_ms, apply_op, RingBuffer,
     READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, WRITE_FLAGS, ALL_FLAGS)
 
 
@@ -25,7 +25,7 @@ def format_actions(action_list):
 class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 5
+    state_dim = 25
     action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
@@ -51,6 +51,8 @@ class Sender(object):
         self.next_ack = 0
         self.cwnd = 10.0
         self.step_len_ms = 10
+
+        self.ring_state = RingBuffer(Sender.state_dim)
 
         # state variables for RLCC
         self.min_rtt = float("inf")
@@ -135,7 +137,7 @@ class Sender(object):
         op, val = self.action_mapping[action_idx]
 
         self.cwnd = apply_op(op, self.cwnd, val)
-        self.cwnd = max(5.0, self.cwnd)
+        self.cwnd = min(max(5.0, self.cwnd), 5000)
 
         self.cwnd_file.write('%f %f\n' % (old_cwnd, self.cwnd))
 
@@ -173,12 +175,14 @@ class Sender(object):
 
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            action = self.sample_action(
-                    [self.min_rtt,
-                     self.rtt_ewma,
-                     self.delivery_rate_ewma,
-                     self.send_rate_ewma,
-                     self.cwnd])
+            # Update ring state
+            self.ring_state.append(self.min_rtt)
+            self.ring_state.append(self.rtt_ewma)
+            self.ring_state.append(self.delivery_rate_ewma)
+            self.ring_state.append(self.send_rate_ewma)
+            self.ring_state.append(self.cwnd)
+
+            action = self.sample_action(self.ring_state.get_full())
 
             self.take_action(action)
 

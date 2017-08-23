@@ -27,8 +27,8 @@ class Learner(object):
         uninit_vars -= set(self.model.trainable_vars)
         self.sess.run(tf.variables_initializer(uninit_vars))
 
-    def sample_action(self, step_state_buf):
-        norm_states = normalize(step_state_buf)
+    def sample_action(self, state):
+        norm_states = normalize(state)
 
         # Get probability of each action from the local network.
         pi = self.model
