@@ -77,7 +77,7 @@ class DaggerCoach(object):
             if eps == 1:
                 lambd = 1.0
             else:
-                lambd = 0.9 ** (eps - 1)
+                lambd = 0.8 ** (eps - 1)
 
         max_obj = None
         max_action_idx = None
