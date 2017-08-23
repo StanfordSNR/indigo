@@ -31,7 +31,7 @@ class DaggerLeader(object):
         self.checkpoint_delta = 20
         self.checkpoint = self.checkpoint_delta
         self.learn_rate = 0.01
-        self.regularization_lambda = 1e-4
+        self.regularization_lambda = 1e-3
         self.train_step = 0
 
         # Create the master network and training/sync queues
@@ -207,13 +207,13 @@ class DaggerLeader(object):
             sys.stderr.write('--- iter %d: mean loss %.4f\n' %
                              (curr_iter, curr_loss))
 
-            if curr_loss < min_loss - 0.01:
+            if curr_loss < min_loss - 0.005:
                 min_loss = curr_loss
                 iters_since_min_loss = 0
             else:
                 iters_since_min_loss += 1
 
-            if iters_since_min_loss >= max(0.25 * curr_iter, 5):
+            if iters_since_min_loss >= max(0.2 * curr_iter, 6):
                 break
 
     def run(self, debug=False):
