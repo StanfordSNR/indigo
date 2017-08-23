@@ -51,8 +51,13 @@ def get_open_udp_port():
 
 
 def normalize(state):
-    return [state[0] / 100.0, state[1] / 100.0,
-            state[2] / 100.0, state[3] / 1000.0]
+    for i in xrange(len(state)):
+        if i % 4 == 3:
+            state[i] /= 1000.0  # CWND
+        else:
+            state[i] /= 100.0
+
+    return state
 
 
 def softmax(x):
@@ -76,6 +81,10 @@ class RingBuffer(object):
     def get(self):
         idx = (self.index - self.real_len +
                np.arange(self.real_len)) % self.full_len
+        return self.data[idx]
+
+    def get_full(self):
+        idx = (self.index + np.arange(self.full_len)) % self.full_len
         return self.data[idx]
 
     def reset(self):
