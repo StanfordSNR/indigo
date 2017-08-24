@@ -57,7 +57,8 @@ class Sender(object):
         self.delivered = 0
         self.sent_bytes = 0
 
-        self.rtt_ewma = None
+        self.min_rtt = float('inf')
+        self.delay_ewma = None
         self.send_rate_ewma = None
         self.delivery_rate_ewma = None
 
@@ -97,11 +98,13 @@ class Sender(object):
 
         # Update RTT
         rtt = float(curr_time_ms - ack.send_ts)
+        self.min_rtt = min(self.min_rtt, rtt)
+        delay = rtt - self.min_rtt
 
-        if self.rtt_ewma is None:
-            self.rtt_ewma = rtt
+        if self.delay_ewma is None:
+            self.delay_ewma = delay
         else:
-            self.rtt_ewma = 0.875 * self.rtt_ewma + 0.125 * rtt
+            self.delay_ewma = 0.875 * self.delay_ewma + 0.125 * delay
 
         # Update BBR's delivery rate
         self.delivered += ack.ack_bytes
@@ -129,7 +132,7 @@ class Sender(object):
         op, val = self.action_mapping[action_idx]
 
         self.cwnd = apply_op(op, self.cwnd, val)
-        self.cwnd = min(max(5.0, self.cwnd), 5000)
+        self.cwnd = min(max(10.0, self.cwnd), 5000)
 
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd
@@ -165,14 +168,14 @@ class Sender(object):
 
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            state = [self.rtt_ewma,
+            state = [self.delay_ewma,
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
                      self.cwnd]
             action = self.sample_action(state)
             self.take_action(action)
 
-            self.rtt_ewma = None
+            self.delay_ewma = None
             self.delivery_rate_ewma = None
             self.send_rate_ewma = None
 
