@@ -221,5 +221,5 @@ class Sender(object):
                     self.recv()
 
                 if flag & WRITE_FLAGS:
-                    while self.window_is_open():
+                    if self.window_is_open():
                         self.send()
