@@ -29,10 +29,11 @@ class DaggerLeader(object):
         self.aggregated_actions = []
         self.curr_train_step = 0
         self.max_eps = 500
-        self.checkpoint = 50
-        self.default_batch_size = 100
-        self.learn_rate = 1e-3
-        self.regularization_lambda = 1e-2
+        self.checkpoint_delta = 20
+        self.checkpoint = self.checkpoint_delta
+        self.default_batch_size = 500
+        self.learn_rate = 0.01
+        self.regularization_lambda = 0.05
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
@@ -176,12 +177,12 @@ class DaggerLeader(object):
         num_batches = dataset_size / batch_size
 
         min_loss = float("inf")
-        min_iters = 10
         iters_since_min_loss = 0
         curr_iter = 0
 
         # Stop condition: min # of steps and no smaller loss seen in a while
-        while (iters_since_min_loss < 0.25 * curr_iter or curr_iter < 5):
+        while True:
+            curr_iter += 1
 
             curr_loss = 0.0
             for i in xrange(num_batches):
@@ -192,13 +193,14 @@ class DaggerLeader(object):
             sys.stderr.write('[PSERVER] step %d: mean loss %.3f\n' %
                              (self.curr_train_step, curr_loss))
 
-            if curr_loss < min_loss - 0.01:
+            if curr_loss < min_loss - 0.001:
                 min_loss = curr_loss
                 iters_since_min_loss = 0
             else:
                 iters_since_min_loss += 1
 
-            curr_iter += 1
+            if iters_since_min_loss >= max(min(0.2 * curr_iter, 10), 5):
+                break
 
     def run(self, debug=False):
         for curr_ep in xrange(self.max_eps):
@@ -225,7 +227,7 @@ class DaggerLeader(object):
 
                 if curr_ep == self.checkpoint:
                     self.save_model(curr_ep)
-                    self.checkpoint += 50
+                    self.checkpoint += self.checkpoint_delta
             else:
                 if debug:
                     sys.stderr.write('[PSERVER]: quitting...\n')
@@ -313,20 +315,20 @@ class DaggerWorker(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             local_vars, global_vars)])
 
-    def sample_action(self, step_state_buf):
+    def sample_action(self, state):
         """ Given a state buffer in the past step, returns an action
         to perform.
 
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        step_cwnd = step_state_buf[-1]
+        step_cwnd = state[-1]
         expert_action = self.expert.sample_action(step_cwnd)
 
         # For decision-making, normalize.
-        step_state_buf = normalize(step_state_buf)
+        state = normalize(state)
 
-        self.state_buf.extend([step_state_buf])
+        self.state_buf.extend([state])
         self.action_buf.append(expert_action)
 
         # Always use the expert on the first episode to get our bearings.
@@ -336,7 +338,7 @@ class DaggerWorker(object):
         # Get probability of each action from the local network.
         pi = self.local_network
         action_probs = self.sess.run(pi.action_probs,
-                                     feed_dict={pi.states: [step_state_buf]})
+                                     feed_dict={pi.states: [state]})
 
         # Choose an action to take
         action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))

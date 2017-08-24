@@ -25,8 +25,8 @@ def format_actions(action_list):
 class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 5
-    action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
+    state_dim = 4
+    action_mapping = format_actions(["/2.0", "-10.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False):
@@ -54,7 +54,7 @@ class Sender(object):
 
         # state variables for RLCC
         self.min_rtt = float("inf")
-        self.rtt_ewma = None
+        self.delay_ewma = None
 
         self.delivered_time = 0
         self.delivered = 0
@@ -67,7 +67,6 @@ class Sender(object):
 
         self.step_start_ms = None
         self.running = True
-        self.cwnd_file = open('/tmp/cwnd_file', 'w')
 
         if self.train:
             self.step_cnt = 0
@@ -84,7 +83,7 @@ class Sender(object):
             if msg == 'Hello from receiver' and self.peer_addr is None:
                 self.peer_addr = addr
                 self.sock.sendto('Hello from sender', self.peer_addr)
-                sys.stderr.write('[sender]: Handshake success! '
+                sys.stderr.write('[sender] Handshake success! '
                                  'Receiver\'s address is %s:%s\n' % addr)
                 break
 
@@ -103,11 +102,13 @@ class Sender(object):
         # Update the RTT and minRTT
         rtt = float(curr_time_ms - ack.send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
-        if self.rtt_ewma is not None:
-            self.rtt_ewma *= self.alpha
-            self.rtt_ewma += (1 - self.alpha) * rtt
+        delay = rtt - self.min_rtt
+
+        if self.delay_ewma is not None:
+            self.delay_ewma *= self.alpha
+            self.delay_ewma += (1 - self.alpha) * delay
         else:
-            self.rtt_ewma = rtt
+            self.delay_ewma = delay
 
         # Update BBR's delivery rate
         self.delivered += ack.ack_bytes
@@ -135,9 +136,7 @@ class Sender(object):
         op, val = self.action_mapping[action_idx]
 
         self.cwnd = apply_op(op, self.cwnd, val)
-        self.cwnd = max(5.0, self.cwnd)
-
-        self.cwnd_file.write('%f %f\n' % (old_cwnd, self.cwnd))
+        self.cwnd = max(10.0, self.cwnd)
 
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd
@@ -174,8 +173,7 @@ class Sender(object):
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
             action = self.sample_action(
-                    [self.min_rtt,
-                     self.rtt_ewma,
+                    [self.delay_ewma,
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
                      self.cwnd])

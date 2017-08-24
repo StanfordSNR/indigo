@@ -27,21 +27,21 @@ class Learner(object):
         uninit_vars -= set(self.model.trainable_vars)
         self.sess.run(tf.variables_initializer(uninit_vars))
 
-    def sample_action(self, step_state_buf):
-        norm_states = normalize(step_state_buf)
+    def sample_action(self, state):
+        state = normalize(state)
 
         # Get probability of each action from the local network.
         pi = self.model
         action_probs = self.sess.run(pi.action_probs,
                                      feed_dict={
-                                         pi.states: [norm_states]
+                                         pi.states: [state]
                                      })
 
         action = np.argmax(action_probs[0])
         # action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
-        #temperature = 1.0
-        #temp_probs = softmax(action_probs[0] / temperature)
-        #action = np.argmax(np.random.multinomial(1, temp_probs - 1e-5))
+        # temperature = 1.0
+        # temp_probs = softmax(action_probs[0] / temperature)
+        # action = np.argmax(np.random.multinomial(1, temp_probs - 1e-5))
         return action
 
 
@@ -53,8 +53,7 @@ def main():
     sender = Sender(args.port)
 
     model_path = path.join(project_root.DIR, 'dagger', 'logs',
-                           '2017-08-08--17-25-07',
-                           'checkpoint-768000')
+                           '2017-08-08--17-25-07', 'checkpoint-768000')
 
     learner = Learner(
         state_dim=Sender.state_dim,
