@@ -207,13 +207,13 @@ class DaggerLeader(object):
             sys.stderr.write('--- iter %d: mean loss %.4f\n' %
                              (curr_iter, curr_loss))
 
-            if curr_loss < min_loss - 0.005:
+            if curr_loss < min_loss:
                 min_loss = curr_loss
                 iters_since_min_loss = 0
             else:
                 iters_since_min_loss += 1
 
-            if iters_since_min_loss >= max(0.2 * curr_iter, 6):
+            if iters_since_min_loss >= max(min(0.2 * curr_iter, 10), 5):
                 break
 
     def run(self, debug=False):
