@@ -329,21 +329,21 @@ class DaggerWorker(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             local_vars, global_vars)])
 
-    def sample_action(self, step_state_buf):
+    def sample_action(self, state):
         """ Given a state buffer in the past step, returns an action
         to perform.
 
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        step_cwnd = step_state_buf[-1]
+        step_cwnd = state[-1]
         expert_action = self.expert.sample_action(step_cwnd)
 
         # For decision-making, normalize.
-        step_state_buf = normalize(step_state_buf)
+        state = normalize(state)
 
         # Fill in state_buf, action_buf
-        self.state_buf.append(step_state_buf)
+        self.state_buf.append(state)
         self.action_buf.append(expert_action)
 
         # Always use the expert on the first episode to get our bearings.
@@ -353,7 +353,7 @@ class DaggerWorker(object):
         # Get probability of each action from the local network.
         pi = self.local_network
         feed_dict = {
-            pi.input: [[step_state_buf]],
+            pi.input: [[state]],
             pi.state_in: self.lstm_state,
         }
         ops_to_run = [pi.action_probs, pi.state_out]

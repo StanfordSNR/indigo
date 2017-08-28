@@ -50,12 +50,9 @@ def get_open_udp_port():
     return port
 
 
-def normalize(step_state_buf):
-    for i in xrange(3):
-        step_state_buf[i] /= 100.0
-    step_state_buf[3] /= 1000.0
-
-    return step_state_buf
+def normalize(state):
+    return [state[0] / 100.0, state[1] / 100.0,
+            state[2] / 100.0, state[3] / 1000.0]
 
 
 def softmax(x):
