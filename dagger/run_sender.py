@@ -28,19 +28,19 @@ class Learner(object):
         uninit_vars -= set(self.model.trainable_vars)
         self.sess.run(tf.variables_initializer(uninit_vars))
 
-    def sample_action(self, step_state_buf):
-        norm_states = normalize(step_state_buf)
+    def sample_action(self, state):
+        state = normalize(state)
 
         # Get probability of each action from the local network.
         pi = self.model
         feed_dict = {
-            pi.input: [[step_state_buf]],
+            pi.input: [[state]],
             pi.state_in: self.lstm_state,
         }
         ops_to_run = [pi.action_probs, pi.state_out]
         action_probs, self.lstm_state = self.sess.run(ops_to_run, feed_dict)
 
-        # Choose an action to take and update current LSTM state
+        # Choose an action to take
         action = np.argmax(action_probs[0][0])
 
         # action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))

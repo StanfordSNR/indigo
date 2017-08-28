@@ -110,7 +110,7 @@ class Sender(object):
         self.delivered += ack.ack_bytes
         self.delivered_time = curr_time_ms
         delivery_rate = (0.008 * (self.delivered - ack.delivered) /
-                         (self.delivered_time - ack.delivered_time))
+                         max(1, self.delivered_time - ack.delivered_time))
 
         if self.delivery_rate_ewma is None:
             self.delivery_rate_ewma = delivery_rate
@@ -119,7 +119,7 @@ class Sender(object):
                 0.875 * self.delivery_rate_ewma + 0.125 * delivery_rate)
 
         # Update Vegas sending rate
-        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / rtt
+        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / max(1, rtt)
 
         if self.send_rate_ewma is None:
             self.send_rate_ewma = send_rate
