@@ -132,7 +132,7 @@ class Sender(object):
         op, val = self.action_mapping[action_idx]
 
         self.cwnd = apply_op(op, self.cwnd, val)
-        self.cwnd = min(max(10.0, self.cwnd), 5000)
+        self.cwnd = max(5.0, self.cwnd)
 
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd
