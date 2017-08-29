@@ -25,8 +25,8 @@ def format_actions(action_list):
 class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 4
-    action_mapping = format_actions(["/2.0", "-10.0", "+10.0", "*2.0"])
+    state_dim = 5
+    action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False):
@@ -54,7 +54,7 @@ class Sender(object):
 
         # state variables for RLCC
         self.min_rtt = float("inf")
-        self.delay_ewma = None
+        self.rtt_ewma = None
 
         self.delivered_time = 0
         self.delivered = 0
@@ -102,19 +102,18 @@ class Sender(object):
         # Update the RTT and minRTT
         rtt = float(curr_time_ms - ack.send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
-        delay = rtt - self.min_rtt
 
-        if self.delay_ewma is not None:
-            self.delay_ewma *= self.alpha
-            self.delay_ewma += (1 - self.alpha) * delay
+        if self.rtt_ewma is not None:
+            self.rtt_ewma *= self.alpha
+            self.rtt_ewma += (1 - self.alpha) * rtt
         else:
-            self.delay_ewma = delay
+            self.rtt_ewma = rtt
 
         # Update BBR's delivery rate
         self.delivered += ack.ack_bytes
         self.delivered_time = curr_time_ms
         delivery_rate = (1.0 * (self.delivered - ack.delivered) /
-                         (self.delivered_time - ack.delivered_time))
+                         max(1.0, self.delivered_time - ack.delivered_time))
         delivery_rate = delivery_rate * 8 * 0.001      # B/ms to Mb/s
         if self.delivery_rate_ewma is not None:
             self.delivery_rate_ewma *= self.alpha
@@ -123,7 +122,7 @@ class Sender(object):
             self.delivery_rate_ewma = delivery_rate
 
         # Update Vegas sending rate
-        send_rate = (self.sent_bytes - ack.sent_bytes) / rtt
+        send_rate = (self.sent_bytes - ack.sent_bytes) / max(1.0, rtt)
         send_rate = send_rate * 8 * 0.001      # B/ms to Mb/s
         if self.send_rate_ewma is not None:
             self.send_rate_ewma *= self.alpha
@@ -173,7 +172,8 @@ class Sender(object):
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
             action = self.sample_action(
-                    [self.delay_ewma,
+                    [self.min_rtt,
+                     self.rtt_ewma,
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
                      self.cwnd])
