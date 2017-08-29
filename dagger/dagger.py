@@ -33,7 +33,7 @@ class DaggerLeader(object):
         self.checkpoint = self.checkpoint_delta
         self.default_batch_size = 500
         self.learn_rate = 0.01
-        self.regularization_lambda = 0.05
+        self.regularization_lambda = 0.1
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
