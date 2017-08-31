@@ -207,7 +207,7 @@ class DaggerLeader(object):
             sys.stderr.write('--- iter %d: mean loss %.4f\n' %
                              (curr_iter, curr_loss))
 
-            if curr_loss < min_loss:
+            if curr_loss < min_loss - 0.001:
                 min_loss = curr_loss
                 iters_since_min_loss = 0
             else:

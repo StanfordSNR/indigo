@@ -44,25 +44,31 @@ def create_env(task_index):
     shells. The environment knows the best cwnd to pass to the expert policy.
     """
 
-    bandwidth = [10, 30, 50, 70, 90]
-    delay = [10, 30, 50, 70, 90]
+    if task_index <= 17:
+        bandwidth = [200, 100, 50, 20, 10, 5]
+        delay = [10, 50, 100]
 
-    cartesian = [(b, d) for b in bandwidth for d in delay]
-    bandwidth, delay = cartesian[task_index]
+        cartesian = [(b, d) for b in bandwidth for d in delay]
+        bandwidth, delay = cartesian[task_index]
 
-    queue = None
+        uplink_trace, downlink_trace = prepare_traces(bandwidth)
+        mm_cmd = ('mm-delay %d mm-link %s %s' %
+                  (delay, uplink_trace, downlink_trace))
 
-    uplink_trace, downlink_trace = prepare_traces(bandwidth)
-    mm_cmd = ('mm-delay %d mm-link %s %s' %
-              (delay, uplink_trace, downlink_trace))
-    if queue is not None:
-        mm_cmd += (' --downlink-queue=droptail '
-                   '--downlink-queue-args=packets=%d' % queue)
+        cwnds_file = path.join(project_root.DIR, 'dagger', 'best_cwnds.yml')
+        best_cwnd = yaml.load(open(cwnds_file))[bandwidth][delay]
+    else:
+        if task_index == 18:  # calibrated to Colombia cellular
+            trace_path = path.join(project_root.DIR, 'env', '5.65mbps.trace')
+            mm_cmd = 'mm-delay 88 mm-loss uplink 0.0026 mm-loss downlink 0.0001 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=3665' % (trace_path, trace_path)
+            best_cwnd = 90
+        elif task_index == 19:  # calibrated to China cellular
+            trace_path = path.join(project_root.DIR, 'env', '6.25mbps.trace')
+            mm_cmd = 'mm-delay 152 mm-loss uplink 0.0025 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=362' % (trace_path, trace_path)
+            best_cwnd = 160
 
     env = Environment(mm_cmd)
-
-    cwnds_file = path.join(project_root.DIR, 'dagger', 'best_cwnds.yml')
-    env.best_cwnd = yaml.load(open(cwnds_file))[bandwidth][delay]
+    env.best_cwnd = best_cwnd
 
     return env
 
