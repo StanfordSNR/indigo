@@ -57,8 +57,7 @@ class Sender(object):
         self.delivered = 0
         self.sent_bytes = 0
 
-        self.min_rtt = float('inf')
-        self.delay_ewma = None
+        self.rtt_ewma = None
         self.send_rate_ewma = None
         self.delivery_rate_ewma = None
 
@@ -98,13 +97,11 @@ class Sender(object):
 
         # Update RTT
         rtt = float(curr_time_ms - ack.send_ts)
-        self.min_rtt = min(self.min_rtt, rtt)
-        delay = rtt - self.min_rtt
 
-        if self.delay_ewma is None:
-            self.delay_ewma = delay
+        if self.rtt_ewma is None:
+            self.rtt_ewma = rtt
         else:
-            self.delay_ewma = 0.875 * self.delay_ewma + 0.125 * delay
+            self.rtt_ewma = 0.875 * self.rtt_ewma + 0.125 * rtt
 
         # Update BBR's delivery rate
         self.delivered += ack.ack_bytes
@@ -168,14 +165,14 @@ class Sender(object):
 
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            state = [self.delay_ewma,
+            state = [self.rtt_ewma,
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
                      self.cwnd]
             action = self.sample_action(state)
             self.take_action(action)
 
-            self.delay_ewma = None
+            self.rtt_ewma = None
             self.delivery_rate_ewma = None
             self.send_rate_ewma = None
 
