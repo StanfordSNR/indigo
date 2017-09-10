@@ -44,28 +44,51 @@ def create_env(task_index):
     shells. The environment knows the best cwnd to pass to the expert policy.
     """
 
-    if task_index <= 17:
-        bandwidth = [200, 100, 50, 20, 10, 5]
-        delay = [10, 50, 100]
+    best_cwnds_file = path.join(project_root.DIR, 'dagger', 'best_cwnds.yml')
+    best_cwnd_map = yaml.load(open(best_cwnds_file))
 
-        cartesian = [(b, d) for b in bandwidth for d in delay]
-        bandwidth, delay = cartesian[task_index]
+    if task_index == 0:
+        trace_path = path.join(project_root.DIR, 'env', '100.42mbps.trace')
+        mm_cmd = 'mm-delay 27 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=173' % (trace_path, trace_path)
+        best_cwnd = 500
+    elif task_index == 1:
+        trace_path = path.join(project_root.DIR, 'env', '77.72mbps.trace')
+        mm_cmd = 'mm-delay 51 mm-loss uplink 0.0006 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=94' % (trace_path, trace_path)
+        best_cwnd = 690
+    elif task_index == 2:
+        trace_path = path.join(project_root.DIR, 'env', '114.68mbps.trace')
+        mm_cmd = 'mm-delay 45 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=450' % (trace_path, trace_path)
+        best_cwnd = 870
+    elif task_index <= 7:
+        bandwidth = 100
+        delay = [10, 30, 50, 70, 90]
+        delay = delay[task_index - 3]
 
         uplink_trace, downlink_trace = prepare_traces(bandwidth)
-        mm_cmd = ('mm-delay %d mm-link %s %s' %
-                  (delay, uplink_trace, downlink_trace))
+        mm_cmd = 'mm-delay %d mm-link %s %s' % (delay, uplink_trace, downlink_trace)
+        best_cwnd = best_cwnd_map[bandwidth][delay]
+    elif task_index == 8:
+        trace_path = path.join(project_root.DIR, 'env', '0.57mbps-poisson.trace')
+        mm_cmd = 'mm-delay 28 mm-loss uplink 0.0477 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=14' % (trace_path, trace_path)
+        best_cwnd = 5
+    elif task_index == 9:
+        trace_path = path.join(project_root.DIR, 'env', '2.64mbps-poisson.trace')
+        mm_cmd = 'mm-delay 88 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=130' % (trace_path, trace_path)
+        best_cwnd = 40
+    elif task_index == 10:
+        trace_path = path.join(project_root.DIR, 'env', '3.04mbps-poisson.trace')
+        mm_cmd = 'mm-delay 130 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=426' % (trace_path, trace_path)
+        best_cwnd = 70
+    elif task_index <= 30:
+        bandwidth = [5, 10, 20, 50]
+        delay = [10, 30, 50, 70, 90]
 
-        cwnds_file = path.join(project_root.DIR, 'dagger', 'best_cwnds.yml')
-        best_cwnd = yaml.load(open(cwnds_file))[bandwidth][delay]
-    else:
-        if task_index == 18:  # calibrated to Colombia cellular
-            trace_path = path.join(project_root.DIR, 'env', '5.65mbps.trace')
-            mm_cmd = 'mm-delay 88 mm-loss uplink 0.0026 mm-loss downlink 0.0001 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=3665' % (trace_path, trace_path)
-            best_cwnd = 90
-        elif task_index == 19:  # calibrated to China cellular
-            trace_path = path.join(project_root.DIR, 'env', '6.25mbps.trace')
-            mm_cmd = 'mm-delay 152 mm-loss uplink 0.0025 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=362' % (trace_path, trace_path)
-            best_cwnd = 160
+        cartesian = [(b, d) for b in bandwidth for d in delay]
+        bandwidth, delay = cartesian[task_index - 11]
+
+        uplink_trace, downlink_trace = prepare_traces(bandwidth)
+        mm_cmd = 'mm-delay %d mm-link %s %s' % (delay, uplink_trace, downlink_trace)
+        best_cwnd = best_cwnd_map[bandwidth][delay]
 
     env = Environment(mm_cmd)
     env.best_cwnd = best_cwnd
