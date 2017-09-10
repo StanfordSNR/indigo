@@ -32,7 +32,7 @@ class DaggerLeader(object):
         self.checkpoint_delta = 20
         self.checkpoint = self.checkpoint_delta
         self.learn_rate = 0.01
-        self.regularization_lambda = 1e-3
+        self.regularization_lambda = 1e-4
         self.train_step = 0
 
         # Create the master network and training/sync queues
