@@ -10,6 +10,7 @@ from models import DaggerLSTM
 from experts import TrueDaggerExpert
 from env.sender import Sender
 from helpers.helpers import make_sure_path_exists, normalize, curr_ts_ms
+from subprocess import check_output
 
 
 class Status:
@@ -106,8 +107,11 @@ class DaggerLeader(object):
         self.sess = tf.Session(server.target)
         self.sess.run(tf.global_variables_initializer())
 
+        git_commit = check_output(
+                'cd %s && git rev-parse @' % project_root.DIR, shell=True)
         date_time = datetime.datetime.now().strftime('%Y-%m-%d--%H-%M-%S')
-        self.logdir = path.join(project_root.DIR, 'dagger', 'logs', date_time)
+        log_name = date_time + '-%s' % git_commit.strip()
+        self.logdir = path.join(project_root.DIR, 'dagger', 'logs', log_name)
         make_sure_path_exists(self.logdir)
         self.summary_writer = tf.summary.FileWriter(self.logdir)
 
@@ -189,7 +193,8 @@ class DaggerLeader(object):
         while True:
             curr_iter += 1
 
-            curr_loss = 0.0
+            mean_loss = 0.0
+            max_loss = 0.0
 
             for batch_num in xrange(num_batches):
                 self.train_step += 1
@@ -200,15 +205,18 @@ class DaggerLeader(object):
                 batch_states = self.aggregated_states[start:end]
                 batch_actions = self.aggregated_actions[start:end]
 
-                curr_loss += self.run_one_train_step(batch_states, batch_actions)
+                loss = self.run_one_train_step(batch_states, batch_actions)
 
-            curr_loss /= num_batches
+                mean_loss += loss
+                max_loss = max(loss, max_loss)
 
-            sys.stderr.write('--- iter %d: mean loss %.4f\n' %
-                             (curr_iter, curr_loss))
+            mean_loss /= num_batches
 
-            if curr_loss < min_loss - 0.001:
-                min_loss = curr_loss
+            sys.stderr.write('--- iter %d: max loss %.4f, mean loss %.4f\n' %
+                             (curr_iter, max_loss, mean_loss))
+
+            if max_loss < min_loss - 0.001:
+                min_loss = max_loss
                 iters_since_min_loss = 0
             else:
                 iters_since_min_loss += 1
