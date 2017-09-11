@@ -65,6 +65,10 @@ class Sender(object):
         self.step_start_ms = None
         self.running = True
 
+        self.ts_first = None
+        self.rtt_buf = []
+        self.perf = open(path.join(project_root.DIR, 'env', 'perf'), 'a', 0)
+
         if self.train:
             self.step_cnt = 0
 
@@ -96,10 +100,14 @@ class Sender(object):
         self.next_ack = max(self.next_ack, ack.seq_num + 1)
         curr_time_ms = curr_ts_ms()
 
+        if self.ts_first is None:
+            self.ts_first = curr_time_ms
+
         # Update RTT
         rtt = float(curr_time_ms - ack.send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
         delay = rtt - self.min_rtt
+        self.rtt_buf.append(rtt)
 
         if self.delay_ewma is None:
             self.delay_ewma = delay
@@ -132,7 +140,7 @@ class Sender(object):
         op, val = self.action_mapping[action_idx]
 
         self.cwnd = apply_op(op, self.cwnd, val)
-        self.cwnd = max(5.0, self.cwnd)
+        self.cwnd = min(max(5.0, self.cwnd), 5000)
 
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd
@@ -187,6 +195,11 @@ class Sender(object):
                     self.step_cnt = 0
                     self.running = False
 
+                    self.compute_performance()
+                    self.ts_first = None
+                    self.rtt_buf = []
+                    self.perf.close()
+
     def run(self):
         TIMEOUT = 1000  # ms
 
@@ -220,3 +233,9 @@ class Sender(object):
                 if flag & WRITE_FLAGS:
                     if self.window_is_open():
                         self.send()
+
+    def compute_performance(self):
+        duration = curr_ts_ms() - self.ts_first
+        tput = 0.008 * self.delivered / duration
+        perc_delay = np.percentile(self.rtt_buf, 95)
+        self.perf.write('%.2f %d\n' % (tput, perc_delay))
