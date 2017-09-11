@@ -3,32 +3,29 @@
 import argparse
 import numpy as np
 from os import path
+from helpers import make_sure_path_exists
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--bandwidth', metavar='Mbps', required=True, type=int,
-                        help='integer constant bandwidth (Mbps)')
+    parser.add_argument('--bandwidth', metavar='Mbps', required=True,
+                        help='constant bandwidth (Mbps)')
     parser.add_argument('--output-dir', metavar='DIR', required=True,
                         help='directory to output trace')
     args = parser.parse_args()
 
+    # number of packets in 60 seconds
+    num_packets = int(float(args.bandwidth) * 5000)
+    ts_list = np.linspace(0, 60000, num=num_packets, endpoint=False)
+
     # trace path
-    trace_path = path.join(args.output_dir, '%dmbps.trace' % args.bandwidth)
-    trace = open(trace_path, 'w')
+    make_sure_path_exists(args.output_dir)
+    trace_path = path.join(args.output_dir, '%smbps.trace' % args.bandwidth)
 
-    # number of packets per 12 ms
-    pkts_rate = args.bandwidth
-
-    # each bucket consists of 12 ms, so the trace is 60 seconds long
-    for bucket in xrange(0, 5000):
-        ts_list = np.random.randint(bucket * 12, (bucket + 1) * 12, pkts_rate)
-        ts_list = np.sort(ts_list)
-
+    # write timestamps to trace
+    with open(trace_path, 'w') as trace:
         for ts in ts_list:
-            trace.write('%s\n' % ts)
-
-    trace.close()
+            trace.write('%d\n' % ts)
 
 
 if __name__ == '__main__':

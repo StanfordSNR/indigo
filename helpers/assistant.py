@@ -2,7 +2,7 @@
 
 import sys
 import argparse
-from subprocess import Popen, check_call, check_output
+from subprocess import Popen, check_call, check_output, call
 
 
 def run_cmd(args, host, procs):
@@ -62,7 +62,13 @@ def main():
 
     for ip in ip_list:
         host = args.username + '@' + ip
-        run_cmd(args, host, procs)
+
+        if args.cmd == 'remove_key':
+            call('ssh-keygen -f "/home/francisyyan/.ssh/known_hosts" -R %s' % ip, shell=True)
+        elif args.cmd == 'test_ssh':
+            call(['ssh', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=4', host, 'echo $HOSTNAME'])
+        else:
+            run_cmd(args, host, procs)
 
     for proc in procs:
         proc.communicate()
