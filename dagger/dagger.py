@@ -4,6 +4,7 @@ import project_root
 import numpy as np
 import tensorflow as tf
 import datetime
+from subprocess import check_output
 from tensorflow import contrib
 from os import path
 from models import DaggerNetwork
@@ -107,8 +108,11 @@ class DaggerLeader(object):
         self.sess = tf.Session(server.target)
         self.sess.run(tf.global_variables_initializer())
 
-        date_time = datetime.datetime.now().strftime('%Y-%m-%d--%H-%M-%S')
-        self.logdir = path.join(project_root.DIR, 'dagger', 'logs', date_time)
+        git_commit = check_output(
+            'cd %s && git rev-parse @' % project_root.DIR, shell=True)
+        date_time = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+        log_name = date_time + '-%s' % git_commit.strip()
+        self.logdir = path.join(project_root.DIR, 'dagger', 'logs', log_name)
         make_sure_path_exists(self.logdir)
         self.train_writer = tf.summary.FileWriter(self.logdir, self.sess.graph)
 
@@ -199,7 +203,10 @@ class DaggerLeader(object):
             else:
                 iters_since_min_loss += 1
 
-            if iters_since_min_loss >= max(min(0.2 * curr_iter, 10), 5):
+            if curr_iter > 100:
+                break
+
+            if iters_since_min_loss >= max(0.2 * curr_iter, 5):
                 break
 
     def run(self, debug=False):
@@ -341,7 +348,8 @@ class DaggerWorker(object):
                                      feed_dict={pi.states: [state]})
 
         # Choose an action to take
-        action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
+        # action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
+        action = np.argmax(action_probs[0])
         return action
 
     def rollout(self):
