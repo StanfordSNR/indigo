@@ -40,7 +40,7 @@ class DaggerLeader(object):
             self.global_network = DaggerLSTM(
                     state_dim=Sender.state_dim, action_cnt=Sender.action_cnt)
 
-        self.default_batch_size = 200
+        self.default_batch_size = 186
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
@@ -221,7 +221,13 @@ class DaggerLeader(object):
             else:
                 iters_since_min_loss += 1
 
-            if iters_since_min_loss >= max(min(0.2 * curr_iter, 10), 5):
+            if max_loss > 0.5:
+                iters_since_min_loss = 0
+
+            if curr_iter > 100:
+                break
+
+            if iters_since_min_loss >= max(0.2 * curr_iter, 5):
                 break
 
     def run(self, debug=False):
@@ -337,18 +343,18 @@ class DaggerWorker(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             local_vars, global_vars)])
 
-    def sample_action(self, state):
+    def sample_action(self, orig_state):
         """ Given a state buffer in the past step, returns an action
         to perform.
 
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        step_cwnd = state[-1]
+        step_cwnd = orig_state[-1]
         expert_action = self.expert.sample_action(step_cwnd)
 
         # For decision-making, normalize.
-        state = normalize(state)
+        state = normalize(orig_state)
 
         # Fill in state_buf, action_buf
         self.state_buf.append(state)
@@ -369,6 +375,11 @@ class DaggerWorker(object):
 
         # Choose an action to take and update current LSTM state
         action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
+
+        delay_ewma = orig_state[0]
+
+        if delay_ewma >= 500 and action >= 2:
+            return 0
 
         return action
 

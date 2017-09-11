@@ -26,7 +26,7 @@ class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
     state_dim = 4
-    action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
+    action_mapping = format_actions(["/2.0", "-10.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False):
@@ -57,7 +57,8 @@ class Sender(object):
         self.delivered = 0
         self.sent_bytes = 0
 
-        self.rtt_ewma = None
+        self.min_rtt = float('inf')
+        self.delay_ewma = None
         self.send_rate_ewma = None
         self.delivery_rate_ewma = None
 
@@ -104,12 +105,14 @@ class Sender(object):
 
         # Update RTT
         rtt = float(curr_time_ms - ack.send_ts)
+        self.min_rtt = min(self.min_rtt, rtt)
         self.rtt_buf.append(rtt)
 
-        if self.rtt_ewma is None:
-            self.rtt_ewma = rtt
+        delay = rtt - self.min_rtt
+        if self.delay_ewma is None:
+            self.delay_ewma = delay
         else:
-            self.rtt_ewma = 0.875 * self.rtt_ewma + 0.125 * rtt
+            self.delay_ewma = 0.875 * self.delay_ewma + 0.125 * delay
 
         # Update BBR's delivery rate
         self.delivered += ack.ack_bytes
@@ -173,14 +176,14 @@ class Sender(object):
 
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            state = [self.rtt_ewma,
+            state = [self.delay_ewma,
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
                      self.cwnd]
             action = self.sample_action(state)
             self.take_action(action)
 
-            self.rtt_ewma = None
+            self.delay_ewma = None
             self.delivery_rate_ewma = None
             self.send_rate_ewma = None
 
@@ -193,8 +196,6 @@ class Sender(object):
                     self.running = False
 
                     self.compute_performance()
-                    self.ts_first = None
-                    self.rtt_buf = []
                     self.perf.close()
 
     def run(self):
