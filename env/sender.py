@@ -24,7 +24,7 @@ def format_actions(action_list):
 
 class Sender(object):
     # RL exposed class/static variables
-    max_steps = 1000
+    max_steps = 300
     state_dim = 4
     action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
@@ -65,12 +65,12 @@ class Sender(object):
         self.step_start_ms = None
         self.running = True
 
-        self.ts_first = None
-        self.rtt_buf = []
-        self.perf = open(path.join(project_root.DIR, 'env', 'perf'), 'a', 0)
-
         if self.train:
             self.step_cnt = 0
+
+            self.perf = open(path.join(project_root.DIR, 'env', 'perf'), 'a', 0)
+            self.ts_first = None
+            self.delay_buf = []
 
     def cleanup(self):
         self.sock.close()
@@ -100,14 +100,11 @@ class Sender(object):
         self.next_ack = max(self.next_ack, ack.seq_num + 1)
         curr_time_ms = curr_ts_ms()
 
-        if self.ts_first is None:
-            self.ts_first = curr_time_ms
-
         # Update RTT
         rtt = float(curr_time_ms - ack.send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
         delay = rtt - self.min_rtt
-        self.rtt_buf.append(rtt)
+        self.delay_buf.append(delay)
 
         if self.delay_ewma is None:
             self.delay_ewma = delay
@@ -135,12 +132,16 @@ class Sender(object):
             self.send_rate_ewma = (
                 0.875 * self.send_rate_ewma + 0.125 * send_rate)
 
+        if self.train:
+            if self.ts_first is None:
+                self.ts_first = curr_time_ms
+
     def take_action(self, action_idx):
         old_cwnd = self.cwnd
         op, val = self.action_mapping[action_idx]
 
         self.cwnd = apply_op(op, self.cwnd, val)
-        self.cwnd = min(max(5.0, self.cwnd), 5000)
+        self.cwnd = max(5.0, self.cwnd)
 
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd
@@ -195,11 +196,6 @@ class Sender(object):
                     self.step_cnt = 0
                     self.running = False
 
-                    self.compute_performance()
-                    self.ts_first = None
-                    self.rtt_buf = []
-                    self.perf.close()
-
     def run(self):
         TIMEOUT = 1000  # ms
 
@@ -234,8 +230,16 @@ class Sender(object):
                     if self.window_is_open():
                         self.send()
 
-    def compute_performance(self):
+    def get_tput_delay(self):
+        assert self.train
+
         duration = curr_ts_ms() - self.ts_first
         tput = 0.008 * self.delivered / duration
-        perc_delay = np.percentile(self.rtt_buf, 95)
+        perc_delay = np.percentile(self.delay_buf, 95)
+
+        self.ts_first = None
+        self.delay_buf = []
         self.perf.write('%.2f %d\n' % (tput, perc_delay))
+        self.perf.close()
+
+        return float(tput), float(perc_delay)

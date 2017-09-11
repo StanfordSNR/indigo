@@ -15,7 +15,7 @@ def create_env():
         '--downlink-queue=droptail --downlink-queue-args=packets=200' %
         (uplink_trace, downlink_trace))
 
-    env = Environment(mahimahi_cmd)
+    env = Environment(mahimahi_cmd, 12)
     return env
 
 
@@ -40,7 +40,7 @@ class Learner(object):
             self.env.reset()
 
             # get an episode of experience
-            self.env.rollout()
+            reward = self.env.rollout()
 
             # update model
             self.update_model()

@@ -1,5 +1,6 @@
 import os
 from os import path
+import numpy as np
 import sys
 import signal
 from subprocess import Popen
@@ -9,8 +10,10 @@ from helpers.helpers import get_open_udp_port
 
 
 class Environment(object):
-    def __init__(self, mahimahi_cmd):
+    def __init__(self, mahimahi_cmd, bandwidth):
         self.mahimahi_cmd = mahimahi_cmd
+        self.bandwidth = bandwidth
+
         self.state_dim = Sender.state_dim
         self.action_cnt = Sender.action_cnt
 
@@ -48,10 +51,18 @@ class Environment(object):
         self.sender.handshake()
 
     def rollout(self):
-        """Run sender in env, get final reward of an episode, reset sender."""
+        """Run sender in env, get final reward of an episode."""
 
         sys.stderr.write('Obtaining an episode from environment...\n')
         self.sender.run()
+        tput, delay = self.sender.get_tput_delay()
+
+        util = 100.0 * float(tput) / float(self.bandwidth)
+        reward = np.log(util) - np.log(delay)
+
+        sys.stderr.write('tput %.2f (%.2f%%), delay %d, reward %.3f\n' %
+                         (tput, util, delay, reward))
+        return reward
 
     def cleanup(self):
         if self.sender:
