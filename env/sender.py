@@ -71,6 +71,10 @@ class Sender(object):
         if self.train:
             self.step_cnt = 0
 
+            self.ts_first = None
+            self.rtt_buf = []
+            self.perf = open(path.join(project_root.DIR, 'env', 'perf'), 'a', 0)
+
     def cleanup(self):
         self.sock.close()
 
@@ -130,6 +134,12 @@ class Sender(object):
         else:
             self.send_rate_ewma = send_rate
 
+        if self.train:
+            if self.ts_first is None:
+                self.ts_first = curr_time_ms
+
+            self.rtt_buf.append(rtt)
+
     def take_action(self, action_idx):
         old_cwnd = self.cwnd
         op, val = self.action_mapping[action_idx]
@@ -188,6 +198,11 @@ class Sender(object):
                     self.step_cnt = 0
                     self.running = False
 
+                    self.compute_performance()
+                    self.ts_first = None
+                    self.rtt_buf = []
+                    self.perf.close()
+
     def run(self):
         TIMEOUT = 1000  # ms
 
@@ -221,3 +236,9 @@ class Sender(object):
                 if flag & WRITE_FLAGS:
                     if self.window_is_open():
                         self.send()
+
+    def compute_performance(self):
+        duration = curr_ts_ms() - self.ts_first
+        tput = 0.008 * self.delivered / duration
+        perc_delay = np.percentile(self.rtt_buf, 95)
+        self.perf.write('%.2f %d\n' % (tput, perc_delay))
