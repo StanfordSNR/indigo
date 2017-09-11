@@ -26,7 +26,8 @@ class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
     state_dim = 4
-    action_mapping = format_actions(["/2.0", "-10.0", "+10.0", "*2.0"])
+    action_mapping = format_actions(
+            ["/2.0", "-10.0", "-5.0", "+5.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False):

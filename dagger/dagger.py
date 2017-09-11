@@ -40,7 +40,7 @@ class DaggerLeader(object):
             self.global_network = DaggerLSTM(
                     state_dim=Sender.state_dim, action_cnt=Sender.action_cnt)
 
-        self.default_batch_size = 186
+        self.default_batch_size = 310
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
@@ -376,12 +376,6 @@ class DaggerWorker(object):
         # Choose an action to take and update current LSTM state
         # action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
         action = np.argmax(action_probs[0][0])
-
-        delay_ewma = orig_state[0]
-
-        if delay_ewma >= 500 and action >= 2:
-            return 0
-
         return action
 
     def rollout(self):
