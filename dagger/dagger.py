@@ -374,7 +374,8 @@ class DaggerWorker(object):
         action_probs, self.lstm_state = self.sess.run(ops_to_run, feed_dict)
 
         # Choose an action to take and update current LSTM state
-        action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
+        # action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
+        action = np.argmax(action_probs[0][0])
 
         delay_ewma = orig_state[0]
 
