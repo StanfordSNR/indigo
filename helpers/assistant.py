@@ -2,7 +2,7 @@
 
 import sys
 import argparse
-from subprocess import Popen, check_call, check_output
+from subprocess import Popen, check_call, check_output, call
 
 
 def run_cmd(args, host, procs):
@@ -20,7 +20,7 @@ def run_cmd(args, host, procs):
         cmd_in_ssh = 'git clone https://github.com/StanfordSNR/RLCC.git'
 
     elif cmd == 'git_pull':
-        cmd_in_ssh = ('cd %s && git checkout indigo && '
+        cmd_in_ssh = ('cd %s && git checkout indigo-reproduce && '
                       'git reset --hard @~1 && git pull' % args.rlcc_dir)
 
     elif cmd == 'rm_history':
@@ -62,7 +62,13 @@ def main():
 
     for ip in ip_list:
         host = args.username + '@' + ip
-        run_cmd(args, host, procs)
+
+        if args.cmd == 'remove_key':
+            call('ssh-keygen -f "/home/francisyyan/.ssh/known_hosts" -R %s' % ip, shell=True)
+        elif args.cmd == 'test_ssh':
+            call(['ssh', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=4', host, 'echo $HOSTNAME'])
+        else:
+            run_cmd(args, host, procs)
 
     for proc in procs:
         proc.communicate()
