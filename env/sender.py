@@ -104,7 +104,9 @@ class Sender(object):
         rtt = float(curr_time_ms - ack.send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
         delay = rtt - self.min_rtt
-        self.delay_buf.append(delay)
+
+        if self.train:
+            self.delay_buf.append(delay)
 
         if self.delay_ewma is None:
             self.delay_ewma = delay

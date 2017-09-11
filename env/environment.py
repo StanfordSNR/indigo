@@ -58,7 +58,11 @@ class Environment(object):
         tput, delay = self.sender.get_tput_delay()
 
         util = 100.0 * float(tput) / float(self.bandwidth)
-        reward = np.log(util) - np.log(delay)
+
+        if util <= 50 or delay >= 500:
+            reward = -1
+        else:
+            reward = np.log(util) - np.log(delay / 10.0)
 
         sys.stderr.write('tput %.2f (%.2f%%), delay %d, reward %.3f\n' %
                          (tput, util, delay, reward))

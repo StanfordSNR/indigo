@@ -39,7 +39,7 @@ class RLLSTM(object):
 
         self.state_values = layers.linear(output, 1)
 
-        self.all_trainable_vars = tf.get_collection(
+        self.trainable_vars = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
     def convert_state_out(self, state_tuple_out):
