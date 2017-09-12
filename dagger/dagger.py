@@ -32,7 +32,7 @@ class DaggerLeader(object):
         self.checkpoint_delta = 20
         self.checkpoint = self.checkpoint_delta
         self.learn_rate = 0.01
-        self.regularization_lambda = 1e-4
+        self.regularization_lambda = 1e-3
         self.train_step = 0
 
         # Create the master network and training/sync queues
@@ -40,7 +40,7 @@ class DaggerLeader(object):
             self.global_network = DaggerLSTM(
                     state_dim=Sender.state_dim, action_cnt=Sender.action_cnt)
 
-        self.default_batch_size = 186
+        self.default_batch_size = 30
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
@@ -105,7 +105,15 @@ class DaggerLeader(object):
         self.summary_op = tf.summary.merge_all()
 
         self.sess = tf.Session(server.target)
-        self.sess.run(tf.global_variables_initializer())
+
+        model_path = path.join(project_root.DIR, 'dagger', 'model', 'model')
+        saver = tf.train.Saver(self.global_network.trainable_vars)
+        saver.restore(self.sess, model_path)
+
+        # init remaining vars
+        uninit_vars = set(tf.global_variables())
+        uninit_vars -= set(self.global_network.trainable_vars)
+        self.sess.run(tf.variables_initializer(uninit_vars))
 
         git_commit = check_output(
                 'cd %s && git rev-parse @' % project_root.DIR, shell=True)
@@ -377,9 +385,9 @@ class DaggerWorker(object):
         # action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
         action = np.argmax(action_probs[0][0])
 
-        delay_ewma = orig_state[0]
+        delay = orig_state[0]
 
-        if delay_ewma >= 500 and action >= 2:
+        if delay >= 500 and action >= 2:
             return 0
 
         return action
