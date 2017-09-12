@@ -31,7 +31,7 @@ class RLLeader(object):
         self.max_eps = 500
         self.checkpoint_delta = 20
         self.checkpoint = self.checkpoint_delta
-        self.learn_rate = 0.01
+        self.learn_rate = 1e-3
         self.regularization_lambda = 1e-3
         self.train_step = 0
 
@@ -94,7 +94,7 @@ class RLLeader(object):
         # policy loss
         cross_entropy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
                                  labels=self.actions,
-                                 logits=(pi.action_scores + 1e-13))
+                                 logits=(pi.action_scores + 1e-5))
         policy_loss = tf.reduce_mean(cross_entropy_loss * advantages)
         self.policy_loss = policy_loss
 
