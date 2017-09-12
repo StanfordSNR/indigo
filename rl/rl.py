@@ -94,7 +94,7 @@ class RLLeader(object):
         # policy loss
         cross_entropy_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
                                  labels=self.actions,
-                                 logits=pi.action_scores)
+                                 logits=(pi.action_scores + 1e-13))
         policy_loss = tf.reduce_mean(cross_entropy_loss * advantages)
         self.policy_loss = policy_loss
 
@@ -112,17 +112,8 @@ class RLLeader(object):
         tf.summary.scalar('total_loss', self.total_loss)
         self.summary_op = tf.summary.merge_all()
 
-        # restore learned policy from Dagger
         self.sess = tf.Session(server.target)
-
-        model_path = path.join(project_root.DIR, 'dagger', 'model', 'model')
-        saver = tf.train.Saver(pi.dagger_trainable_vars)
-        saver.restore(self.sess, model_path)
-
-        # init remaining vars
-        uninit_vars = set(tf.global_variables())
-        uninit_vars -= set(pi.dagger_trainable_vars)
-        self.sess.run(tf.variables_initializer(uninit_vars))
+        self.sess.run(tf.global_variables_initializer())
 
         git_commit = check_output(
             'cd %s && git rev-parse @' % project_root.DIR, shell=True)
