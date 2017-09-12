@@ -80,7 +80,7 @@ def create_env(task_index):
         mm_cmd = 'mm-delay 130 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=426' % (trace_path, trace_path)
         best_cwnd = 70
     elif task_index <= 30:
-        bandwidth = [5, 10, 20, 50]
+        bandwidth = [20, 40, 60, 80]
         delay = [10, 30, 50, 70, 90]
 
         cartesian = [(b, d) for b in bandwidth for d in delay]

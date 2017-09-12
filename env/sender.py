@@ -24,10 +24,10 @@ def format_actions(action_list):
 
 class Sender(object):
     # RL exposed class/static variables
-    max_steps = 1000
+    max_steps = 500
     state_dim = 4
     action_mapping = format_actions(
-            ["/2.0", "-10.0", "-5.0", "+5.0", "+10.0", "*2.0"])
+            ["-50.0", "-10.0", "-5.0", "+5.0", "+10.0", "+50.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False):
@@ -141,7 +141,7 @@ class Sender(object):
         op, val = self.action_mapping[action_idx]
 
         self.cwnd = apply_op(op, self.cwnd, val)
-        self.cwnd = max(5.0, self.cwnd)
+        self.cwnd = min(max(5.0, self.cwnd), 6000)
 
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd
