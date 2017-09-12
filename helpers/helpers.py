@@ -55,6 +55,12 @@ def normalize(state):
             state[2] / 200.0, state[3] / 5000.0]
 
 
+def one_hot(action, action_cnt):
+    ret = [0.0] * action_cnt
+    ret[action] = 1.0
+    return ret
+
+
 def softmax(x):
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum(axis=0)

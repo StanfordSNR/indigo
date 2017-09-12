@@ -9,7 +9,8 @@ from os import path
 from models import DaggerLSTM
 from experts import TrueDaggerExpert
 from env.sender import Sender
-from helpers.helpers import make_sure_path_exists, normalize, curr_ts_ms
+from helpers.helpers import (
+    make_sure_path_exists, normalize, one_hot, curr_ts_ms)
 from subprocess import check_output
 
 
@@ -35,16 +36,20 @@ class DaggerLeader(object):
         self.regularization_lambda = 1e-4
         self.train_step = 0
 
+        self.state_dim = Sender.state_dim
+        self.action_cnt = Sender.action_cnt
+        self.aug_state_dim = self.state_dim + self.action_cnt
+
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
             self.global_network = DaggerLSTM(
-                    state_dim=Sender.state_dim, action_cnt=Sender.action_cnt)
+                state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
 
-        self.default_batch_size = 310
+        self.default_batch_size = 60
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
-        # Each element is [[state]], [action]
+        # Each element is [[aug_state]], [action]
         self.train_q = tf.FIFOQueue(
                 self.num_workers, [tf.float32, tf.int32],
                 shared_name='training_feed')
@@ -109,7 +114,7 @@ class DaggerLeader(object):
 
         git_commit = check_output(
                 'cd %s && git rev-parse @' % project_root.DIR, shell=True)
-        date_time = datetime.datetime.now().strftime('%Y-%m-%d--%H-%M-%S')
+        date_time = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
         log_name = date_time + '-%s' % git_commit.strip()
         self.logdir = path.join(project_root.DIR, 'dagger', 'logs', log_name)
         make_sure_path_exists(self.logdir)
@@ -224,7 +229,7 @@ class DaggerLeader(object):
             if max_loss > 0.5:
                 iters_since_min_loss = 0
 
-            if curr_iter > 100:
+            if curr_iter > 200:
                 break
 
             if iters_since_min_loss >= max(0.2 * curr_iter, 5):
@@ -286,6 +291,9 @@ class DaggerWorker(object):
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
 
+        self.aug_state_dim = self.state_dim + self.action_cnt
+        self.prev_action = self.action_cnt - 1
+
         self.expert = TrueDaggerExpert(env)
         # Must call env.set_sample_action() before env.rollout()
         env.set_sample_action(self.sample_action)
@@ -311,12 +319,12 @@ class DaggerWorker(object):
 
             with tf.variable_scope('global'):
                 self.global_network = DaggerLSTM(
-                        state_dim=self.state_dim, action_cnt=self.action_cnt)
+                    state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
 
         with tf.device(self.worker_device):
             with tf.variable_scope('local'):
                 self.local_network = DaggerLSTM(
-                        state_dim=self.state_dim, action_cnt=self.action_cnt)
+                    state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
 
         self.init_state = self.local_network.zero_init_state(1)
         self.lstm_state = self.init_state
@@ -330,9 +338,9 @@ class DaggerWorker(object):
             self.sync_q = tf.FIFOQueue(3, [tf.int16],
                     shared_name=('sync_q_%d' % self.task_idx))
 
-        # Training data is [[state]], [action]
+        # Training data is [[aug_state]], [action]
         self.state_data = tf.placeholder(
-                tf.float32, shape=(None, self.state_dim))
+                tf.float32, shape=(None, self.aug_state_dim))
         self.action_data = tf.placeholder(tf.int32, shape=(None))
         self.enqueue_train_op = self.train_q.enqueue(
                 [self.state_data, self.action_data])
@@ -343,31 +351,35 @@ class DaggerWorker(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             local_vars, global_vars)])
 
-    def sample_action(self, orig_state):
+    def sample_action(self, state):
         """ Given a state buffer in the past step, returns an action
         to perform.
 
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        step_cwnd = orig_state[-1]
-        expert_action = self.expert.sample_action(step_cwnd)
+        cwnd = state[self.state_dim - 1]
+        expert_action = self.expert.sample_action(cwnd)
 
         # For decision-making, normalize.
-        state = normalize(orig_state)
+        norm_state = normalize(state)
+
+        one_hot_action = one_hot(self.prev_action, self.action_cnt)
+        aug_state = norm_state + one_hot_action
 
         # Fill in state_buf, action_buf
-        self.state_buf.append(state)
+        self.state_buf.append(aug_state)
         self.action_buf.append(expert_action)
 
         # Always use the expert on the first episode to get our bearings.
         if self.curr_ep == 0:
+            self.prev_action = expert_action
             return expert_action
 
         # Get probability of each action from the local network.
         pi = self.local_network
         feed_dict = {
-            pi.input: [[state]],
+            pi.input: [[aug_state]],
             pi.state_in: self.lstm_state,
         }
         ops_to_run = [pi.action_probs, pi.state_out]
@@ -376,12 +388,15 @@ class DaggerWorker(object):
         # Choose an action to take and update current LSTM state
         # action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
         action = np.argmax(action_probs[0][0])
+        self.prev_action = action
+
         return action
 
     def rollout(self):
         """ Start an episode/flow with an empty dataset/environment. """
         self.state_buf = []
         self.action_buf = []
+        self.prev_action = self.action_cnt - 1
         self.lstm_state = self.init_state
 
         self.env.reset()
@@ -394,7 +409,7 @@ class DaggerWorker(object):
         while True:
             if debug:
                 sys.stderr.write('[WORKER %d Ep %d] Starting...\n' %
-                                (self.task_idx, self.curr_ep))
+                                 (self.task_idx, self.curr_ep))
 
             # Reset local parameters to global
             self.sess.run(self.sync_op)

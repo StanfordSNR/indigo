@@ -7,13 +7,18 @@ import tensorflow as tf
 from os import path
 from env.sender import Sender
 from models import DaggerLSTM
-from helpers.helpers import normalize, softmax
+from helpers.helpers import normalize, one_hot, softmax
 
 
 class Learner(object):
     def __init__(self, state_dim, action_cnt, restore_vars):
+        self.aug_state_dim = state_dim + action_cnt
+        self.action_cnt = action_cnt
+        self.prev_action = action_cnt - 1
+
         with tf.variable_scope('global'):
-            self.model = DaggerLSTM(state_dim=state_dim, action_cnt=action_cnt)
+            self.model = DaggerLSTM(
+                state_dim=self.aug_state_dim, action_cnt=action_cnt)
 
         self.lstm_state = self.model.zero_init_state(1)
 
@@ -29,12 +34,15 @@ class Learner(object):
         self.sess.run(tf.variables_initializer(uninit_vars))
 
     def sample_action(self, state):
-        state = normalize(state)
+        norm_state = normalize(state)
+
+        one_hot_action = one_hot(self.prev_action, self.action_cnt)
+        aug_state = norm_state + one_hot_action
 
         # Get probability of each action from the local network.
         pi = self.model
         feed_dict = {
-            pi.input: [[state]],
+            pi.input: [[aug_state]],
             pi.state_in: self.lstm_state,
         }
         ops_to_run = [pi.action_probs, pi.state_out]
@@ -42,6 +50,7 @@ class Learner(object):
 
         # Choose an action to take
         action = np.argmax(action_probs[0][0])
+        self.prev_action = action
 
         # action = np.argmax(np.random.multinomial(1, action_probs[0] - 1e-5))
         # temperature = 1.0
@@ -57,8 +66,10 @@ def main():
 
     sender = Sender(args.port)
 
+    # TODO: fill in the model name
     model_path = path.join(project_root.DIR, 'dagger', 'logs',
-                           '2017-08-17--20-59-07', 'checkpoint-100')
+        '',
+        'checkpoint-')
 
     learner = Learner(
         state_dim=Sender.state_dim,
