@@ -388,10 +388,7 @@ class DaggerWorker(object):
         """
 
         # Set up the shared global network and local network.
-        with tf.device(tf.train.replica_device_setter(
-                worker_device=self.worker_device,
-                cluster=self.cluster)):
-
+        with tf.device(self.leader_device):
             with tf.variable_scope('global'):
                 self.global_network = DaggerLSTM(
                     state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
