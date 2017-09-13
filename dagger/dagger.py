@@ -99,6 +99,8 @@ class DaggerLeader(object):
                     labels=self.actions,
                     logits=self.global_network.action_scores))
 
+        self.ce_loss = cross_entropy_loss
+
         self.total_loss = cross_entropy_loss + reg_loss
 
         optimizer = tf.train.AdamOptimizer(self.learn_rate)
@@ -149,7 +151,7 @@ class DaggerLeader(object):
 
         return workers_ep_done
 
-    def run_one_train_step(self, batch_states, batch_actions):
+    def run_one_train_step(self, batch_states, batch_actions, batch_num, delayed_break):
         """ Runs one step of the training operator on the given data.
         At times will update Tensorboard and save a checkpointed model.
         Returns the total loss calculated.
@@ -157,7 +159,9 @@ class DaggerLeader(object):
 
         summary = True if self.train_step % 10 == 0 else False
 
-        ops_to_run = [self.train_op, self.total_loss]
+        ops_to_run = [self.train_op, self.total_loss, self.ce_loss,
+                      self.global_network.action_scores,
+                      self.global_network.action_probs]
 
         if summary:
             ops_to_run.append(self.summary_op)
@@ -175,7 +179,62 @@ class DaggerLeader(object):
                          (self.train_step, elapsed))
 
         if summary:
-            self.summary_writer.add_summary(ret[2], self.train_step)
+            self.summary_writer.add_summary(ret[-1], self.train_step)
+
+        if not delayed_break:
+            return ret[1]
+
+        self.episode_file.write('\n\nbatch %d\n' % batch_num)
+
+        action_scores_all = ret[3][0]
+        action_probs_all = ret[4][0]
+
+        states = batch_states[0]
+        actions = batch_actions[0]
+
+        batch_loss = 0.0
+        batch_cnt = 0
+        for i in xrange(len(states)):
+            state = states[i]
+            action = actions[i]
+
+            action_scores = action_scores_all[i]
+            action_probs = action_probs_all[i]
+
+            loss = -np.log(action_probs[action])
+
+            orig_state = [float(s) for s in state]
+            orig_state[0] *= 200
+            orig_state[1] *= 200
+            orig_state[2] *= 200
+            orig_state[3] *= 5000
+
+            self.episode_file.write('state: %d, %.2f, %.2f, %d; %d %d %d %d\n' % tuple(orig_state))
+            self.episode_file.write('expert %d, loss %.4f\n' %
+                                    (action, loss))
+
+            batch_loss += loss
+            batch_cnt += 1
+
+            # print action scores
+            self.episode_file.write('[')
+            for j in xrange(len(action_scores)):
+                score = action_scores[j]
+                if j < len(action_scores) - 1:
+                    self.episode_file.write(' %.4f, ' % score)
+                else:
+                    self.episode_file.write(' %.4f ]\n' % score)
+
+            # print action probs
+            self.episode_file.write('[')
+            for j in xrange(len(action_probs)):
+                prob = action_probs[j]
+                if j < len(action_probs) - 1:
+                    self.episode_file.write(' %.4f, ' % prob)
+                else:
+                    self.episode_file.write(' %.4f ]\n' % prob)
+
+        self.episode_file.write('batch_loss: %.4f\n' % (batch_loss / batch_cnt))
 
         return ret[1]
 
@@ -187,13 +246,17 @@ class DaggerLeader(object):
         min_loss = float('inf')
         iters_since_min_loss = 0
 
-        batch_size = min(len(self.aggregated_states), self.default_batch_size)
+        batch_size = 1 # min(len(self.aggregated_states), self.default_batch_size)
         num_batches = len(self.aggregated_states) / batch_size
 
         if batch_size != self.default_batch_size:
             self.init_state = self.global_network.zero_init_state(batch_size)
         else:
             self.init_state = self.default_init_state
+
+        self.episode_file = open(path.join(project_root.DIR, 'ps-epi%d' % self.curr_ep), 'w')
+
+        delayed_break = False
 
         while True:
             curr_iter += 1
@@ -210,7 +273,7 @@ class DaggerLeader(object):
                 batch_states = self.aggregated_states[start:end]
                 batch_actions = self.aggregated_actions[start:end]
 
-                loss = self.run_one_train_step(batch_states, batch_actions)
+                loss = self.run_one_train_step(batch_states, batch_actions, batch_num, delayed_break)
 
                 mean_loss += loss
                 max_loss = max(loss, max_loss)
@@ -219,6 +282,9 @@ class DaggerLeader(object):
 
             sys.stderr.write('--- iter %d: max loss %.4f, mean loss %.4f\n' %
                              (curr_iter, max_loss, mean_loss))
+
+            if delayed_break:
+                break
 
             if max_loss < min_loss - 0.001:
                 min_loss = max_loss
@@ -229,14 +295,16 @@ class DaggerLeader(object):
             if max_loss > 0.5:
                 iters_since_min_loss = 0
 
-            if curr_iter > 200:
-                break
+            if curr_iter > 20:
+                delayed_break = True
 
             if iters_since_min_loss >= max(0.2 * curr_iter, 5):
-                break
+                delayed_break = True
 
     def run(self, debug=False):
         for curr_ep in xrange(self.max_eps):
+            self.curr_ep = curr_ep
+
             if debug:
                 sys.stderr.write('[PSERVER EP %d]: waiting for workers %s\n' %
                                  (curr_ep, self.worker_tasks))
@@ -371,6 +439,11 @@ class DaggerWorker(object):
         self.state_buf.append(aug_state)
         self.action_buf.append(expert_action)
 
+        self.episode_file.write('state: %d, %.2f, %.2f, %d\n' % tuple(state))
+
+        if self.curr_ep == 0:
+            self.episode_file.write('expert %d\n' % expert_action)
+
         # Always use the expert on the first episode to get our bearings.
         if self.curr_ep == 0:
             self.prev_action = expert_action
@@ -382,13 +455,42 @@ class DaggerWorker(object):
             pi.input: [[aug_state]],
             pi.state_in: self.lstm_state,
         }
-        ops_to_run = [pi.action_probs, pi.state_out]
-        action_probs, self.lstm_state = self.sess.run(ops_to_run, feed_dict)
+        ops_to_run = [pi.action_probs, pi.action_scores, pi.state_out]
+        action_probs, action_scores, self.lstm_state = self.sess.run(ops_to_run, feed_dict)
 
         # Choose an action to take and update current LSTM state
         # action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
         action = np.argmax(action_probs[0][0])
         self.prev_action = action
+
+        loss = -np.log(action_probs[0][0][expert_action])
+
+        if self.curr_ep > 0:
+            self.episode_file.write('expert %d, predict %d, loss %.4f\n' %
+                                    (expert_action, action, loss))
+
+        self.record_loss += loss
+        self.record_cnt += 1
+
+        # print action scores
+        action_scores = action_scores[0][0]
+        self.episode_file.write('[')
+        for i in xrange(len(action_scores)):
+            score = action_scores[i]
+            if i < len(action_scores) - 1:
+                self.episode_file.write(' %.4f, ' % score)
+            else:
+                self.episode_file.write(' %.4f ]\n' % score)
+
+        # print action probs
+        action_probs = action_probs[0][0]
+        self.episode_file.write('[')
+        for i in xrange(len(action_probs)):
+            prob = action_probs[i]
+            if i < len(action_probs) - 1:
+                self.episode_file.write(' %.4f, ' % prob)
+            else:
+                self.episode_file.write(' %.4f ]\n' % prob)
 
         return action
 
@@ -399,8 +501,18 @@ class DaggerWorker(object):
         self.prev_action = self.action_cnt - 1
         self.lstm_state = self.init_state
 
+        if self.curr_ep > 0:
+            self.record_loss = 0.0
+            self.record_cnt = 0
+        self.episode_file = open(path.join(project_root.DIR, 'epi%d' % self.curr_ep), 'w')
+
         self.env.reset()
         self.env.rollout()
+
+        if self.curr_ep > 0:
+            self.record_loss /= self.record_cnt
+            self.episode_file.write('Total mean loss: %.4f\n' % self.record_loss)
+        self.episode_file.close()
 
     def run(self, debug=False):
         """Runs for max_ep episodes, each time sending data to the leader."""
