@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import layers, rnn
+import sys
 
 
 class DaggerNetwork(object):
@@ -21,6 +22,9 @@ class DaggerLSTM(object):
     def __init__(self, state_dim, action_cnt):
         # self.input: [batch_size, max_time, state_dim]
         self.input = tf.placeholder(tf.float32, [None, None, state_dim])
+
+        self.v = tf.Variable(0.0, name='v')
+        self.add_one = self.v.assign_add(1.0)
 
         self.num_layers = 2
         self.lstm_dim = 64

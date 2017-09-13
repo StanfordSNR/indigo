@@ -44,6 +44,8 @@ class DaggerLeader(object):
         with tf.variable_scope('global'):
             self.global_network = DaggerLSTM(
                 state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
+            print 'DaggerLeader', self.global_network
+            sys.stdout.flush()
 
         self.default_batch_size = 60
         self.default_init_state = self.global_network.zero_init_state(
@@ -91,6 +93,8 @@ class DaggerLeader(object):
 
         reg_loss = 0.0
         for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+            if x.name == 'global/v:0':
+                continue
             reg_loss += tf.nn.l2_loss(x)
         reg_loss *= self.regularization_lambda
 
@@ -284,6 +288,9 @@ class DaggerLeader(object):
                              (curr_iter, max_loss, mean_loss))
 
             if delayed_break:
+                self.sess.run(self.global_network.add_one)
+                print 'Leader:v', self.sess.run(self.global_network.v)
+                sys.stdout.flush()
                 break
 
             if max_loss < min_loss - 0.001:
@@ -334,7 +341,7 @@ class DaggerLeader(object):
             # Save the network model for testing every so often
             if curr_ep == self.checkpoint:
                 self.save_model(curr_ep)
-                self.checkpoint += 20
+                self.checkpoint += self.checkpoint_delta
 
             # After training, tell workers to start another episode
             for idx in self.worker_tasks:
@@ -388,6 +395,9 @@ class DaggerWorker(object):
             with tf.variable_scope('global'):
                 self.global_network = DaggerLSTM(
                     state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
+                print 'DaggerWorker', self.global_network
+                sys.stdout.flush()
+
 
         with tf.device(self.worker_device):
             with tf.variable_scope('local'):
@@ -439,7 +449,13 @@ class DaggerWorker(object):
         self.state_buf.append(aug_state)
         self.action_buf.append(expert_action)
 
-        self.episode_file.write('state: %d, %.2f, %.2f, %d\n' % tuple(state))
+        orig_state = [float(s) for s in aug_state]
+        orig_state[0] *= 200
+        orig_state[1] *= 200
+        orig_state[2] *= 200
+        orig_state[3] *= 5000
+
+        self.episode_file.write('state: %d, %.2f, %.2f, %d; %d %d %d %d\n' % tuple(orig_state))
 
         if self.curr_ep == 0:
             self.episode_file.write('expert %d\n' % expert_action)
@@ -523,8 +539,20 @@ class DaggerWorker(object):
                 sys.stderr.write('[WORKER %d Ep %d] Starting...\n' %
                                  (self.task_idx, self.curr_ep))
 
+
+            print 'Before sync'
+            print 'Worker_local_network:v', self.sess.run(self.local_network.v)
+            print 'Worker_global_network:v', self.sess.run(self.global_network.v)
+            sys.stdout.flush()
+
             # Reset local parameters to global
             self.sess.run(self.sync_op)
+
+            print 'After sync'
+            print 'Worker_local_network:v', self.sess.run(self.local_network.v)
+            print 'Worker_global_network:v', self.sess.run(self.global_network.v)
+            sys.stdout.flush()
+
             # Start a single episode, populating state-action buffers.
             self.rollout()
 
