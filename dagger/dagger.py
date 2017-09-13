@@ -351,14 +351,13 @@ class DaggerWorker(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             local_vars, global_vars)])
 
-    def sample_action(self, state):
+    def sample_action(self, state, cwnd):
         """ Given a state buffer in the past step, returns an action
         to perform.
 
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        cwnd = state[self.state_dim - 1]
         expert_action = self.expert.sample_action(cwnd)
 
         # For decision-making, normalize.
