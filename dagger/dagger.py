@@ -29,8 +29,8 @@ class DaggerLeader(object):
         self.num_workers = len(worker_tasks)
         self.aggregated_states = []
         self.aggregated_actions = []
-        self.max_eps = 500
-        self.checkpoint_delta = 20
+        self.max_eps = 200
+        self.checkpoint_delta = 10
         self.checkpoint = self.checkpoint_delta
         self.learn_rate = 0.01
         self.regularization_lambda = 1e-4
