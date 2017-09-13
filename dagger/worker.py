@@ -48,17 +48,17 @@ def create_env(task_index):
     best_cwnd_map = yaml.load(open(best_cwnds_file))
 
     if task_index == 0:
-        trace_path = path.join(project_root.DIR, 'env', '100.42mbps.trace')
-        mm_cmd = 'mm-delay 27 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=173' % (trace_path, trace_path)
-        best_cwnd = 500
+        trace_path = path.join(project_root.DIR, 'env', '0.57mbps-poisson.trace')
+        mm_cmd = 'mm-delay 28 mm-loss uplink 0.0477 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=14' % (trace_path, trace_path)
+        best_cwnd = 5
     elif task_index == 1:
-        trace_path = path.join(project_root.DIR, 'env', '77.72mbps.trace')
-        mm_cmd = 'mm-delay 51 mm-loss uplink 0.0006 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=94' % (trace_path, trace_path)
-        best_cwnd = 690
+        trace_path = path.join(project_root.DIR, 'env', '2.64mbps-poisson.trace')
+        mm_cmd = 'mm-delay 88 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=130' % (trace_path, trace_path)
+        best_cwnd = 40
     elif task_index == 2:
-        trace_path = path.join(project_root.DIR, 'env', '114.68mbps.trace')
-        mm_cmd = 'mm-delay 45 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=450' % (trace_path, trace_path)
-        best_cwnd = 870
+        trace_path = path.join(project_root.DIR, 'env', '3.04mbps-poisson.trace')
+        mm_cmd = 'mm-delay 130 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=426' % (trace_path, trace_path)
+        best_cwnd = 70
 
     env = Environment(mm_cmd)
     env.best_cwnd = best_cwnd
