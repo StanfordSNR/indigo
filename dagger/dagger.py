@@ -40,12 +40,15 @@ class DaggerLeader(object):
         self.action_cnt = Sender.action_cnt
         self.aug_state_dim = self.state_dim + self.action_cnt
 
+        self.leader_device = '/job:ps/task:0'
+
         # Create the master network and training/sync queues
-        with tf.variable_scope('global'):
-            self.global_network = DaggerLSTM(
-                state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
-            print 'DaggerLeader', self.global_network
-            sys.stdout.flush()
+        with tf.device(self.leader_device):
+            with tf.variable_scope('global'):
+                self.global_network = DaggerLSTM(
+                    state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
+                print 'DaggerLeader', self.global_network
+                sys.stdout.flush()
 
         self.default_batch_size = 60
         self.default_init_state = self.global_network.zero_init_state(
@@ -93,7 +96,7 @@ class DaggerLeader(object):
 
         reg_loss = 0.0
         for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
-            if x.name == 'global/v:0':
+            if x.name == 'global/v:0' or x.name == 'global/cnt:0':
                 continue
             reg_loss += tf.nn.l2_loss(x)
         reg_loss *= self.regularization_lambda
@@ -290,6 +293,12 @@ class DaggerLeader(object):
             if delayed_break:
                 self.sess.run(self.global_network.add_one)
                 print 'Leader:v', self.sess.run(self.global_network.v)
+
+                self.sess.run(self.global_network.add_ten)
+                print 'Leader:cnt', self.sess.run(self.global_network.cnt)
+
+                # print 'Leader_global_network:vars', self.sess.run(self.global_network.trainable_vars)
+
                 sys.stdout.flush()
                 break
 
@@ -302,7 +311,7 @@ class DaggerLeader(object):
             if max_loss > 0.5:
                 iters_since_min_loss = 0
 
-            if curr_iter > 20:
+            if curr_iter > 5:
                 delayed_break = True
 
             if iters_since_min_loss >= max(0.2 * curr_iter, 5):
@@ -540,6 +549,12 @@ class DaggerWorker(object):
             print 'Before sync'
             print 'Worker_local_network:v', self.sess.run(self.local_network.v)
             print 'Worker_global_network:v', self.sess.run(self.global_network.v)
+            print 'Worker_local_network:cnt', self.sess.run(self.local_network.cnt)
+            print 'Worker_global_network:cnt', self.sess.run(self.global_network.cnt)
+
+            # print 'Worker_local_network:vars', self.sess.run(self.local_network.trainable_vars)
+            # print 'Worker_global_network:vars', self.sess.run(self.global_network.trainable_vars)
+
             sys.stdout.flush()
 
             # Reset local parameters to global
@@ -548,6 +563,13 @@ class DaggerWorker(object):
             print 'After sync'
             print 'Worker_local_network:v', self.sess.run(self.local_network.v)
             print 'Worker_global_network:v', self.sess.run(self.global_network.v)
+            print 'Worker_local_network:cnt', self.sess.run(self.local_network.cnt)
+            print 'Worker_global_network:cnt', self.sess.run(self.global_network.cnt)
+
+            # print 'Worker_local_network:vars', self.sess.run(self.local_network.trainable_vars)
+            # print 'Worker_global_network:vars', self.sess.run(self.global_network.trainable_vars)
+
+            sys.stdout.flush()
             sys.stdout.flush()
 
             # Start a single episode, populating state-action buffers.

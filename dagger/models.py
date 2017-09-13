@@ -26,6 +26,11 @@ class DaggerLSTM(object):
         self.v = tf.Variable(0.0, name='v')
         self.add_one = self.v.assign_add(1.0)
 
+        self.cnt = tf.get_variable(
+            'cnt', [], tf.float32,
+            initializer=tf.constant_initializer(1000.0))
+        self.add_ten = self.cnt.assign_add(10.0)
+
         self.num_layers = 2
         self.lstm_dim = 64
         stacked_lstm = rnn.MultiRNNCell([rnn.BasicLSTMCell(self.lstm_dim)
