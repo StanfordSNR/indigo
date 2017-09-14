@@ -40,10 +40,11 @@ class DaggerLeader(object):
         self.action_cnt = Sender.action_cnt
         self.aug_state_dim = self.state_dim + self.action_cnt
 
-        self.leader_device = '/job:ps/task:0'
+        self.leader_device_cpu = '/job:ps/task:0/cpu:0'
+        self.leader_device_gpu = '/job:ps/task:0/gpu:0'
 
         # Create the master network and training/sync queues
-        with tf.device(self.leader_device):
+        with tf.device(self.leader_device_cpu):
             with tf.variable_scope('global'):
                 self.global_network = DaggerLSTM(
                     state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
@@ -54,20 +55,26 @@ class DaggerLeader(object):
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
-        # Each element is [[aug_state]], [action]
-        self.train_q = tf.FIFOQueue(
-                self.num_workers, [tf.float32, tf.int32],
-                shared_name='training_feed')
+        with tf.device(self.leader_device_cpu):
+            # Each element is [[aug_state]], [action]
+            self.train_q = tf.FIFOQueue(
+                    self.num_workers, [tf.float32, tf.int32],
+                    shared_name='training_feed')
 
-        # Keys: worker indices, values: Tensorflow messaging queues
-        # Queue Elements: Status message
-        self.sync_queues = {}
-        for idx in worker_tasks:
-            queue_name = 'sync_q_%d' % idx
-            self.sync_queues[idx] = tf.FIFOQueue(3, [tf.int16],
-                                                 shared_name=queue_name)
+            # Keys: worker indices, values: Tensorflow messaging queues
+            # Queue Elements: Status message
+            self.sync_queues = {}
+            for idx in worker_tasks:
+                queue_name = 'sync_q_%d' % idx
+                self.sync_queues[idx] = tf.FIFOQueue(3, [tf.int16],
+                                                     shared_name=queue_name)
 
-        self.setup_tf_ops(server)
+        with tf.device(self.leader_device_gpu):
+            self.setup_tf_ops(server)
+
+        self.sess = tf.Session(server.target,
+                               config=tf.ConfigProto(allow_soft_placement=True))
+        self.sess.run(tf.global_variables_initializer())
 
     def cleanup(self):
         """ Sends messages to workers to stop and saves the model. """
@@ -117,9 +124,6 @@ class DaggerLeader(object):
         tf.summary.scalar('reg_loss', reg_loss)
         tf.summary.scalar('total_loss', self.total_loss)
         self.summary_op = tf.summary.merge_all()
-
-        self.sess = tf.Session(server.target)
-        self.sess.run(tf.global_variables_initializer())
 
         git_commit = check_output(
                 'cd %s && git rev-parse @' % project_root.DIR, shell=True)
@@ -365,6 +369,7 @@ class DaggerWorker(object):
         self.env = env
         self.task_idx = task_idx
         self.leader_device = '/job:ps/task:0'
+        self.leader_device_cpu = '/job:ps/task:0/cpu:0'
         self.worker_device = '/job:worker/task:%d' % task_idx
         self.num_workers = cluster.num_tasks('worker')
 
@@ -397,24 +402,25 @@ class DaggerWorker(object):
         """
 
         # Set up the shared global network and local network.
-        with tf.device(self.leader_device):
+        with tf.device(self.leader_device_cpu):
             with tf.variable_scope('global'):
                 self.global_network = DaggerLSTM(
                     state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
-                print 'DaggerWorker', self.global_network
+                print 'DaggerWorker:global_network', self.global_network
                 sys.stdout.flush()
-
 
         with tf.device(self.worker_device):
             with tf.variable_scope('local'):
                 self.local_network = DaggerLSTM(
                     state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
+                print 'DaggerWorker:local_network', self.local_network
+                sys.stdout.flush()
 
         self.init_state = self.local_network.zero_init_state(1)
         self.lstm_state = self.init_state
 
         # Build shared queues for training data and synchronization
-        with tf.device(self.leader_device):
+        with tf.device(self.leader_device_cpu):
             self.train_q = tf.FIFOQueue(
                     self.num_workers, [tf.float32, tf.int32],
                     shared_name='training_feed')
