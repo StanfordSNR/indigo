@@ -47,7 +47,18 @@ def create_env(task_index):
     best_cwnds_file = path.join(project_root.DIR, 'dagger', 'best_cwnds.yml')
     best_cwnd_map = yaml.load(open(best_cwnds_file))
 
-    if task_index == 0:
+    if task_index <= 24:
+        bandwidth = [10, 30, 50, 70, 90]
+        delay = [10, 30, 50, 70, 90]
+
+        cartesian = [(b, d) for b in bandwidth for d in delay]
+        bandwidth, delay = cartesian[task_index]
+
+        uplink_trace, downlink_trace = prepare_traces(bandwidth)
+        mm_cmd = 'mm-delay %d mm-link %s %s' % (delay, uplink_trace, downlink_trace)
+        best_cwnd = best_cwnd_map[bandwidth][delay]
+
+    elif task_index == 25:
         trace_path = path.join(project_root.DIR, 'env', '100.42mbps.trace')
         mm_cmd = 'mm-delay 27 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=173' % (trace_path, trace_path)
         best_cwnd = 500
