@@ -101,6 +101,8 @@ class DaggerLeader(object):
 
         reg_loss = 0.0
         for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+            if x.name == 'global/cnt:0':
+                continue
             reg_loss += tf.nn.l2_loss(x)
         reg_loss *= self.regularization_lambda
 
@@ -265,6 +267,10 @@ class DaggerLeader(object):
                     sys.stderr.write('[PSERVER]: start training\n')
 
                 self.train()
+
+                self.sess.run(self.global_network.add_one)
+                print 'DaggerLeader:global_network:cnt', self.sess.run(self.global_network.cnt)
+                sys.stdout.flush()
             else:
                 if debug:
                     sys.stderr.write('[PSERVER]: quitting...\n')
@@ -417,7 +423,16 @@ class DaggerWorker(object):
                                  (self.task_idx, self.curr_ep))
 
             # Reset local parameters to global
+            print 'Before sync'
+            print 'DaggerWorker:global_network:cnt', self.sess.run(self.global_network.cnt)
+            print 'DaggerWorker:local_network:cnt', self.sess.run(self.local_network.cnt)
+
             self.sess.run(self.sync_op)
+
+            print 'After sync'
+            print 'DaggerWorker:local_network:cnt', self.sess.run(self.local_network.cnt)
+            sys.stdout.flush()
+
             # Start a single episode, populating state-action buffers.
             self.rollout()
 
