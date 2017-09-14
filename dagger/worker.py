@@ -52,7 +52,7 @@ def create_env(task_index):
         delay = [10, 30, 50, 70, 90]
 
         cartesian = [(b, d) for b in bandwidth for d in delay]
-        bandwidth, delay = cartesian[task_index - 3]
+        bandwidth, delay = cartesian[task_index]
 
         uplink_trace, downlink_trace = prepare_traces(bandwidth)
         mm_cmd = 'mm-delay %d mm-link %s %s' % (delay, uplink_trace, downlink_trace)

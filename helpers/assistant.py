@@ -61,6 +61,8 @@ def main():
     ip_list = args.remote.split(',')
     procs = []
 
+    sys.stderr.write('%d IPs in total\n' % len(ip_list))
+
     for ip in ip_list:
         host = args.username + '@' + ip
 
