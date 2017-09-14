@@ -45,7 +45,7 @@ class DaggerLeader(object):
             self.global_network = DaggerLSTM(
                 state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
 
-        self.default_batch_size = 60
+        self.default_batch_size = 280
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
@@ -266,7 +266,7 @@ class DaggerLeader(object):
             # Save the network model for testing every so often
             if curr_ep == self.checkpoint:
                 self.save_model(curr_ep)
-                self.checkpoint += 20
+                self.checkpoint += self.checkpoint_delta
 
             # After training, tell workers to start another episode
             for idx in self.worker_tasks:
