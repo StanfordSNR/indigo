@@ -49,7 +49,7 @@ class DaggerLeader(object):
                 self.global_network = DaggerLSTM(
                     state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
 
-        self.default_batch_size = 60
+        self.default_batch_size = 100
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
@@ -71,7 +71,8 @@ class DaggerLeader(object):
             self.setup_tf_ops(server)
 
         self.sess = tf.Session(
-            server.target, config=tf.ConfigProto(allow_soft_placement=True))
+            server.target, config=tf.ConfigProto(allow_soft_placement=True,
+                                                 log_device_placement=True))
         self.sess.run(tf.global_variables_initializer())
 
     def cleanup(self):
@@ -92,7 +93,7 @@ class DaggerLeader(object):
         saver.save(self.sess, model_path)
         sys.stderr.write('\nModel saved to param. server at %s\n' % model_path)
 
-    def setup_tf_ops(self, server):
+    def setup_tf_ops(self):
         """ Sets up Tensorboard operators and tools, such as the optimizer,
         summary values, Tensorboard, and Session.
         """
@@ -101,8 +102,6 @@ class DaggerLeader(object):
 
         reg_loss = 0.0
         for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
-            if x.name == 'global/cnt:0':
-                continue
             reg_loss += tf.nn.l2_loss(x)
         reg_loss *= self.regularization_lambda
 
@@ -254,23 +253,24 @@ class DaggerLeader(object):
 
             # If workers had data, dequeue ALL the samples and train
             if workers_ep_done > 0:
-                while True:
-                    num_samples = self.sess.run(self.train_q.size())
-                    if num_samples == 0:
-                        break
-
+                num_samples = self.sess.run(self.train_q.size())
+                while num_samples != 0:
                     data = self.sess.run(self.train_q.dequeue())
                     self.aggregated_states.append(data[0])
                     self.aggregated_actions.append(data[1])
+
+                    num_samples = self.sess.run(self.train_q.size())
 
                 if debug:
                     sys.stderr.write('[PSERVER]: start training\n')
 
                 self.train()
 
-                self.sess.run(self.global_network.add_one)
-                print 'DaggerLeader:global_network:cnt', self.sess.run(self.global_network.cnt)
-                sys.stdout.flush()
+                if debug:
+                    network_vars = self.global_network.trainable_vars
+                    network_vars = self.sess.run(network_vars)[1][1]
+                    print '[PSERVER]: Network after training:', network_vars
+                    sys.stdout.flush()
             else:
                 if debug:
                     sys.stderr.write('[PSERVER]: quitting...\n')
@@ -422,16 +422,25 @@ class DaggerWorker(object):
                 sys.stderr.write('[WORKER %d Ep %d] Starting...\n' %
                                  (self.task_idx, self.curr_ep))
 
-            # Reset local parameters to global
-            print 'Before sync'
-            print 'DaggerWorker:global_network:cnt', self.sess.run(self.global_network.cnt)
-            print 'DaggerWorker:local_network:cnt', self.sess.run(self.local_network.cnt)
+                global_vars = self.global_network.trainable_vars
+                global_vars = self.sess.run(global_vars)[1][1]
+                local_vars = self.local_network.trainable_vars
+                local_vars = self.sess.run(local_vars)[1][1]
 
+                print 'Before sync'
+                print '[WORKER %d] global_network' % self.task_idx, global_vars
+                print '[WORKER %d] local_network' % self.task_idx, local_vars
+                sys.stdout.flush()
+
+            # Reset local parameters to global
             self.sess.run(self.sync_op)
 
-            print 'After sync'
-            print 'DaggerWorker:local_network:cnt', self.sess.run(self.local_network.cnt)
-            sys.stdout.flush()
+            if debug:
+                local_vars = self.local_network.trainable_vars
+                local_vars = self.sess.run(local_vars)[1][1]
+                print 'After sync'
+                print '[WORKER %d] local_network' % self.task_idx, local_vars
+                sys.stdout.flush()
 
             # Start a single episode, populating state-action buffers.
             self.rollout()

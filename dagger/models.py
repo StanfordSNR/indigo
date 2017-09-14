@@ -19,17 +19,12 @@ class DaggerNetwork(object):
 
 class DaggerLSTM(object):
     def __init__(self, state_dim, action_cnt):
-        # dummy variable used to verify that sharing variables is working
-        self.cnt = tf.get_variable(
-            'cnt', [], tf.float32,
-            initializer=tf.constant_initializer(0.0))
-        self.add_one = self.cnt.assign_add(1.0)
 
         # self.input: [batch_size, max_time, state_dim]
         self.input = tf.placeholder(tf.float32, [None, None, state_dim])
 
         self.num_layers = 2
-        self.lstm_dim = 256
+        self.lstm_dim = 128
         stacked_lstm = rnn.MultiRNNCell([rnn.BasicLSTMCell(self.lstm_dim)
             for _ in xrange(self.num_layers)])
 
