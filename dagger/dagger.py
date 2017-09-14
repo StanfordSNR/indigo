@@ -266,7 +266,7 @@ class DaggerLeader(object):
             # Save the network model for testing every so often
             if curr_ep == self.checkpoint:
                 self.save_model(curr_ep)
-                self.checkpoint += 20
+                self.checkpoint += self.checkpoint_delta
 
             # After training, tell workers to start another episode
             for idx in self.worker_tasks:
