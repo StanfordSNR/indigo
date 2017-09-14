@@ -9,11 +9,15 @@ import project_root
 from os import path
 from subprocess import Popen, call
 from helpers.helpers import get_open_udp_port
+import time
 
 
 def run(args):
     # run worker.py on ps and worker hosts
     for job_name in ['ps', 'worker']:
+        if job_name == 'worker':
+            time.sleep(3)
+
         host_list = args[job_name + '_list']
         procs = args[job_name + '_procs']
 

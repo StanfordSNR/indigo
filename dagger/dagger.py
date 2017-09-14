@@ -44,7 +44,7 @@ class DaggerLeader(object):
         self.leader_device_gpu = '/job:ps/task:0/gpu:0'
 
         # Create the master network and training/sync queues
-        with tf.device(self.leader_device_cpu):
+        with tf.device(self.leader_device_gpu):
             with tf.variable_scope('global'):
                 self.global_network = DaggerLSTM(
                     state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
@@ -67,12 +67,12 @@ class DaggerLeader(object):
                 self.sync_queues[idx] = tf.FIFOQueue(3, [tf.int16],
                                                      shared_name=queue_name)
 
-        with tf.device(self.leader_device_gpu):
-            self.setup_tf_ops(server)
-
         self.sess = tf.Session(
-            server.target, config=tf.ConfigProto(allow_soft_placement=True,
-                                                 log_device_placement=True))
+            server.target, config=tf.ConfigProto(allow_soft_placement=True))
+
+        with tf.device(self.leader_device_gpu):
+            self.setup_tf_ops()
+
         self.sess.run(tf.global_variables_initializer())
 
     def cleanup(self):
@@ -126,7 +126,7 @@ class DaggerLeader(object):
         log_name = date_time + '-%s' % git_commit.strip()
         self.logdir = path.join(project_root.DIR, 'dagger', 'logs', log_name)
         make_sure_path_exists(self.logdir)
-        self.summary_writer = tf.summary.FileWriter(self.logdir)
+        self.summary_writer = tf.summary.FileWriter(self.logdir, self.sess.graph)
 
     def wait_on_workers(self):
         """ Update which workers are done or dead. Stale tokens will
@@ -162,7 +162,6 @@ class DaggerLeader(object):
         At times will update Tensorboard and save a checkpointed model.
         Returns the total loss calculated.
         """
-
         summary = True if self.train_step % 10 == 0 else False
 
         ops_to_run = [self.train_op, self.total_loss]
@@ -237,7 +236,7 @@ class DaggerLeader(object):
             if max_loss > 0.5:
                 iters_since_min_loss = 0
 
-            if curr_iter > 100:
+            if curr_iter > 3:
                 break
 
             if iters_since_min_loss >= max(0.2 * curr_iter, 5):
@@ -253,12 +252,12 @@ class DaggerLeader(object):
 
             # If workers had data, dequeue ALL the samples and train
             if workers_ep_done > 0:
+
                 num_samples = self.sess.run(self.train_q.size())
                 while num_samples != 0:
                     data = self.sess.run(self.train_q.dequeue())
                     self.aggregated_states.append(data[0])
                     self.aggregated_actions.append(data[1])
-
                     num_samples = self.sess.run(self.train_q.size())
 
                 if debug:
@@ -268,9 +267,10 @@ class DaggerLeader(object):
 
                 if debug:
                     network_vars = self.global_network.trainable_vars
-                    network_vars = self.sess.run(network_vars)[1][1]
+                    network_vars = self.sess.run(network_vars[0][0][0])
                     print '[PSERVER]: Network after training:', network_vars
                     sys.stdout.flush()
+
             else:
                 if debug:
                     sys.stderr.write('[PSERVER]: quitting...\n')
@@ -294,6 +294,7 @@ class DaggerWorker(object):
         self.env = env
         self.task_idx = task_idx
         self.leader_device_cpu = '/job:ps/task:0/cpu:0'
+        self.leader_device_gpu = '/job:ps/task:0/gpu:0'
         self.worker_device = '/job:worker/task:%d' % task_idx
         self.num_workers = cluster.num_tasks('worker')
 
@@ -327,7 +328,7 @@ class DaggerWorker(object):
         """
 
         # Set up the shared global network and local network.
-        with tf.device(self.leader_device_cpu):
+        with tf.device(self.leader_device_gpu):
             with tf.variable_scope('global'):
                 self.global_network = DaggerLSTM(
                     state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
@@ -397,8 +398,7 @@ class DaggerWorker(object):
         action_probs, self.lstm_state = self.sess.run(ops_to_run, feed_dict)
 
         # Choose an action to take and update current LSTM state
-        # action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
-        action = np.argmax(action_probs[0][0])
+        action = np.argmax(np.random.multinomial(1, action_probs[0][0] - 1e-5))
         self.prev_action = action
 
         return action
@@ -423,9 +423,9 @@ class DaggerWorker(object):
                                  (self.task_idx, self.curr_ep))
 
                 global_vars = self.global_network.trainable_vars
-                global_vars = self.sess.run(global_vars)[1][1]
+                global_vars = self.sess.run(global_vars[0][0][0])
                 local_vars = self.local_network.trainable_vars
-                local_vars = self.sess.run(local_vars)[1][1]
+                local_vars = self.sess.run(local_vars[0][0][0])
 
                 print 'Before sync'
                 print '[WORKER %d] global_network' % self.task_idx, global_vars
@@ -437,7 +437,7 @@ class DaggerWorker(object):
 
             if debug:
                 local_vars = self.local_network.trainable_vars
-                local_vars = self.sess.run(local_vars)[1][1]
+                local_vars = self.sess.run(local_vars[0][0][0])
                 print 'After sync'
                 print '[WORKER %d] local_network' % self.task_idx, local_vars
                 sys.stdout.flush()
