@@ -48,8 +48,7 @@ def create_env(task_index):
     best_cwnd_map = yaml.load(open(best_cwnds_file))
 
     if task_index <= 23:
-        #bandwidth = [0.5, 1, 2, 5, 10, 20]
-        bandwidth = [10, 20, 40]
+        bandwidth = [0.5, 1, 2, 5, 10, 20]
         delay = [10, 20, 40, 80]
 
         cartesian = [(b, d) for b in bandwidth for d in delay]
