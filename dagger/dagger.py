@@ -29,7 +29,7 @@ class DaggerLeader(object):
         self.num_workers = len(worker_tasks)
         self.aggregated_states = []
         self.aggregated_actions = []
-        self.max_eps = 500
+        self.max_eps = 1000
         self.checkpoint_delta = 10
         self.checkpoint = self.checkpoint_delta
         self.learn_rate = 0.01
@@ -56,7 +56,7 @@ class DaggerLeader(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             cpu_vars, gpu_vars)])
 
-        self.default_batch_size = 280
+        self.default_batch_size = 300
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
@@ -248,14 +248,10 @@ class DaggerLeader(object):
 
         self.sess.run(self.global_network.add_one)
 
-        print 'DaggerLeader:before sync'
-        print 'DaggerLeader:global_network:cnt', self.sess.run(self.global_network.cnt)
-        print 'DaggerLeader:global_network_cpu:cnt', self.sess.run(self.global_network_cpu.cnt)
-
         # copy trained variables from GPU to CPU
         self.sess.run(self.sync_op)
 
-        print 'DaggerLeader:after sync'
+        print 'DaggerLeader:global_network:cnt', self.sess.run(self.global_network.cnt)
         print 'DaggerLeader:global_network_cpu:cnt', self.sess.run(self.global_network_cpu.cnt)
         sys.stdout.flush()
 
@@ -433,13 +429,9 @@ class DaggerWorker(object):
                                  (self.task_idx, self.curr_ep))
 
             # Reset local parameters to global
-            print 'DaggerWorker:before sync'
-            print 'DaggerWorker:global_network_cpu:cnt', self.sess.run(self.global_network_cpu.cnt)
-            print 'DaggerWorker:local_network:cnt', self.sess.run(self.local_network.cnt)
-
             self.sess.run(self.sync_op)
 
-            print 'DaggerWorker:after sync'
+            print 'DaggerWorker:global_network_cpu:cnt', self.sess.run(self.global_network_cpu.cnt)
             print 'DaggerWorker:local_network:cnt', self.sess.run(self.local_network.cnt)
             sys.stdout.flush()
 
