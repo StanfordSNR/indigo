@@ -40,35 +40,40 @@ class DaggerLeader(object):
         self.action_cnt = Sender.action_cnt
         self.aug_state_dim = self.state_dim + self.action_cnt
 
-        self.leader_device_cpu = '/job:ps/task:0/cpu:0'
-        self.leader_device_gpu = '/job:ps/task:0/gpu:0'
-
         # Create the master network and training/sync queues
+        with tf.variable_scope('global'):
+            self.global_network = DaggerLSTM(
+                state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
+
+        self.leader_device_cpu = '/job:ps/task:0/cpu:0'
         with tf.device(self.leader_device_cpu):
-            with tf.variable_scope('global'):
-                self.global_network = DaggerLSTM(
+            with tf.variable_scope('global_cpu'):
+                self.global_network_cpu = DaggerLSTM(
                     state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
+
+        cpu_vars = self.global_network_cpu.trainable_vars
+        gpu_vars = self.global_network.trainable_vars
+        self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
+            cpu_vars, gpu_vars)])
 
         self.default_batch_size = 280
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
-        with tf.device(self.leader_device_cpu):
-            # Each element is [[aug_state]], [action]
-            self.train_q = tf.FIFOQueue(
-                    self.num_workers, [tf.float32, tf.int32],
-                    shared_name='training_feed')
+        # Each element is [[aug_state]], [action]
+        self.train_q = tf.FIFOQueue(
+                self.num_workers, [tf.float32, tf.int32],
+                shared_name='training_feed')
 
-            # Keys: worker indices, values: Tensorflow messaging queues
-            # Queue Elements: Status message
-            self.sync_queues = {}
-            for idx in worker_tasks:
-                queue_name = 'sync_q_%d' % idx
-                self.sync_queues[idx] = tf.FIFOQueue(3, [tf.int16],
-                                                     shared_name=queue_name)
+        # Keys: worker indices, values: Tensorflow messaging queues
+        # Queue Elements: Status message
+        self.sync_queues = {}
+        for idx in worker_tasks:
+            queue_name = 'sync_q_%d' % idx
+            self.sync_queues[idx] = tf.FIFOQueue(3, [tf.int16],
+                                                 shared_name=queue_name)
 
-        with tf.device(self.leader_device_gpu):
-            self.setup_tf_ops(server)
+        self.setup_tf_ops(server)
 
         self.sess = tf.Session(
             server.target, config=tf.ConfigProto(allow_soft_placement=True))
@@ -100,7 +105,7 @@ class DaggerLeader(object):
         self.actions = tf.placeholder(tf.int32, [None, None])
 
         reg_loss = 0.0
-        for x in tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES):
+        for x in self.global_network.trainable_vars:
             if x.name == 'global/cnt:0':
                 continue
             reg_loss += tf.nn.l2_loss(x)
@@ -235,14 +240,24 @@ class DaggerLeader(object):
             else:
                 iters_since_min_loss += 1
 
-            if max_loss > 0.5:
-                iters_since_min_loss = 0
-
-            if curr_iter > 100:
+            if curr_iter > 3:
                 break
 
-            if iters_since_min_loss >= max(0.2 * curr_iter, 5):
+            if iters_since_min_loss >= max(0.2 * curr_iter, 10):
                 break
+
+        self.sess.run(self.global_network.add_one)
+
+        print 'DaggerLeader:before sync'
+        print 'DaggerLeader:global_network:cnt', self.sess.run(self.global_network.cnt)
+        print 'DaggerLeader:global_network_cpu:cnt', self.sess.run(self.global_network_cpu.cnt)
+
+        # copy trained variables from GPU to CPU
+        self.sess.run(self.sync_op)
+
+        print 'DaggerLeader:after sync'
+        print 'DaggerLeader:global_network_cpu:cnt', self.sess.run(self.global_network_cpu.cnt)
+        sys.stdout.flush()
 
     def run(self, debug=False):
         for curr_ep in xrange(self.max_eps):
@@ -267,10 +282,6 @@ class DaggerLeader(object):
                     sys.stderr.write('[PSERVER]: start training\n')
 
                 self.train()
-
-                self.sess.run(self.global_network.add_one)
-                print 'DaggerLeader:global_network:cnt', self.sess.run(self.global_network.cnt)
-                sys.stdout.flush()
             else:
                 if debug:
                     sys.stderr.write('[PSERVER]: quitting...\n')
@@ -293,7 +304,7 @@ class DaggerWorker(object):
         self.cluster = cluster
         self.env = env
         self.task_idx = task_idx
-        self.leader_device_cpu = '/job:ps/task:0/cpu:0'
+        self.leader_device = '/job:ps/task:0'
         self.worker_device = '/job:worker/task:%d' % task_idx
         self.num_workers = cluster.num_tasks('worker')
 
@@ -327,9 +338,9 @@ class DaggerWorker(object):
         """
 
         # Set up the shared global network and local network.
-        with tf.device(self.leader_device_cpu):
-            with tf.variable_scope('global'):
-                self.global_network = DaggerLSTM(
+        with tf.device(self.leader_device):
+            with tf.variable_scope('global_cpu'):
+                self.global_network_cpu = DaggerLSTM(
                     state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
 
         with tf.device(self.worker_device):
@@ -341,13 +352,12 @@ class DaggerWorker(object):
         self.lstm_state = self.init_state
 
         # Build shared queues for training data and synchronization
-        with tf.device(self.leader_device_cpu):
-            self.train_q = tf.FIFOQueue(
-                    self.num_workers, [tf.float32, tf.int32],
-                    shared_name='training_feed')
+        self.train_q = tf.FIFOQueue(
+                self.num_workers, [tf.float32, tf.int32],
+                shared_name='training_feed')
 
-            self.sync_q = tf.FIFOQueue(3, [tf.int16],
-                    shared_name=('sync_q_%d' % self.task_idx))
+        self.sync_q = tf.FIFOQueue(3, [tf.int16],
+                shared_name=('sync_q_%d' % self.task_idx))
 
         # Training data is [[aug_state]], [action]
         self.state_data = tf.placeholder(
@@ -356,9 +366,9 @@ class DaggerWorker(object):
         self.enqueue_train_op = self.train_q.enqueue(
                 [self.state_data, self.action_data])
 
-        # Sync local network to global network
+        # Sync local network to global network (CPU)
         local_vars = self.local_network.trainable_vars
-        global_vars = self.global_network.trainable_vars
+        global_vars = self.global_network_cpu.trainable_vars
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             local_vars, global_vars)])
 
@@ -423,13 +433,13 @@ class DaggerWorker(object):
                                  (self.task_idx, self.curr_ep))
 
             # Reset local parameters to global
-            print 'Before sync'
-            print 'DaggerWorker:global_network:cnt', self.sess.run(self.global_network.cnt)
+            print 'DaggerWorker:before sync'
+            print 'DaggerWorker:global_network_cpu:cnt', self.sess.run(self.global_network_cpu.cnt)
             print 'DaggerWorker:local_network:cnt', self.sess.run(self.local_network.cnt)
 
             self.sess.run(self.sync_op)
 
-            print 'After sync'
+            print 'DaggerWorker:after sync'
             print 'DaggerWorker:local_network:cnt', self.sess.run(self.local_network.cnt)
             sys.stdout.flush()
 
