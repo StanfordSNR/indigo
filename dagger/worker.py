@@ -81,16 +81,6 @@ def create_env(task_index):
         trace_path = path.join(project_root.DIR, 'env', '114.68mbps.trace')
         mm_cmd = 'mm-delay 45 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=450' % (trace_path, trace_path)
         best_cwnd = 870
-    elif task_index <= 29:
-        bandwidth = [200]
-        delay = [10, 20, 40, 80]
-
-        cartesian = [(b, d) for b in bandwidth for d in delay]
-        bandwidth, delay = cartesian[task_index - 26]
-
-        uplink_trace, downlink_trace = prepare_traces(bandwidth)
-        mm_cmd = 'mm-delay %d mm-link %s %s' % (delay, uplink_trace, downlink_trace)
-        best_cwnd = best_cwnd_map[bandwidth][delay]
 
     env = Environment(mm_cmd)
     env.best_cwnd = best_cwnd
