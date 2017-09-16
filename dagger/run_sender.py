@@ -66,10 +66,7 @@ def main():
 
     sender = Sender(args.port)
 
-    # TODO: fill in the model name
-    model_path = path.join(project_root.DIR, 'dagger', 'logs',
-        '',
-        'checkpoint-')
+    model_path = path.join(project_root.DIR, 'dagger', 'model', 'model')
 
     learner = Learner(
         state_dim=Sender.state_dim,
