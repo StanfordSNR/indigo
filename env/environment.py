@@ -2,66 +2,54 @@ import os
 from os import path
 import sys
 import signal
-from subprocess import Popen
+from subprocess import Popen, PIPE
 from sender import Sender
 import project_root
 from helpers.helpers import get_open_udp_port
 
 
 class Environment(object):
-    def __init__(self, mahimahi_cmd):
+    def __init__(self, mahimahi_cmd, num_flows,
+                 start_worker, end_worker, best_cwnd):
+        num_workers = end_worker - start_worker + 1
+        assert num_workers == num_flows, 'Num workers != num flows!'
+
         self.mahimahi_cmd = mahimahi_cmd
         self.state_dim = Sender.state_dim
         self.action_cnt = Sender.action_cnt
+        self.best_cwnd = max(best_cwnd / num_flows, 1)
+        self.start_worker = start_worker
+        self.end_worker = end_worker
 
         # variables below will be filled in during setup
-        self.sender = None
-        self.receiver = None
+        self.receivers = None
 
-    def set_sample_action(self, sample_action):
-        """Set the sender's policy. Must be called before calling reset()."""
+    def reset(self, ports):
+        """Must be called once before running rollout()."""
 
-        self.sample_action = sample_action
+        self.cleanup_receivers()
 
-    def reset(self):
-        """Must be called before running rollout()."""
+        # start receivers in a mahimahi subprocess (self.receivers)
+        sys.stderr.write('Starting receivers for workers %s-%s\n' %
+                        (self.start_worker, self.end_worker))
 
-        self.cleanup()
-
-        self.port = get_open_udp_port()
-
-        # start sender as an instance of Sender class
-        sys.stderr.write('Starting sender...\n')
-        self.sender = Sender(self.port, train=True)
-        self.sender.set_sample_action(self.sample_action)
-
-        # start receiver in a subprocess
-        sys.stderr.write('Starting receiver...\n')
         receiver_src = path.join(
             project_root.DIR, 'env', 'run_receiver.py')
-        recv_cmd = 'python %s $MAHIMAHI_BASE %s' % (receiver_src, self.port)
-        cmd = "%s -- sh -c '%s'" % (self.mahimahi_cmd, recv_cmd)
-        sys.stderr.write('$ %s\n' % cmd)
-        self.receiver = Popen(cmd, preexec_fn=os.setsid, shell=True)
+        self.receivers = Popen(self.mahimahi_cmd, stdin=PIPE,
+                               preexec_fn=os.setsid, shell=True)
+        recv_cmds = []
+        for port in ports:
+            cmd = 'python %s $MAHIMAHI_BASE %s' % (receiver_src, port)
+            sys.stderr.write('$ %s\n' % cmd)
+            full_cmd = "sh -c '%s' &" % cmd
+            self.receivers.stdin.write(full_cmd + '\n')
+            self.receivers.stdin.flush()
 
-        # sender completes the handshake sent from receiver
-        self.sender.handshake()
-
-    def rollout(self):
-        """Run sender in env, get final reward of an episode, reset sender."""
-
-        sys.stderr.write('Obtaining an episode from environment...\n')
-        self.sender.run()
-
-    def cleanup(self):
-        if self.sender:
-            self.sender.cleanup()
-            self.sender = None
-
-        if self.receiver:
+    def cleanup_receivers(self):
+        if self.receivers:
             try:
-                os.killpg(os.getpgid(self.receiver.pid), signal.SIGTERM)
+                os.killpg(os.getpgid(self.receivers.pid), signal.SIGTERM)
             except OSError as e:
                 sys.stderr.write('%s\n' % e)
             finally:
-                self.receiver = None
+                    self.receivers = None

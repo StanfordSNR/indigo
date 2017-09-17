@@ -28,7 +28,7 @@ def run(args):
                    '--ps-hosts', args['ps_hosts'],
                    '--worker-hosts', args['worker_hosts'],
                    '--job-name', job_name,
-                   '--task-index', str(i)]
+                   '--host-index', str(i)]
 
             cmd = ssh_cmd + cmd
 

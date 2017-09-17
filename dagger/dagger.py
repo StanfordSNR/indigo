@@ -10,7 +10,7 @@ from models import DaggerLSTM
 from experts import TrueDaggerExpert
 from env.sender import Sender
 from helpers.helpers import (
-    make_sure_path_exists, normalize, one_hot, curr_ts_ms)
+    make_sure_path_exists, normalize, one_hot, curr_ts_ms, get_open_udp_port)
 from subprocess import check_output
 
 
@@ -22,11 +22,11 @@ class Status:
 
 
 class DaggerLeader(object):
-    def __init__(self, cluster, server, worker_tasks):
+    def __init__(self, cluster, server, num_hosts, worker_tasks):
         self.cluster = cluster
         self.server = server
         self.worker_tasks = worker_tasks
-        self.num_workers = len(worker_tasks)
+        self.num_hosts = num_hosts
         self.aggregated_states = []
         self.aggregated_actions = []
         self.max_eps = 500
@@ -56,13 +56,13 @@ class DaggerLeader(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             cpu_vars, gpu_vars)])
 
-        self.default_batch_size = 280
+        self.default_batch_size = 90
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
         # Each element is [[aug_state]], [action]
         self.train_q = tf.FIFOQueue(
-                self.num_workers, [tf.float32, tf.int32],
+                self.num_hosts, [tf.float32, tf.int32],
                 shared_name='training_feed')
 
         # Keys: worker indices, values: Tensorflow messaging queues
@@ -191,8 +191,7 @@ class DaggerLeader(object):
         return ret[1]
 
     def train(self):
-        """ Runs the training operator until the loss converges.
-        """
+        """ Runs the training operator until the loss converges. """
         curr_iter = 0
 
         min_loss = float('inf')
@@ -296,37 +295,48 @@ class DaggerLeader(object):
 
 
 class DaggerWorker(object):
-    def __init__(self, cluster, server, task_idx, env):
+    def __init__(self, cluster, serv, worker_idx,
+                 num_hosts, num_flows, env, in_charge, ports):
+
         # Distributed tensorflow and logging related
         self.cluster = cluster
-        self.env = env
-        self.task_idx = task_idx
+        self.worker_idx = worker_idx
         self.leader_device = '/job:ps/task:0'
-        self.worker_device = '/job:worker/task:%d' % task_idx
-        self.num_workers = cluster.num_tasks('worker')
+        self.worker_device = '/job:worker/task:%d' % worker_idx
+        self.num_hosts = num_hosts
+        self.num_flows = num_flows
+
+        # Worker in charge is the flow on a given host which can enqueue data,
+        # reset and cleanup the environment.
+        self.in_charge = in_charge
 
         # Buffers and parameters required to train
+        if self.in_charge:
+            self.state_buf = []
+            self.action_buf = []
+
+        # Environment's functions only used by in_charge=True.
+        self.env = env if in_charge else None
+        self.sender = None
+        self.expert = TrueDaggerExpert(env)
+        self.ports_queue = ports
+
         self.curr_ep = 0
-        self.state_buf = []
-        self.action_buf = []
         self.state_dim = env.state_dim
         self.action_cnt = env.action_cnt
 
         self.aug_state_dim = self.state_dim + self.action_cnt
         self.prev_action = self.action_cnt - 1
 
-        self.expert = TrueDaggerExpert(env)
-        # Must call env.set_sample_action() before env.rollout()
-        env.set_sample_action(self.sample_action)
-
         # Set up Tensorflow for synchronization, training
         self.setup_tf_ops()
         self.sess = tf.Session(
-            server.target, config=tf.ConfigProto(allow_soft_placement=True))
+            serv.target, config=tf.ConfigProto(allow_soft_placement=True))
         self.sess.run(tf.global_variables_initializer())
 
     def cleanup(self):
-        self.env.cleanup()
+        if self.sender:
+            self.sender.cleanup()
         self.sess.run(self.sync_q.enqueue(Status.WORKER_DONE))
 
     def setup_tf_ops(self):
@@ -350,11 +360,11 @@ class DaggerWorker(object):
 
         # Build shared queues for training data and synchronization
         self.train_q = tf.FIFOQueue(
-                self.num_workers, [tf.float32, tf.int32],
+                self.num_hosts, [tf.float32, tf.int32],
                 shared_name='training_feed')
 
         self.sync_q = tf.FIFOQueue(3, [tf.int16],
-                shared_name=('sync_q_%d' % self.task_idx))
+                shared_name=('sync_q_%d' % self.worker_idx))
 
         # Training data is [[aug_state]], [action]
         self.state_data = tf.placeholder(
@@ -386,8 +396,9 @@ class DaggerWorker(object):
         aug_state = norm_state + one_hot_action
 
         # Fill in state_buf, action_buf
-        self.state_buf.append(aug_state)
-        self.action_buf.append(expert_action)
+        if self.in_charge:
+            self.state_buf.append(aug_state)
+            self.action_buf.append(expert_action)
 
         # Always use the expert on the first episode to get our bearings.
         if self.curr_ep == 0:
@@ -409,15 +420,35 @@ class DaggerWorker(object):
 
         return action
 
+    def reset_sender(self):
+        if self.sender:
+            self.sender.cleanup()
+            self.sender = None
+        port = get_open_udp_port()
+        self.sender = Sender(port, train=True)
+        self.sender.set_sample_action(self.sample_action)
+
+        if not self.in_charge and self.ports_queue is not None:
+            self.ports_queue.put(port)
+
     def rollout(self):
         """ Start an episode/flow with an empty dataset/environment. """
-        self.state_buf = []
-        self.action_buf = []
         self.prev_action = self.action_cnt - 1
         self.lstm_state = self.init_state
+        self.reset_sender()
 
-        self.env.reset()
-        self.env.rollout()
+        if self.in_charge:
+            # For worker getting data, reset buffers and get all flows' ports
+            self.state_buf = []
+            self.action_buf = []
+            ports = [self.sender.port]
+            if self.ports_queue:
+                while len(ports) < self.num_flows:
+                    ports.append(self.ports_queue.get(block=True, timeout=30))
+            self.env.reset(ports)
+
+        self.sender.handshake()
+        self.sender.run()
 
     def run(self, debug=False):
         """Runs for max_ep episodes, each time sending data to the leader."""
@@ -426,16 +457,16 @@ class DaggerWorker(object):
         while True:
             if debug:
                 sys.stderr.write('[WORKER %d Ep %d] Starting...\n' %
-                                 (self.task_idx, self.curr_ep))
+                                 (self.worker_idx, self.curr_ep))
 
                 global_vars = self.global_network_cpu.trainable_vars[0][0][0]
                 global_vars = self.sess.run(global_vars)
                 local_vars = self.local_network.trainable_vars[0][0][0]
                 local_vars = self.sess.run(local_vars)
 
-                print '[WORKER %d] Before sync'
-                print '[WORKER %d] global_network' % self.task_idx, global_vars
-                print '[WORKER %d] local_network' % self.task_idx, local_vars
+                print '[WORKER %d] Before sync' % self.worker_idx
+                print '[WORKER %d] global_vars' % self.worker_idx, global_vars
+                print '[WORKER %d] local_vars' % self.worker_idx, local_vars
                 sys.stdout.flush()
 
             # Reset local parameters to global
@@ -445,35 +476,37 @@ class DaggerWorker(object):
                 local_vars = self.local_network.trainable_vars[0][0][0]
                 local_vars = self.sess.run(local_vars)
                 print 'After sync'
-                print '[WORKER %d] local_network' % self.task_idx, local_vars
+                print '[WORKER %d] local_vars' % self.worker_idx, local_vars
                 sys.stdout.flush()
 
             # Start a single episode, populating state-action buffers.
             self.rollout()
 
-            if debug:
+            if debug and self.in_charge:
                 queue_size = self.sess.run(self.train_q.size())
                 sys.stderr.write(
                     '[WORKER %d Ep %d]: enqueueing a sequence of data '
                     'into queue of size %d\n' %
-                    (self.task_idx, self.curr_ep, queue_size))
+                    (self.worker_idx, self.curr_ep, queue_size))
 
-            # Enqueue a sequence of data into the training queue.
-            self.sess.run(self.enqueue_train_op, feed_dict={
-                self.state_data: self.state_buf,
-                self.action_data: self.action_buf})
+            if self.in_charge:
+                # Enqueue a sequence of data into the training queue.
+                self.sess.run(self.enqueue_train_op, feed_dict={
+                    self.state_data: self.state_buf,
+                    self.action_data: self.action_buf})
+
             self.sess.run(self.sync_q.enqueue(Status.EP_DONE))
 
-            if debug:
+            if debug and self.in_charge:
                 queue_size = self.sess.run(self.train_q.size())
                 sys.stderr.write(
                     '[WORKER %d Ep %d]: finished queueing data. '
                     'queue size now %d\n' %
-                    (self.task_idx, self.curr_ep, queue_size))
+                    (self.worker_idx, self.curr_ep, queue_size))
 
             if debug:
                 sys.stderr.write('[WORKER %d Ep %d]: waiting for server\n' %
-                                 (self.task_idx, self.curr_ep))
+                                 (self.worker_idx, self.curr_ep))
 
             # Let the leader dequeue EP_DONE
             time.sleep(0.5)
