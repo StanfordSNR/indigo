@@ -56,7 +56,7 @@ class DaggerLeader(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             cpu_vars, gpu_vars)])
 
-        self.default_batch_size = 300
+        self.default_batch_size = 410
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
@@ -243,7 +243,7 @@ class DaggerLeader(object):
             if curr_iter > 50:
                 break
 
-            if iters_since_min_loss >= max(0.2 * curr_iter, 10):
+            if iters_since_min_loss >= max(0.2 * curr_iter, 5):
                 break
 
         self.sess.run(self.global_network.add_one)
