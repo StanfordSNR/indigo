@@ -32,7 +32,7 @@ class DaggerLeader(object):
         self.max_eps = 1000
         self.checkpoint_delta = 10
         self.checkpoint = self.checkpoint_delta
-        self.learn_rate = 7e-5
+        self.learn_rate = 1e-3
         self.regularization_lambda = 1e-4
         self.train_step = 0
 
