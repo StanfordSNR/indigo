@@ -40,6 +40,9 @@ def main():
                      % (args.rlcc_dir, remote_ip,
                         args.username, args.rlcc_dir))
 
+    rm_perf = "'cd %s && rm env/perf'" % (args.rlcc_dir)
+    check_call(assistant_cmd + rm_perf, shell=True)
+
     if args.git_push:
         check_call('git add -A && '
                    'git commit --amend --no-edit && '
