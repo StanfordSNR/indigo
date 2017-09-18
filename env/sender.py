@@ -176,7 +176,8 @@ class Sender(object):
             self.step_start_ms = curr_ts_ms()
 
         # At each step end, feed the state:
-        if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
+        passed_min_step_len = curr_ts_ms() - self.step_start_ms > self.step_len_ms
+        if passed_min_step_len and self.delay_ewma is not None:  # step's end
             state = [self.delay_ewma,
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
