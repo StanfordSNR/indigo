@@ -42,13 +42,20 @@ def add_instances(args):
 
 
 def change_machine_type(args):
-    name = args.name
+    prefix = args.prefix
+    nums = args.nums.split()
     new_type = args.type
     zone = args.zone
     cmd = ('gcloud compute instances set-machine-type "%s" '
            '--machine-type "%s" --zone "%s"')
-    proc = Popen(cmd % (name, new_type, zone), shell=True)
-    proc.wait()
+    procs = []
+    for num in nums:
+        instance_name = prefix + num
+        proc = Popen(cmd % (instance_name, new_type, zone), shell=True)
+        procs.append(proc)
+
+    for proc in procs:
+        proc.wait()
 
 
 def main():
@@ -81,7 +88,9 @@ def main():
         help='disk size (default: 10 GB)')
 
     change_type.add_argument(
-        '--name', metavar='NAME', required=True, help='instance name')
+        '--prefix', metavar='PREFIX', required=True, help='instance prefix')
+    change_type.add_argument(
+        '--nums', metavar='N1 N2...', required=True, help='instance numbers')
     change_type.add_argument(
         '--type', metavar='TYPE', required=True, help='machine type')
     change_type.add_argument(

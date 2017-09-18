@@ -26,6 +26,9 @@ def main():
     parser.add_argument(
             '--git-pull', action='store_true',
             help='whether to do a git pull from all workers (default: False)')
+    parser.add_argument(
+            '--setup', action='store_true',
+            help='whether to run setup on all workers (default: False)')
 
     args = parser.parse_args()
 
@@ -36,12 +39,16 @@ def main():
     remote_ip = gce_helper_out[1]
 
     assistant_cmd = ('%s/helpers/assistant.py --remote=%s --username=%s '
-                     '--rlcc-dir=%s '
-                     % (args.rlcc_dir, remote_ip,
-                        args.username, args.rlcc_dir))
+                     '--rlcc-dir=%s ' %
+                    (args.rlcc_dir, remote_ip,
+                     args.username, args.rlcc_dir))
 
-    rm_perf = "'cd %s && rm env/perf'" % (args.rlcc_dir)
+    rm_perf = "'cd %s && rm -f env/perf'" % (args.rlcc_dir)
     check_call(assistant_cmd + rm_perf, shell=True)
+
+    if args.setup:
+        check_call('%s/helpers/setup.py --remote=%s' %
+                  (args.rlcc_dir, remote_ip), shell=True)
 
     if args.git_push:
         check_call('git add -A && '
