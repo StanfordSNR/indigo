@@ -45,7 +45,7 @@ class Sender(object):
         self.poller = select.poll()
         self.poller.register(self.sock, ALL_FLAGS)
 
-        self.dummy_payload = 'x' * 1400
+        self.dummy_payload = 'x' * 1396
 
         # congestion control related
         self.seq_num = 0
@@ -58,6 +58,7 @@ class Sender(object):
         self.delivered = 0
         self.sent_bytes = 0
 
+        self.min_owd = float('inf')
         self.min_rtt = float('inf')
         self.delay_ewma = None
         self.send_rate_ewma = None
@@ -95,12 +96,17 @@ class Sender(object):
 
         self.sample_action = sample_action
 
+    def set_expert(self, expert):
+        self.expert = expert
+
     def update_state(self, ack):
         """ Update the state variables listed in __init__() """
         self.next_ack = max(self.next_ack, ack.seq_num + 1)
         curr_time_ms = curr_ts_ms()
 
-        # Update RTT
+        # Update OWD, RTT
+        owd = float(ack.recv_ts - ack.send_ts)
+        self.min_owd = min(self.min_owd, owd)
         rtt = float(curr_time_ms - ack.send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
 
@@ -135,6 +141,10 @@ class Sender(object):
         else:
             self.send_rate_ewma = (
                 0.875 * self.send_rate_ewma + 0.125 * send_rate)
+
+        # Update the expert if expert is listening in.
+        if self.train:
+            self.expert.update_state(owd, self.min_owd, rtt, self.min_rtt)
 
     def take_action(self, action_idx):
         old_cwnd = self.cwnd

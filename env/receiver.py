@@ -4,7 +4,8 @@ import socket
 import select
 import datagram_pb2
 import project_root
-from helpers.helpers import READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, ALL_FLAGS
+from helpers.helpers import READ_FLAGS, ERR_FLAGS,
+                            READ_ERR_FLAGS, ALL_FLAGS, curr_ts_ms
 
 
 class Receiver(object):
@@ -24,12 +25,15 @@ class Receiver(object):
     def construct_ack_from_data(self, serialized_data):
         """Construct a serialized ACK that acks a serialized datagram."""
 
+        recv_ts = curr_ts_ms()
+
         data = datagram_pb2.Data()
         data.ParseFromString(serialized_data)
 
         ack = datagram_pb2.Ack()
         ack.seq_num = data.seq_num
         ack.send_ts = data.send_ts
+        ack.recv_ts = recv_ts
         ack.sent_bytes = data.sent_bytes
         ack.delivered_time = data.delivered_time
         ack.delivered = data.delivered

@@ -12,8 +12,9 @@ message Data {
 message Ack {
   fixed32 seq_num = 1;
   fixed32 send_ts = 2;
-  fixed64 sent_bytes = 3;
-  fixed32 delivered_time = 4;
-  fixed64 delivered = 5;
-  fixed32 ack_bytes = 6;
+  fixed32 recv_ts = 3;
+  fixed64 sent_bytes = 4;
+  fixed32 delivered_time = 5;
+  fixed64 delivered = 6;
+  fixed32 ack_bytes = 7;
 }

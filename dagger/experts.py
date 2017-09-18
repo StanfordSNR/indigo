@@ -41,6 +41,7 @@ class NaiveDaggerExpert(object):
         action = get_best_action(Sender.action_mapping, cwnd, target_cwnd)
         return action
 
+
 class TrueDaggerExpert(object):
     """ Ground truth expert policy """
 
@@ -51,7 +52,31 @@ class TrueDaggerExpert(object):
         self.best_cwnd = env.best_cwnd
 
     def sample_action(self, cwnd):
-        # Gets the action that gives the resulting cwnd closest to the
-        # best cwnd.
+        """Gets the action that gives the resulting cwnd closest to the
+        best cwnd.
+        """
         action = get_best_action(Sender.action_mapping, cwnd, self.best_cwnd)
+        return action
+
+
+class KohoDaggerExpert(object):
+    """ KohoCC expert for cellular links """
+
+    def __init__(self):
+        self.cwnd = 16
+
+    def update_state(self, owd, min_owd, rtt, min_rtt):
+        queueing_delay = owd - min_owd
+        if queueing_delay > 0.225 * min_rtt:
+            self.cwnd -= 0.25
+        else:
+            self.cwnd += 0.25
+
+        self.cwnd = max(2, min(self.cwnd, 100))
+
+    def sample_action(self, cwnd):
+        """ Gets the action that gives the resulting cwnd closest to Koho's
+        perceived best cwnd.
+        """
+        action = get_best_action(Sender.action_mapping, cwnd, self.cwnd)
         return action
