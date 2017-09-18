@@ -26,7 +26,7 @@ class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
     state_dim = 4
-    action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
+    action_mapping = format_actions(["/2.0", "-30.0", "-10.0", "-5.0", "+0.0", "+5.0", "+10.0", "+30.0", "*2.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False):
@@ -209,7 +209,7 @@ class Sender(object):
                     self.compute_performance()
 
     def run(self):
-        TIMEOUT = 1000  # ms
+        TIMEOUT = 50 # ms
 
         self.poller.modify(self.sock, ALL_FLAGS)
         curr_flags = ALL_FLAGS

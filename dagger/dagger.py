@@ -317,7 +317,7 @@ class DaggerWorker(object):
 
         # Environment's functions only used by in_charge=True.
         self.env = env if in_charge else None
-        self.expert = KohoDaggerExpert(env)
+        self.expert = KohoDaggerExpert()
         self.sender = None
         self.ports_queue = ports
 

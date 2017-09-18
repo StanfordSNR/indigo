@@ -43,41 +43,45 @@ def prepare_traces(bandwidth):
 def create_env(host_index, num_flows, start_worker, end_worker):
     """ Creates and returns an Environment which contains a single
     sender-receiver connection. The environment is run inside mahimahi
-    shells. The environment knows the best cwnd to pass to the expert policy.
+    shells.
     """
 
-    best_cwnds_file = path.join(project_root.DIR, 'dagger', 'best_cwnds.yml')
-    best_cwnd_map = yaml.load(open(best_cwnds_file))
+    if host_index == 0:
+        trace_path = path.join(project_root.DIR, 'env', '0.57mbps-poisson.trace')
+        mm_cmd = 'mm-delay 28 mm-loss uplink 0.0477 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=14' % (trace_path, trace_path)
+    elif host_index == 1:
+        trace_path = path.join(project_root.DIR, 'env', '2.64mbps-poisson.trace')
+        mm_cmd = 'mm-delay 88 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=130' % (trace_path, trace_path)
+    elif host_index == 2:
+        trace_path = path.join(project_root.DIR, 'env', '3.04mbps-poisson.trace')
+        mm_cmd = 'mm-delay 130 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=426' % (trace_path, trace_path)
+    elif host_index == 3:
+        trace_path = path.join(project_root.DIR, 'env', 'mahimahi-traces', 'ATT-LTE-driving-2016')
+        up_trace = trace_path + '.up'
+        down_trace = trace_path + '.down'
+        mm_cmd = 'mm-delay 20 mm-link %s %s' % (up_trace, down_trace)
+    elif host_index == 4:
+        trace_path = path.join(project_root.DIR, 'env', 'mahimahi-traces', 'ATT-LTE-driving')
+        up_trace = trace_path + '.up'
+        down_trace = trace_path + '.down'
+        mm_cmd = 'mm-delay 30 mm-link %s %s' % (up_trace, down_trace)
+    elif host_index == 5:
+        trace_path = path.join(project_root.DIR, 'env', 'mahimahi-traces', 'TMobile-UMTS-driving')
+        up_trace = trace_path + '.up'
+        down_trace = trace_path + '.down'
+        mm_cmd = 'mm-delay 40 mm-link %s %s' % (up_trace, down_trace)
+    elif host_index == 6:
+        trace_path = path.join(project_root.DIR, 'env', 'mahimahi-traces', 'Verizon-EVDO-driving')
+        up_trace = trace_path + '.up'
+        down_trace = trace_path + '.down'
+        mm_cmd = 'mm-delay 50 mm-link %s %s' % (up_trace, down_trace)
+    elif host_index == 7:
+        trace_path = path.join(project_root.DIR, 'env', 'mahimahi-traces', 'Verizon-LTE-driving')
+        up_trace = trace_path + '.up'
+        down_trace = trace_path + '.down'
+        mm_cmd = 'mm-delay 60 mm-link %s %s' % (up_trace, down_trace)
 
-    if host_index < 0:
-        bandwidth = [10, 20, 40, 80, 160]
-        delay = [10, 20, 40, 80, 160]
-
-        cartesian = [(b, d) for b in bandwidth for d in delay]
-        bandwidth, delay = cartesian[host_index]
-
-        uplink_trace, downlink_trace = prepare_traces(bandwidth)
-        mm_cmd = 'mm-delay %d mm-link %s %s' % (delay, uplink_trace, downlink_trace)
-        best_cwnd = best_cwnd_map[bandwidth][delay]
-
-    elif host_index <= 2:
-        trace_path = path.join(project_root.DIR, 'env', '100.42mbps.trace')
-        mm_cmd = ('mm-delay 27 mm-link %s %s --uplink-queue=droptail '
-                  '--uplink-queue-args=packets=173') % (trace_path, trace_path)
-        best_cwnd = 500
-    elif host_index <= 5:
-        trace_path = path.join(project_root.DIR, 'env', '77.72mbps.trace')
-        mm_cmd = ('mm-delay 51 mm-loss uplink 0.0006 mm-link %s %s '
-                  '--uplink-queue=droptail '
-                  '--uplink-queue-args=packets=94') % (trace_path, trace_path)
-        best_cwnd = 690
-    elif host_index <= 8:
-        trace_path = path.join(project_root.DIR, 'env', '114.68mbps.trace')
-        mm_cmd = ('mm-delay 45 mm-link %s %s --uplink-queue=droptail '
-                  '--uplink-queue-args=packets=450') % (trace_path, trace_path)
-        best_cwnd = 870
-
-    env = Environment(mm_cmd, num_flows, start_worker, end_worker, best_cwnd)
+    env = Environment(mm_cmd, num_flows, start_worker, end_worker)
     return env
 
 
@@ -117,7 +121,7 @@ def run(args):
     associated with the cluster and server.
     """
 
-    flows = [1, 2, 3, 1, 2, 3, 1, 2, 3]
+    flows = [1, 1, 1, 1, 1, 1, 1, 1]
     num_hosts = len(flows)
 
     job_name = args.job_name
