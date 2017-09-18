@@ -47,34 +47,46 @@ def create_env(task_index):
     best_cwnds_file = path.join(project_root.DIR, 'dagger', 'best_cwnds.yml')
     best_cwnd_map = yaml.load(open(best_cwnds_file))
 
-    if task_index <= 11:
-        bandwidth = [10, 50, 100]
+    if task_index == 0:
+        trace_path = path.join(project_root.DIR, 'env', '0.57mbps-poisson.trace')
+        mm_cmd = 'mm-delay 28 mm-loss uplink 0.0477 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=14' % (trace_path, trace_path)
+        best_cwnd = 4
+    elif task_index == 1:
+        trace_path = path.join(project_root.DIR, 'env', '2.64mbps-poisson.trace')
+        mm_cmd = 'mm-delay 88 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=130' % (trace_path, trace_path)
+        best_cwnd = 40
+    elif task_index == 2:
+        trace_path = path.join(project_root.DIR, 'env', '3.04mbps-poisson.trace')
+        mm_cmd = 'mm-delay 130 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=426' % (trace_path, trace_path)
+        best_cwnd = 70
+    elif task_index <= 26:
+        bandwidth = [2, 5, 10, 20, 50, 100]
         delay = [10, 40, 70, 100]
 
         cartesian = [(b, d) for b in bandwidth for d in delay]
-        bandwidth, delay = cartesian[task_index]
+        bandwidth, delay = cartesian[task_index - 3]
 
         uplink_trace, downlink_trace = prepare_traces(bandwidth)
         mm_cmd = 'mm-delay %d mm-link %s %s' % (delay, uplink_trace, downlink_trace)
         best_cwnd = best_cwnd_map[bandwidth][delay]
-    elif task_index == 12:
+    elif task_index == 27:
         trace_path = path.join(project_root.DIR, 'env', '100.42mbps.trace')
         mm_cmd = 'mm-delay 27 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=173' % (trace_path, trace_path)
         best_cwnd = 500
-    elif task_index == 13:
+    elif task_index == 28:
         trace_path = path.join(project_root.DIR, 'env', '77.72mbps.trace')
         mm_cmd = 'mm-delay 51 mm-loss uplink 0.0006 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=94' % (trace_path, trace_path)
         best_cwnd = 690
-    elif task_index == 14:
+    elif task_index == 29:
         trace_path = path.join(project_root.DIR, 'env', '114.68mbps.trace')
         mm_cmd = 'mm-delay 45 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=450' % (trace_path, trace_path)
         best_cwnd = 870
-    elif task_index <= 22:
-        bandwidth = [150, 200]
+    elif task_index <= 33:
+        bandwidth = [200]
         delay = [10, 40, 70, 100]
 
         cartesian = [(b, d) for b in bandwidth for d in delay]
-        bandwidth, delay = cartesian[task_index - 15]
+        bandwidth, delay = cartesian[task_index - 30]
 
         uplink_trace, downlink_trace = prepare_traces(bandwidth)
         mm_cmd = 'mm-delay %d mm-link %s %s' % (delay, uplink_trace, downlink_trace)
