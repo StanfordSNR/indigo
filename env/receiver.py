@@ -4,7 +4,8 @@ import socket
 import select
 import datagram_pb2
 import project_root
-from helpers.helpers import READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, ALL_FLAGS, curr_ts_ms
+from helpers.helpers import (READ_FLAGS, ERR_FLAGS,
+                             READ_ERR_FLAGS, ALL_FLAGS, curr_ts_ms)
 
 
 class Receiver(object):
