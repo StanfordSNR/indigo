@@ -25,7 +25,7 @@ def format_actions(action_list):
 class Sender(object):
     # exposed class/static variables
     state_dim = 4
-    action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
+    action_mapping = format_actions(["/2.0", "-30.0", "-10.0", "+0.0", "+10.0", "+30.0", "*2.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False):
