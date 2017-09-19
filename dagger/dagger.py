@@ -30,7 +30,7 @@ class DaggerLeader(object):
         self.max_eps = 1000
         self.checkpoint_delta = 10
         self.checkpoint = self.checkpoint_delta
-        self.learn_rate = 1e-3
+        self.learn_rate = 1e-4
         self.regularization_lambda = 1e-4
         self.train_step = 0
 
@@ -54,7 +54,7 @@ class DaggerLeader(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             cpu_vars, gpu_vars)])
 
-        self.default_batch_size = 60
+        self.default_batch_size = 80
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
@@ -498,16 +498,12 @@ class DaggerWorker(object):
         # In-charge flow enqueues wait time and flow info for other flows
         # Intervals are used to change the cwnd at given points in time
         if self.in_charge:
-            wait, flow_intervals = self.enqueue_flow_intervals()
+            wait, flow_counts = self.enqueue_flow_intervals()
         else:
             flow_info = self.flow_info_queue.get(block=True, timeout=30)
-            wait, flow_intervals = flow_info
+            wait, flow_counts = flow_info
 
-
-        print 'worker %s %s wait has intervals %s\n\n' % (self.worker_idx, wait, flow_intervals)
-        sys.stdout.flush()
-
-        self.expert.prepare_flow_intervals(flow_intervals)
+        self.expert.prepare_flow_counts(flow_counts)
         time.sleep(wait)
         self.sender.run()
 

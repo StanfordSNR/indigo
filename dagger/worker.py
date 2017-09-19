@@ -46,10 +46,22 @@ def create_env(host_index, num_flows, start_worker, end_worker):
     shells. The environment knows the best cwnd to pass to the expert policy.
     """
 
-    trace_path = path.join(project_root.DIR, 'env', '114.68mbps.trace')
-    mm_cmd = ('mm-delay 45 mm-link %s %s --uplink-queue=droptail '
-              '--uplink-queue-args=packets=450') % (trace_path, trace_path)
-    best_cwnd = 870
+    if host_index <= 2:
+        trace_path = path.join(project_root.DIR, 'env', '100.42mbps.trace')
+        mm_cmd = ('mm-delay 27 mm-link %s %s --uplink-queue=droptail '
+                  '--uplink-queue-args=packets=173') % (trace_path, trace_path)
+        best_cwnd = 500
+    elif host_index <= 5:
+        trace_path = path.join(project_root.DIR, 'env', '77.72mbps.trace')
+        mm_cmd = ('mm-delay 51 mm-loss uplink 0.0006 mm-link %s %s '
+                  '--uplink-queue=droptail '
+                  '--uplink-queue-args=packets=94') % (trace_path, trace_path)
+        best_cwnd = 690
+    elif host_index <= 8:
+        trace_path = path.join(project_root.DIR, 'env', '114.68mbps.trace')
+        mm_cmd = ('mm-delay 45 mm-link %s %s --uplink-queue=droptail '
+                  '--uplink-queue-args=packets=450') % (trace_path, trace_path)
+        best_cwnd = 870
 
     env = Environment(mm_cmd, num_flows, start_worker, end_worker, best_cwnd)
     return env
@@ -80,7 +92,7 @@ def make_multiple_hosts(hosts, flows):
     for i in xrange(len(hosts)):
         ip = hosts[i].split(':')[0]
 
-        for i in xrange(flows[i]):
+        for _ in xrange(flows[i]):
             new_hosts.append(ip + ':' + str(next_port))
             next_port += 1
 
@@ -92,7 +104,7 @@ def run(args):
     associated with the cluster and server.
     """
 
-    flows = [1, 2, 3]
+    flows = [1, 2, 3, 1, 2, 3, 1, 2, 3]
     num_hosts = len(flows)
 
     job_name = args.job_name

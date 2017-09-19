@@ -1,7 +1,6 @@
 from env.sender import Sender
 from helpers.helpers import apply_op
 import threading
-import sys
 
 
 def action_error(actions, idx, cwnd, target):
@@ -55,21 +54,17 @@ class TrueDaggerExpert(object):
         self.num_flows = env.num_flows
 
 
-    def change_num_flows(self, interval_num):
-        self.num_flows = self.flow_intervals[interval_num][1]
-        print 'change flows to %s' % self.num_flows
-        sys.stdout.flush()
-        if interval_num < len(self.flow_intervals) - 1:
-            next_intrvl = interval_num + 1
-            next_intrvl_ts = self.flow_intervals[next_intrvl][0]
-            print 'waiting for %s seconds to change flows' % next_intrvl_ts
-            sys.stdout.flush()
-            threading.Timer(next_intrvl_ts,
-                            self.change_num_flows, args=[next_intrvl]).start()
+    def change_num_flows(self, ts_idx):
+        self.num_flows = self.flow_cnts[ts_idx][1]
+        if ts_idx < len(self.flow_cnts) - 1:
+            next_ts = ts_idx + 1
+            wait_time = self.flow_cnts[next_ts][0] - self.flow_cnts[ts_idx][0]
+            threading.Timer(wait_time,
+                            self.change_num_flows, args=[next_ts]).start()
 
 
-    def prepare_flow_intervals(self, flow_intervals):
-        self.flow_intervals = flow_intervals
+    def prepare_flow_counts(self, flow_counts):
+        self.flow_cnts = flow_counts
         self.change_num_flows(0)
 
 
