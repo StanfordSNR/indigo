@@ -26,7 +26,7 @@ class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
     state_dim = 4
-    action_mapping = format_actions(["/2.0", "-30.0", "-10.0", "+0.0", "+10.0", "+30.0", "*2.0"])
+    action_mapping = format_actions(["/2.0", "-10.0", "-3.0", "+0.0", "+3.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
     def __init__(self, port=0, train=False):
@@ -68,6 +68,7 @@ class Sender(object):
         self.running = True
 
         if self.train:
+            self.expert = None
             self.step_cnt = 0
 
             self.ts_first = None
@@ -143,7 +144,7 @@ class Sender(object):
                 0.875 * self.send_rate_ewma + 0.125 * send_rate)
 
         # Update the expert if expert is listening in.
-        if self.train:
+        if self.train and self.expert is not None:
             self.expert.update_state(owd, self.min_owd, rtt, self.min_rtt)
 
     def take_action(self, action_idx):

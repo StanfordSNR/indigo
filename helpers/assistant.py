@@ -20,7 +20,7 @@ def run_cmd(args, host, procs):
         cmd_in_ssh = 'git clone https://github.com/StanfordSNR/RLCC.git'
 
     elif cmd == 'git_pull':
-        cmd_in_ssh = ('cd %s && git fetch --all && '
+        cmd_in_ssh = ('cd %s && git fetch --all && git checkout -- . && '
                       'git checkout koho-expert && '
                       'git reset --hard @~1 && git pull' % args.rlcc_dir)
 

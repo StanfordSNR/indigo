@@ -7,7 +7,7 @@ import datetime
 from tensorflow import contrib
 from os import path
 from models import DaggerLSTM
-from experts import KohoDaggerExpert
+from experts import KohoDaggerExpert, TrueDaggerExpert
 from env.sender import Sender
 from helpers.helpers import (
     make_sure_path_exists, normalize, one_hot, curr_ts_ms, get_open_udp_port)
@@ -317,7 +317,7 @@ class DaggerWorker(object):
 
         # Environment's functions only used by in_charge=True.
         self.env = env if in_charge else None
-        self.expert = KohoDaggerExpert()
+        self.expert = KohoDaggerExpert() if worker_idx <= 7 else TrueDaggerExpert(env)
         self.sender = None
         self.ports_queue = ports
 
@@ -427,7 +427,9 @@ class DaggerWorker(object):
         port = get_open_udp_port()
         self.sender = Sender(port, train=True)
         self.sender.set_sample_action(self.sample_action)
-        self.sender.set_expert(self.expert)
+
+        if isinstance(self.expert, KohoDaggerExpert):
+            self.sender.set_expert(self.expert)
 
         if not self.in_charge and self.ports_queue is not None:
             self.ports_queue.put(port)

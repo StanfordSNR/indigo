@@ -46,6 +46,8 @@ def create_env(host_index, num_flows, start_worker, end_worker):
     shells.
     """
 
+    best_cwnd = None
+
     if host_index == 0:
         trace_path = path.join(project_root.DIR, 'env', '0.57mbps-poisson.trace')
         mm_cmd = 'mm-delay 28 mm-loss uplink 0.0477 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=14' % (trace_path, trace_path)
@@ -80,8 +82,18 @@ def create_env(host_index, num_flows, start_worker, end_worker):
         up_trace = trace_path + '.up'
         down_trace = trace_path + '.down'
         mm_cmd = 'mm-delay 60 mm-link %s %s' % (up_trace, down_trace)
+    else:
+        bandwidth = [5, 10]
+        delay = [10, 40, 70, 100]
+        cartesian = [(b,d) for b in bandwidth for d in delay]
+        bandwidth, delay = cartesian[host_index - 8]
+        uplink_trace, downlink_trace = prepare_traces(bandwidth)
+        mm_cmd = ('mm-delay %d mm-link %s %s' %
+                 (delay, uplink_trace, downlink_trace))
+        cwnds_file = path.join(project_root.DIR, 'dagger', 'best_cwnds.yml')
+        best_cwnd = yaml.load(open(cwnds_file))[bandwidth][delay]
 
-    env = Environment(mm_cmd, num_flows, start_worker, end_worker)
+    env = Environment(mm_cmd, num_flows, start_worker, end_worker, best_cwnd)
     return env
 
 
@@ -121,7 +133,7 @@ def run(args):
     associated with the cluster and server.
     """
 
-    flows = [1, 1, 1, 1, 1, 1, 1, 1]
+    flows = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
     num_hosts = len(flows)
 
     job_name = args.job_name

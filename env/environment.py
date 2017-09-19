@@ -20,10 +20,9 @@ class Environment(object):
         self.start_worker = start_worker
         self.end_worker = end_worker
 
+        self.best_cwnd = None
         if best_cwnd is not None:
             self.best_cwnd = max(best_cwnd / num_flows, 1)
-        else:
-            self.best_cwnd = None
 
         # variables below will be filled in during setup
         self.receivers = None
