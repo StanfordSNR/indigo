@@ -11,18 +11,13 @@ from helpers.helpers import get_open_udp_port
 class Environment(object):
     def __init__(self, mahimahi_cmd, num_flows,
                  start_worker, end_worker, best_cwnd=None):
-        num_workers = end_worker - start_worker + 1
-        assert num_workers == num_flows, 'Num workers != num flows!'
-
         self.mahimahi_cmd = mahimahi_cmd
         self.state_dim = Sender.state_dim
         self.action_cnt = Sender.action_cnt
         self.start_worker = start_worker
         self.end_worker = end_worker
-        self.best_cwnd = None
-
-        if best_cwnd is not None:
-            self.best_cwnd = max(best_cwnd / num_flows, 1)
+        self.best_cwnd = best_cwnd
+        self.num_flows = num_flows
 
         # variables below will be filled in during setup
         self.receivers = None

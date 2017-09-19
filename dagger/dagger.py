@@ -310,8 +310,9 @@ class DaggerWorker(object):
         # Worker in charge is in charge of managing the environment and flows
         self.in_charge = in_charge
         if in_charge:
-            self.wait_times = [5, 10]  # Wait times for all other flows
-            enough_times = len(self.wait_times) >= num_flows - 1
+            # Wait times for all other flows
+            self.wait_times = [5, 10][:num_flows-1]
+            enough_times = len(self.wait_times) >= num_flows-1
             assert enough_times, 'Not enough wait_times specified!'
 
             # Environment's functions only used by in-charge flow
@@ -435,6 +436,40 @@ class DaggerWorker(object):
         if not self.in_charge and self.ports_queue is not None:
             self.ports_queue.put(port)
 
+    def find_flow_intervals(self, episode_len):
+        intervals = {0: 0, episode_len: 0}  # Initialize for in-charge flow
+
+        for wait in self.wait_times:
+            if wait not in intervals:
+                intervals[wait] = 0
+            if (wait + episode_len) not in intervals:
+                intervals[wait + episode_len] = 0
+
+        for wait in self.wait_times + [0]:
+            for ts in intervals:
+                if ts >= wait and ts < wait + episode_len:
+                    intervals[ts] += 1
+
+        return sorted([ts for ts in intervals.iteritems() if ts[1] != 0])
+
+    def enqueue_flow_intervals(self):
+        ep_len = (self.sender.max_steps * self.sender.step_len_ms) / 1000
+
+        def get_relevant_intervals(intrvls, wait):
+            inside = lambda wait, ts: ts[0] >= wait and ts[0] < wait + ep_len
+            return [(i[0] - wait, i[1]) for i in intrvls if inside(wait, i)]
+
+        intervals = self.find_flow_intervals(ep_len)
+
+        for flow in xrange(self.num_flows-1):
+            wait = self.wait_times[flow]
+            relevant_intervals = get_relevant_intervals(intervals, wait)
+            self.flow_info_queue.put((wait, relevant_intervals))
+
+        # In-charge flow always starts first to handle 1-flow case.
+        wait = 0
+        intervals = get_relevant_intervals(intervals, 0)
+        return wait, intervals
 
     def rollout(self):
         """ Start an episode/flow with an empty dataset.
@@ -460,17 +495,19 @@ class DaggerWorker(object):
 
         self.sender.handshake()
 
-        # In-charge flow enqueues wait_time for other flows
+        # In-charge flow enqueues wait time and flow info for other flows
+        # Intervals are used to change the cwnd at given points in time
         if self.in_charge:
-            for i in xrange(self.num_flows-1):
-                wait = self.wait_times[i]
-                self.flow_info_queue.put(self.wait_times[i])
-
-            # In-charge flow always starts first to handle 1-flow case.
-            wait = 0
+            wait, flow_intervals = self.enqueue_flow_intervals()
         else:
-            wait = self.flow_info_queue.get(block=True, timeout=30)
+            flow_info = self.flow_info_queue.get(block=True, timeout=30)
+            wait, flow_intervals = flow_info
 
+
+        print 'worker %s %s wait has intervals %s\n\n' % (self.worker_idx, wait, flow_intervals)
+        sys.stdout.flush()
+
+        self.expert.prepare_flow_intervals(flow_intervals)
         time.sleep(wait)
         self.sender.run()
 

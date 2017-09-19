@@ -1,5 +1,7 @@
 from env.sender import Sender
 from helpers.helpers import apply_op
+import threading
+import sys
 
 
 def action_error(actions, idx, cwnd, target):
@@ -41,6 +43,7 @@ class NaiveDaggerExpert(object):
         action = get_best_action(Sender.action_mapping, cwnd, target_cwnd)
         return action
 
+
 class TrueDaggerExpert(object):
     """ Ground truth expert policy """
 
@@ -49,9 +52,30 @@ class TrueDaggerExpert(object):
                                            'given a best cwnd when creating '
                                            'the environment in worker.py.')
         self.best_cwnd = env.best_cwnd
+        self.num_flows = env.num_flows
+
+
+    def change_num_flows(self, interval_num):
+        self.num_flows = self.flow_intervals[interval_num][1]
+        print 'change flows to %s' % self.num_flows
+        sys.stdout.flush()
+        if interval_num < len(self.flow_intervals) - 1:
+            next_intrvl = interval_num + 1
+            next_intrvl_ts = self.flow_intervals[next_intrvl][0]
+            print 'waiting for %s seconds to change flows' % next_intrvl_ts
+            sys.stdout.flush()
+            threading.Timer(next_intrvl_ts,
+                            self.change_num_flows, args=[next_intrvl]).start()
+
+
+    def prepare_flow_intervals(self, flow_intervals):
+        self.flow_intervals = flow_intervals
+        self.change_num_flows(0)
+
 
     def sample_action(self, cwnd):
         # Gets the action that gives the resulting cwnd closest to the
         # best cwnd.
-        action = get_best_action(Sender.action_mapping, cwnd, self.best_cwnd)
+        best_cwnd = max(self.best_cwnd / self.num_flows, 1)
+        action = get_best_action(Sender.action_mapping, cwnd, best_cwnd)
         return action
