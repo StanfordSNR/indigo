@@ -56,7 +56,7 @@ class DaggerLeader(object):
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(
             cpu_vars, gpu_vars)])
 
-        self.default_batch_size = 300
+        self.default_batch_size = 240
         self.default_init_state = self.global_network.zero_init_state(
                 self.default_batch_size)
 
