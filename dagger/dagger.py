@@ -310,8 +310,7 @@ class DaggerWorker(object):
         # Worker in charge is in charge of managing the environment and flows
         self.in_charge = in_charge
         if in_charge:
-            self.wait_times = [10, 20]  # Wait times for all other flows
-
+            self.wait_times = [5, 10]  # Wait times for all other flows
             enough_times = len(self.wait_times) >= num_flows - 1
             assert enough_times, 'Not enough wait_times specified!'
 
@@ -461,28 +460,18 @@ class DaggerWorker(object):
 
         self.sender.handshake()
 
-        # In-charge flow enqueues (wait_time, sender_steps) for other flows
+        # In-charge flow enqueues wait_time for other flows
         if self.in_charge:
-            longest_wait = max(self.wait_times) if self.wait_times else 0
-
-            def calc_num_steps(wait):
-                add_steps = (longest_wait - wait) * Sender.base_num_steps
-                add_steps /=  Sender.step_len_ms
-                return add_steps + Sender.base_num_steps
-
             for i in xrange(self.num_flows-1):
                 wait = self.wait_times[i]
-                num_steps = calc_num_steps(wait)
-                self.flow_info_queue.put((wait, num_steps))
+                self.flow_info_queue.put(self.wait_times[i])
 
             # In-charge flow always starts first to handle 1-flow case.
             wait = 0
-            num_steps = calc_num_steps(0)
         else:
-            wait, num_steps = self.flow_info_queue.get(block=True, timeout=30)
+            wait = self.flow_info_queue.get(block=True, timeout=30)
 
         time.sleep(wait)
-        self.sender.set_max_steps(num_steps)
         self.sender.run()
 
     def run(self, debug=False):

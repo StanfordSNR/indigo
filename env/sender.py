@@ -24,8 +24,6 @@ def format_actions(action_list):
 
 class Sender(object):
     # exposed class/static variables
-    step_len_ms = 10
-    base_num_steps = 1000
     state_dim = 4
     action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
@@ -47,7 +45,8 @@ class Sender(object):
         self.poller.register(self.sock, ALL_FLAGS)
 
         self.dummy_payload = 'x' * 1400
-        self.max_steps = self.base_num_steps
+
+        self.step_len_ms = 10
 
         # congestion control related
         self.seq_num = 0
@@ -68,6 +67,7 @@ class Sender(object):
         self.running = True
 
         if self.train:
+            self.max_steps = 2000
             self.step_cnt = 0
 
             self.ts_first = None
@@ -94,12 +94,6 @@ class Sender(object):
     def set_sample_action(self, sample_action):
         """Set the policy. Must be called before run()."""
         self.sample_action = sample_action
-
-    def set_max_steps(self, max_steps):
-        """Set the number of steps for sender with self.train = True.
-        Must call before run(), otherwise defaults to self.base_num_steps.
-        """
-        self.max_steps = max_steps
 
     def update_state(self, ack):
         """ Update the state variables listed in __init__() """

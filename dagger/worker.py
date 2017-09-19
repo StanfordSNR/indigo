@@ -149,7 +149,7 @@ def run(args):
             results = []
             manager = multiprocessing.Manager()
 
-            # In-charge flow gives start time and # steps to other flows
+            # In-charge flow gives start time to other flows
             flow_info_q = manager.Queue(num_flows-1)
             # Other flows share ports and flow info with the one in charge
             ports_q = manager.Queue(num_flows-1)
