@@ -296,7 +296,7 @@ class DaggerLeader(object):
 
 class DaggerWorker(object):
     def __init__(self, cluster, serv, worker_idx,
-                 num_hosts, num_flows, env, in_charge, ports):
+                 num_hosts, num_flows, env, in_charge, ports_q, flow_info_q):
 
         # Distributed tensorflow and logging related
         self.cluster = cluster
@@ -319,7 +319,8 @@ class DaggerWorker(object):
         self.env = env if in_charge else None
         self.sender = None
         self.expert = TrueDaggerExpert(env)
-        self.ports_queue = ports
+        self.ports_queue = ports_q
+        self.flow_info_queue = flow_info_q
 
         self.curr_ep = 0
         self.state_dim = env.state_dim
@@ -421,6 +422,10 @@ class DaggerWorker(object):
         return action
 
     def reset_sender(self):
+        """ Reset the sender. In a multiflow environment, communicate the
+        Sender's port to the in-charge flow.
+        """
+
         if self.sender:
             self.sender.cleanup()
             self.sender = None
@@ -431,12 +436,18 @@ class DaggerWorker(object):
         if not self.in_charge and self.ports_queue is not None:
             self.ports_queue.put(port)
 
+
     def rollout(self):
-        """ Start an episode/flow with an empty dataset/environment. """
+        """ Start an episode/flow with an empty dataset.
+        In a multiflow setting, flows are communicated their relative
+        start times and # of steps to take on their respective Senders.
+        """
+
         self.prev_action = self.action_cnt - 1
         self.lstm_state = self.init_state
         self.reset_sender()
 
+        # Reset data buffer and receivers with sender ports.
         if self.in_charge:
             # For worker getting data, reset buffers and get all flows' ports
             self.state_buf = []
@@ -448,6 +459,29 @@ class DaggerWorker(object):
             self.env.reset(ports)
 
         self.sender.handshake()
+
+        # In-charge flow enqueues (wait_time, sender_steps) for other flows
+        if self.in_charge:
+            wait_times = [0, 10, 20]
+            enough_times = len(wait_times) >= self.num_flows
+            assert enough_times, 'Not enough wait_times specified!'
+
+            longest_wait = max(wait_times)
+
+            def calc_num_steps(wait):
+                add_steps = (longest_wait - wait) * Sender.base_num_steps
+                add_steps /=  Sender.step_len_ms
+                return add_steps + Sender.base_num_steps
+
+            for i in xrange(num_flows):
+                wait = wait_times[i]
+                num_steps = calc_num_steps(wait)
+                self.flow_info_queue.put((wait, num_steps))
+
+        wait, num_steps = self.flow_info_queue.get(block=True, timeout=30)
+        time.sleep(wait)
+        self.sender.set_max_steps(num_steps)
+
         self.sender.run()
 
     def run(self, debug=False):

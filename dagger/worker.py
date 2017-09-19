@@ -46,21 +46,7 @@ def create_env(host_index, num_flows, start_worker, end_worker):
     shells. The environment knows the best cwnd to pass to the expert policy.
     """
 
-    best_cwnds_file = path.join(project_root.DIR, 'dagger', 'best_cwnds.yml')
-    best_cwnd_map = yaml.load(open(best_cwnds_file))
-
-    if host_index < 0:
-        bandwidth = [10, 20, 40, 80, 160]
-        delay = [10, 20, 40, 80, 160]
-
-        cartesian = [(b, d) for b in bandwidth for d in delay]
-        bandwidth, delay = cartesian[host_index]
-
-        uplink_trace, downlink_trace = prepare_traces(bandwidth)
-        mm_cmd = 'mm-delay %d mm-link %s %s' % (delay, uplink_trace, downlink_trace)
-        best_cwnd = best_cwnd_map[bandwidth][delay]
-
-    elif host_index <= 2:
+    if host_index <= 2:
         trace_path = path.join(project_root.DIR, 'env', '100.42mbps.trace')
         mm_cmd = ('mm-delay 27 mm-link %s %s --uplink-queue=droptail '
                   '--uplink-queue-args=packets=173') % (trace_path, trace_path)
@@ -82,13 +68,14 @@ def create_env(host_index, num_flows, start_worker, end_worker):
 
 
 def run_worker(ps, workers, job, num_hosts, num_flows,
-               worker_idx, env, in_charge, ports=None):
+               worker_idx, env, in_charge, ports_q=None, flow_info_q=None):
     try:
         cluster = tf.train.ClusterSpec({'ps': ps, 'worker': workers})
         server = tf.train.Server(cluster, job_name=job, task_index=worker_idx)
 
         worker = DaggerWorker(cluster, server, worker_idx,
-                              num_hosts, num_flows, env, in_charge, ports)
+                              num_hosts, num_flows, env,
+                              in_charge, ports, flow_info_q)
         worker.run(debug=True)
         worker.cleanup()
     except KeyboardInterrupt:
@@ -155,18 +142,27 @@ def run(args):
             run_worker(ps_hosts, workers, job_name, num_hosts, num_flows,
                        start_worker, env, True)
         else:
+
+            # TODO extra: in-charge flow is the only one that can gather
+            # data. Differentiate between in-charge and able to gather data.
+
             pool = multiprocessing.Pool(num_flows)
             results = []
-            # Multiflows share ports with the worker in charge
             manager = multiprocessing.Manager()
-            ports = manager.Queue(num_flows-1)
+
+            # In-charge flow gives start time and # steps to other flows
+            flow_info_q = manager.Queue(num_flows-1)
+            # Other flows share ports and flow info with the one in charge
+            ports_q = manager.Queue(num_flows-1)
 
             for worker_idx in xrange(start_worker, end_worker+1):
                 in_charge = worker_idx == start_worker
                 result = pool.apply_async(
                         run_worker,
                         args=(ps_hosts, workers, job_name, num_hosts,
-                              num_flows, worker_idx, env, in_charge, ports))
+                              num_flows, worker_idx, env,
+                              in_charge, ports_q, flow_info_q))
+
                 results.append(result)
 
             pool.close()

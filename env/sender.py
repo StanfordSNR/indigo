@@ -23,8 +23,9 @@ def format_actions(action_list):
 
 
 class Sender(object):
-    # RL exposed class/static variables
-    max_steps = 1000
+    # exposed class/static variables
+    step_len_ms = 10
+    base_num_steps = 1000
     state_dim = 4
     action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
@@ -46,12 +47,12 @@ class Sender(object):
         self.poller.register(self.sock, ALL_FLAGS)
 
         self.dummy_payload = 'x' * 1400
+        self.max_steps = base_num_steps
 
         # congestion control related
         self.seq_num = 0
         self.next_ack = 0
         self.cwnd = 10.0
-        self.step_len_ms = 10
 
         # state variables for RLCC
         self.delivered_time = 0
@@ -92,8 +93,13 @@ class Sender(object):
 
     def set_sample_action(self, sample_action):
         """Set the policy. Must be called before run()."""
-
         self.sample_action = sample_action
+
+    def set_max_steps(self, max_steps):
+        """Set the number of steps for sender with self.train = True.
+        Must call before run(), otherwise defaults to self.base_num_steps.
+        """
+        self.max_steps = max_steps
 
     def update_state(self, ack):
         """ Update the state variables listed in __init__() """
@@ -176,8 +182,7 @@ class Sender(object):
             self.step_start_ms = curr_ts_ms()
 
         # At each step end, feed the state:
-        passed_min_step_len = curr_ts_ms() - self.step_start_ms > self.step_len_ms
-        if passed_min_step_len and self.delay_ewma is not None:  # step's end
+        if curr_ts_ms() - self.step_start_ms > self.step_len_ms: # step's end
             state = [self.delay_ewma,
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
@@ -193,7 +198,7 @@ class Sender(object):
 
             if self.train:
                 self.step_cnt += 1
-                if self.step_cnt >= Sender.max_steps:
+                if self.step_cnt >= self.max_steps:
                     self.step_cnt = 0
                     self.running = False
 
