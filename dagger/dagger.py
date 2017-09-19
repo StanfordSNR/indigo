@@ -386,7 +386,9 @@ class DaggerWorker(object):
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        cwnd = state[self.state_dim - 1]
+
+        # Extract the cwnd for the expert's use only.
+        cwnd = state.pop()
         expert_action = self.expert.sample_action(cwnd)
 
         # For decision-making, normalize.
