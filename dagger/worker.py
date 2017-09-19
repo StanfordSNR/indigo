@@ -67,15 +67,15 @@ def create_env(host_index, num_flows, start_worker, end_worker):
     return env
 
 
-def run_worker(ps, workers, job, num_hosts, num_flows,
-               worker_idx, env, in_charge, ports_q=None, flow_info_q=None):
+def run_worker(ps, workers, job, num_flows, worker_idx,
+               env, in_charge=True, ports_q=None, flow_info_q=None):
     try:
         cluster = tf.train.ClusterSpec({'ps': ps, 'worker': workers})
         server = tf.train.Server(cluster, job_name=job, task_index=worker_idx)
 
-        worker = DaggerWorker(cluster, server, worker_idx,
-                              num_hosts, num_flows, env,
-                              in_charge, ports, flow_info_q)
+        worker = DaggerWorker(server, worker_idx,
+                              len(workers), num_flows, env,
+                              in_charge, ports_q, flow_info_q)
         worker.run(debug=True)
         worker.cleanup()
     except KeyboardInterrupt:
@@ -122,7 +122,7 @@ def run(args):
         server = tf.train.Server(cluster, job_name=job_name,
                                  task_index=host_index)
         worker_tasks = set([idx for idx in xrange(len(workers))])
-        leader = DaggerLeader(cluster, server, num_hosts, worker_tasks)
+        leader = DaggerLeader(server, worker_tasks)
 
         try:
             leader.run(debug=True)
@@ -139,13 +139,12 @@ def run(args):
         env = create_env(host_index, num_flows, start_worker, end_worker)
 
         if num_flows == 1:      # Don't need multiprocessing for single flow
-            run_worker(ps_hosts, workers, job_name, num_hosts, num_flows,
-                       start_worker, env, True)
+            run_worker(ps_hosts, workers, job_name, num_flows,
+                       start_worker, env)
         else:
 
-            # TODO extra: in-charge flow is the only one that can gather
-            # data. Differentiate between in-charge and able to gather data.
-
+            # TODO Differentiate which flows can gather data. Either
+            # by looking at unique flow start times or an extra state var.
             pool = multiprocessing.Pool(num_flows)
             results = []
             manager = multiprocessing.Manager()
@@ -159,7 +158,7 @@ def run(args):
                 in_charge = worker_idx == start_worker
                 result = pool.apply_async(
                         run_worker,
-                        args=(ps_hosts, workers, job_name, num_hosts,
+                        args=(ps_hosts, workers, job_name,
                               num_flows, worker_idx, env,
                               in_charge, ports_q, flow_info_q))
 

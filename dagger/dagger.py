@@ -22,11 +22,9 @@ class Status:
 
 
 class DaggerLeader(object):
-    def __init__(self, cluster, server, num_hosts, worker_tasks):
-        self.cluster = cluster
+    def __init__(self, server, worker_tasks):
         self.server = server
         self.worker_tasks = worker_tasks
-        self.num_hosts = num_hosts
         self.aggregated_states = []
         self.aggregated_actions = []
         self.max_eps = 1000
@@ -62,7 +60,7 @@ class DaggerLeader(object):
 
         # Each element is [[aug_state]], [action]
         self.train_q = tf.FIFOQueue(
-                self.num_hosts, [tf.float32, tf.int32],
+                len(worker_tasks), [tf.float32, tf.int32],
                 shared_name='training_feed')
 
         # Keys: worker indices, values: Tensorflow messaging queues
@@ -295,28 +293,31 @@ class DaggerLeader(object):
 
 
 class DaggerWorker(object):
-    def __init__(self, cluster, serv, worker_idx,
-                 num_hosts, num_flows, env, in_charge, ports_q, flow_info_q):
+    def __init__(self, serv, worker_idx, num_workers,
+                 num_flows, env, in_charge, ports_q, flow_info_q):
 
         # Distributed tensorflow and logging related
-        self.cluster = cluster
         self.worker_idx = worker_idx
         self.leader_device = '/job:ps/task:0'
         self.worker_device = '/job:worker/task:%d' % worker_idx
-        self.num_hosts = num_hosts
+        self.num_workers = num_workers
         self.num_flows = num_flows
 
-        # Worker in charge is the flow on a given host which can enqueue data,
-        # reset and cleanup the environment.
-        self.in_charge = in_charge
-
         # Buffers and parameters required to train
-        if self.in_charge:
-            self.state_buf = []
-            self.action_buf = []
+        self.state_buf = []
+        self.action_buf = []
 
-        # Environment's functions only used by in_charge=True.
-        self.env = env if in_charge else None
+        # Worker in charge is in charge of managing the environment and flows
+        self.in_charge = in_charge
+        if in_charge:
+            self.wait_times = [10, 20]  # Wait times for all other flows
+
+            enough_times = len(self.wait_times) >= num_flows - 1
+            assert enough_times, 'Not enough wait_times specified!'
+
+            # Environment's functions only used by in-charge flow
+            self.env = env
+
         self.sender = None
         self.expert = TrueDaggerExpert(env)
         self.ports_queue = ports_q
@@ -361,7 +362,7 @@ class DaggerWorker(object):
 
         # Build shared queues for training data and synchronization
         self.train_q = tf.FIFOQueue(
-                self.num_hosts, [tf.float32, tf.int32],
+                self.num_workers, [tf.float32, tf.int32],
                 shared_name='training_feed')
 
         self.sync_q = tf.FIFOQueue(3, [tf.int16],
@@ -397,9 +398,8 @@ class DaggerWorker(object):
         aug_state = norm_state + one_hot_action
 
         # Fill in state_buf, action_buf
-        if self.in_charge:
-            self.state_buf.append(aug_state)
-            self.action_buf.append(expert_action)
+        self.state_buf.append(aug_state)
+        self.action_buf.append(expert_action)
 
         # Always use the expert on the first episode to get our bearings.
         if self.curr_ep == 0:
@@ -447,11 +447,12 @@ class DaggerWorker(object):
         self.lstm_state = self.init_state
         self.reset_sender()
 
-        # Reset data buffer and receivers with sender ports.
+        # Reset data buffers for training
+        self.state_buf = []
+        self.action_buf = []
+
+        # Start all receivers inside environment given all flows' ports.
         if self.in_charge:
-            # For worker getting data, reset buffers and get all flows' ports
-            self.state_buf = []
-            self.action_buf = []
             ports = [self.sender.port]
             if self.ports_queue:
                 while len(ports) < self.num_flows:
@@ -462,26 +463,26 @@ class DaggerWorker(object):
 
         # In-charge flow enqueues (wait_time, sender_steps) for other flows
         if self.in_charge:
-            wait_times = [0, 10, 20]
-            enough_times = len(wait_times) >= self.num_flows
-            assert enough_times, 'Not enough wait_times specified!'
-
-            longest_wait = max(wait_times)
+            longest_wait = max(self.wait_times) if self.wait_times else 0
 
             def calc_num_steps(wait):
                 add_steps = (longest_wait - wait) * Sender.base_num_steps
                 add_steps /=  Sender.step_len_ms
                 return add_steps + Sender.base_num_steps
 
-            for i in xrange(num_flows):
-                wait = wait_times[i]
+            for i in xrange(self.num_flows-1):
+                wait = self.wait_times[i]
                 num_steps = calc_num_steps(wait)
                 self.flow_info_queue.put((wait, num_steps))
 
-        wait, num_steps = self.flow_info_queue.get(block=True, timeout=30)
+            # In-charge flow always starts first to handle 1-flow case.
+            wait = 0
+            num_steps = calc_num_steps(0)
+        else:
+            wait, num_steps = self.flow_info_queue.get(block=True, timeout=30)
+
         time.sleep(wait)
         self.sender.set_max_steps(num_steps)
-
         self.sender.run()
 
     def run(self, debug=False):
@@ -516,22 +517,21 @@ class DaggerWorker(object):
             # Start a single episode, populating state-action buffers.
             self.rollout()
 
-            if debug and self.in_charge:
+            if debug:
                 queue_size = self.sess.run(self.train_q.size())
                 sys.stderr.write(
                     '[WORKER %d Ep %d]: enqueueing a sequence of data '
                     'into queue of size %d\n' %
                     (self.worker_idx, self.curr_ep, queue_size))
 
-            if self.in_charge:
-                # Enqueue a sequence of data into the training queue.
-                self.sess.run(self.enqueue_train_op, feed_dict={
-                    self.state_data: self.state_buf,
-                    self.action_data: self.action_buf})
+            # Enqueue a sequence of data into the training queue.
+            self.sess.run(self.enqueue_train_op, feed_dict={
+                self.state_data: self.state_buf,
+                self.action_data: self.action_buf})
 
             self.sess.run(self.sync_q.enqueue(Status.EP_DONE))
 
-            if debug and self.in_charge:
+            if debug:
                 queue_size = self.sess.run(self.train_q.size())
                 sys.stderr.write(
                     '[WORKER %d Ep %d]: finished queueing data. '

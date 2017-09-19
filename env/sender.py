@@ -47,7 +47,7 @@ class Sender(object):
         self.poller.register(self.sock, ALL_FLAGS)
 
         self.dummy_payload = 'x' * 1400
-        self.max_steps = base_num_steps
+        self.max_steps = self.base_num_steps
 
         # congestion control related
         self.seq_num = 0
