@@ -25,7 +25,7 @@ def format_actions(action_list):
 class Sender(object):
     # RL exposed class/static variables
     max_steps = 1000
-    state_dim = 4
+    state_dim = 1
     action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
@@ -176,10 +176,7 @@ class Sender(object):
 
         # At each step end, feed the state:
         if curr_ts_ms() - self.step_start_ms > self.step_len_ms:  # step's end
-            state = [self.delay_ewma,
-                     self.delivery_rate_ewma,
-                     self.send_rate_ewma,
-                     self.cwnd]
+            state = [self.cwnd]
             action = self.sample_action(state)
             self.take_action(action)
 
