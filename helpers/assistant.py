@@ -21,7 +21,7 @@ def run_cmd(args, host, procs):
 
     elif cmd == 'git_pull':
         cmd_in_ssh = ('cd %s && git fetch --all && '
-                      'git checkout indigo-universal && '
+                      'git checkout indigo-no-delay-delivery && '
                       'git reset --hard @~1 && git pull' % args.rlcc_dir)
 
     elif cmd == 'rm_history':
