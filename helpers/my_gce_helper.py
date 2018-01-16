@@ -8,6 +8,10 @@ from subprocess import check_output
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        '--username', default='francisyyan',
+        help='username used for train cmd (default: francisyyan)')
+
+    parser.add_argument(
         '--table', metavar='TABLE', nargs='?', default='TABLE',
         help='(messy) table of VM instances copied from Google Cloud Platform')
     args = parser.parse_args()
@@ -15,8 +19,8 @@ def main():
     cmd = 'grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}" ' + args.table
     ip_list = check_output(cmd, shell=True).split()
 
-    ret_cmd = ('~/RLCC/dagger/train.py --username francisyyan --rlcc-dir '
-               '/home/francisyyan/RLCC --ps-hosts ')
+    ret_cmd = ('~/RLCC/dagger/train.py --username %s --rlcc-dir '
+               '/home/%s/RLCC --ps-hosts ') % (args.username, args.username)
     ret_int_ip_list = ''
     ret_ext_ip_list = ''
 
