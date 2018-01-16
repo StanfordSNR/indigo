@@ -12,8 +12,8 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-            '--username', default='francisyyan',
-            help='username used in ssh (default: francisyyan)')
+            '--username', default='jestinm',
+            help='username used in ssh (default: jestinm)')
     parser.add_argument(
             '--rlcc-dir', default='~/RLCC',
             help='path to RLCC/ (default: ~/RLCC)')
@@ -35,7 +35,7 @@ def main():
     train_cmd = gce_helper_out[0]
     remote_ip = gce_helper_out[1]
 
-    assistant_cmd = ('%s/helpers/my_assistant.py --remote=%s --username=%s '
+    assistant_cmd = ('%s/helpers/assistant.py --remote=%s --username=%s '
                      '--rlcc-dir=%s '
                      % (args.rlcc_dir, remote_ip,
                         args.username, args.rlcc_dir))
