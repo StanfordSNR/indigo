@@ -1,0 +1,2 @@
+model_checkpoint_path: "/home/jestinm/RLCC/dagger/logs/2018-01-17-07-56-48-f32413cf2b382945a2fd12bbccbd385e6c5e8bb8/checkpoint-140"
+all_model_checkpoint_paths: "/home/jestinm/RLCC/dagger/logs/2018-01-17-07-56-48-f32413cf2b382945a2fd12bbccbd385e6c5e8bb8/checkpoint-140"
