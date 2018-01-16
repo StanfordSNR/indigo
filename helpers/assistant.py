@@ -17,11 +17,11 @@ def run_cmd(args, host, procs):
         check_call(cmd_to_run, shell=True)
 
     elif cmd == 'git_clone':
-        cmd_in_ssh = 'git clone https://github.com/StanfordSNR/RLCC.git'
+        cmd_in_ssh = 'git clone https://github.com/StanfordSNR/indigo.git'
 
     elif cmd == 'git_pull':
         cmd_in_ssh = ('cd %s && git fetch --all && '
-                      'git checkout indigo-universal && '
+                      'git checkout indigo && '
                       'git reset --hard @~1 && git pull' % args.rlcc_dir)
 
     elif cmd == 'rm_history':
@@ -47,8 +47,8 @@ def main():
         '--remote', required=True, metavar='IP,...',
         help='comma-separated list of IP addresses of remote hosts')
     parser.add_argument(
-        '--username', default='francisyyan',
-        help='username used in ssh (default: francisyyan)')
+        '--username', default='jestinm',
+        help='username used in ssh (default: jestinm)')
     parser.add_argument(
         '--rlcc-dir', metavar='DIR', default='~/RLCC',
         help='path to RLCC/ (default: ~/RLCC)')
@@ -67,7 +67,7 @@ def main():
         host = args.username + '@' + ip
 
         if args.cmd == 'remove_key':
-            call('ssh-keygen -f "/home/francisyyan/.ssh/known_hosts" -R %s' % ip, shell=True)
+            call('ssh-keygen -f "/home/jestinm/.ssh/known_hosts" -R %s' % ip, shell=True)
         elif args.cmd == 'test_ssh':
             call(['ssh', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=4', host, 'echo $HOSTNAME'])
         else:
