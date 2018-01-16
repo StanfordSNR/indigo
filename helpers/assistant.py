@@ -20,7 +20,8 @@ def run_cmd(args, host, procs):
         cmd_in_ssh = 'git clone https://github.com/StanfordSNR/indigo.git'
 
     elif cmd == 'git_checkout':
-        cmd_in_ssh = 'cd %s && git fetch --all && git checkout %s' % args.commit
+        cmd_in_ssh = ('cd %s && git fetch --all && '
+                      'git checkout %s' % (args.rlcc_dir, args.commit))
 
     elif cmd == 'git_pull':
         cmd_in_ssh = ('cd %s && git fetch --all && '

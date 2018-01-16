@@ -38,7 +38,7 @@ def main():
     assistant_cmd = ('%s/helpers/assistant.py --remote=%s --username=%s '
                      '--rlcc-dir=%s '
                      % (args.rlcc_dir, remote_ip,
-                        args.username, args.rlcc_dir, args.commit))
+                        args.username, args.rlcc_dir))
 
     if args.git_push:
         check_call('git add -A && '
