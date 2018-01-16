@@ -1,3 +1,4 @@
+import time
 import sys
 import json
 import socket
@@ -46,6 +47,8 @@ class Sender(object):
 
         self.dummy_payload = 'x' * 1400
 
+        self.sampling_file = open(path.join(project_root.DIR, 'env', 'sampling_time'), 'w', 0)
+        
         # congestion control related
         self.seq_num = 0
         self.next_ack = 0
@@ -72,6 +75,7 @@ class Sender(object):
             self.rtt_buf = []
 
     def cleanup(self):
+        self.sampling_file.close()
         self.sock.close()
 
     def handshake(self):
@@ -180,7 +184,12 @@ class Sender(object):
                      self.delivery_rate_ewma,
                      self.send_rate_ewma,
                      self.cwnd]
+
+            # time how long it takes to get an action from the NN
+            start_sample = time.time()
             action = self.sample_action(state)
+            self.sampling_file.write('%.2f ms\n' % ((time.time() - start_sample) * 1000))
+
             self.take_action(action)
 
             self.delay_ewma = None
