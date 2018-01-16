@@ -5,10 +5,7 @@ from subprocess import check_call, check_output
 
 
 def main():
-    """ Runs a sequence of commands to perform DAgger training.
-    By default, commits and amends HEAD, updates all machines to latest
-    GIT version, and runs the dagger training command.
-    """
+    """ Runs a sequence of commands to perform DAgger training. """
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -26,6 +23,9 @@ def main():
     parser.add_argument(
             '--git-pull', action='store_true',
             help='whether to do a git pull from all workers (default: False)')
+    parser.add_argument(
+            '--commit', default='master',
+            help='commit for git-pull (default: master)')
 
     args = parser.parse_args()
 
@@ -38,12 +38,14 @@ def main():
     assistant_cmd = ('%s/helpers/assistant.py --remote=%s --username=%s '
                      '--rlcc-dir=%s '
                      % (args.rlcc_dir, remote_ip,
-                        args.username, args.rlcc_dir))
+                        args.username, args.rlcc_dir, args.commit))
 
     if args.git_push:
         check_call('git add -A && '
                    'git commit --amend --no-edit && '
                    'git push -f', shell=True)
+
+    check_call(assistant_cmd + '--commit=%s git_checkout' % (args.commit), shell=True)
 
     if args.git_pull:
         check_call(assistant_cmd + 'git_pull', shell=True)

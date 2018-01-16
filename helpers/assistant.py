@@ -19,9 +19,11 @@ def run_cmd(args, host, procs):
     elif cmd == 'git_clone':
         cmd_in_ssh = 'git clone https://github.com/StanfordSNR/indigo.git'
 
+    elif cmd == 'git_checkout':
+        cmd_in_ssh = 'cd %s && git fetch --all && git checkout %s' % args.commit
+
     elif cmd == 'git_pull':
         cmd_in_ssh = ('cd %s && git fetch --all && '
-                      'git checkout master && '
                       'git reset --hard @~1 && git pull' % args.rlcc_dir)
 
     elif cmd == 'rm_history':
@@ -55,6 +57,9 @@ def main():
     parser.add_argument(
         '--local-rlcc-dir', metavar='DIR', default='~/RLCC',
         help='path to RLCC/ (default: ~/RLCC)')
+    parser.add_argument(
+        '--commit', metavar='COMMIT', default='master',
+        help='Commit to use when checking out (default: master)')
     parser.add_argument('cmd')
     args = parser.parse_args()
 
