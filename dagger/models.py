@@ -29,7 +29,7 @@ class DaggerLSTM(object):
         self.input = tf.placeholder(tf.float32, [None, None, state_dim])
 
         self.num_layers = 2
-        self.lstm_dim = 128
+        self.lstm_dim = 4
         stacked_lstm = rnn.MultiRNNCell([rnn.BasicLSTMCell(self.lstm_dim)
             for _ in xrange(self.num_layers)])
 
