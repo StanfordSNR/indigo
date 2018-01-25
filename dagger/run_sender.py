@@ -62,9 +62,10 @@ class Learner(object):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('port', type=int)
+    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    sender = Sender(args.port)
+    sender = Sender(args.port, debug=args.debug)
 
     model_path = path.join(project_root.DIR, 'dagger', 'model', 'model')
 
