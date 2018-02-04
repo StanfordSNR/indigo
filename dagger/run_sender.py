@@ -62,11 +62,16 @@ class Learner(object):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('port', type=int)
+    parser.add_argument('checkpoint', type=int, default=-1)
+    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
 
-    sender = Sender(args.port)
+    sender = Sender(args.port, debug=args.debug)
 
-    model_path = path.join(project_root.DIR, 'dagger', 'model', 'model')
+    if args.checkpoint == -1:
+        model_path = path.join(project_root.DIR, 'dagger', 'model', 'model')
+    else:
+        model_path = path.join(project_root.DIR, 'dagger', 'model', 'checkpoint-%d' % args.checkpoint)
 
     learner = Learner(
         state_dim=Sender.state_dim,
