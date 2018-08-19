@@ -47,7 +47,7 @@ class A3C(object):
 
         self.is_chief = (task_index == 0)
         self.worker_device = '/job:worker/task:%d' % task_index
-        
+
         # buffers required to train
         self.action_buf = []
         self.state_buf = []
@@ -56,8 +56,8 @@ class A3C(object):
         self.local_step = 0
 
         if self.dagger:
-            self.max_global_step = 2000 
-            self.check_point =1500 
+            self.max_global_step = 2000
+            self.check_point =1500
             self.learn_rate = 1e-3
         else:
             self.max_global_step = 12000
