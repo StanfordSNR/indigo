@@ -1,33 +1,35 @@
-"""
-Copyright 2018 Francis Y. Yan, Jestin Ma
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-"""
-
-
 #!/usr/bin/env python
 
+# Copyright 2018 Francis Y. Yan, Jestin Ma
+# Copyright 2018 Huawei Technologies
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#     Unless required by applicable law or agreed to in writing, software
+#     distributed under the License is distributed on an "AS IS" BASIS,
+#     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#     See the License for the specific language governing permissions and
+#     limitations under the License.
+
+
+import ast
+import ConfigParser
+import os
 import sys
 import yaml
 import argparse
+import threading
 import project_root
-import numpy as np
 import tensorflow as tf
 from subprocess import check_call
 from os import path
 from dagger import DaggerLeader, DaggerWorker
 from env.environment import Environment
-from env.sender import Sender
+from env.environment_mininet import Environment_Mininet
 
 
 def prepare_traces(bandwidth):
@@ -55,6 +57,45 @@ def prepare_traces(bandwidth):
     return uplink_trace, downlink_trace
 
 
+def get_mininet_env_param():
+    total_tp_set = []
+    total_env_set = []
+
+    cfg = ConfigParser.ConfigParser()
+    cfg_path = os.path.join(project_root.DIR, 'config.ini')
+    cfg.read(cfg_path)
+
+    train_env = cfg.options('train_env')
+    for opt in train_env:
+        env_param, tp_set_param = ast.literal_eval(cfg.get('train_env', opt))
+        total_tp_set.append(ast.literal_eval(cfg.get('global', tp_set_param)))
+        total_env_set.append(ast.literal_eval(cfg.get('global', env_param)))
+
+    return total_tp_set, total_env_set
+
+
+def create_mininet_env(worker_num, worker_index):
+    total_tp_set, total_env_set = get_mininet_env_param()
+    total_env_len = len(total_env_set)
+    tasks_per_work = total_env_len / worker_num
+
+    env_set = []
+    tp_set = []
+    if (worker_index < worker_num - 1):
+        for i in xrange(tasks_per_work * worker_index, tasks_per_work * (worker_index+1)):
+            tp_set.append(total_tp_set[i])
+            env_set.append(total_env_set[i])
+            print 'worker', worker_index, 'is Allocated traffic pattern & env ', total_tp_set[i],total_env_set[i]
+    else:  # last one
+        for i in xrange(tasks_per_work * worker_index, total_env_len):
+            tp_set.append(total_tp_set[i])
+            env_set.append(total_env_set[i])
+            print 'worker', worker_index, 'is Allocated traffic pattern & env ', total_tp_set[i],total_env_set[i]
+
+    env = Environment_Mininet(tp_set, env_set, True)
+    return env
+
+
 def create_env(task_index):
     """ Creates and returns an Environment which contains a single
     sender-receiver connection. The environment is run inside mahimahi
@@ -65,16 +106,22 @@ def create_env(task_index):
     best_cwnd_map = yaml.load(open(best_cwnds_file))
 
     if task_index == 0:
-        trace_path = path.join(project_root.DIR, 'env', '0.57mbps-poisson.trace')
-        mm_cmd = 'mm-delay 28 mm-loss uplink 0.0477 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=14' % (trace_path, trace_path)
+        trace_path = path.join(project_root.DIR, 'env',
+                               '0.57mbps-poisson.trace')
+        mm_cmd = 'mm-delay 28 mm-loss uplink 0.0477 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=14' % (
+            trace_path, trace_path)
         best_cwnd = 5
     elif task_index == 1:
-        trace_path = path.join(project_root.DIR, 'env', '2.64mbps-poisson.trace')
-        mm_cmd = 'mm-delay 88 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=130' % (trace_path, trace_path)
+        trace_path = path.join(project_root.DIR, 'env',
+                               '2.64mbps-poisson.trace')
+        mm_cmd = 'mm-delay 88 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=130' % (
+            trace_path, trace_path)
         best_cwnd = 40
     elif task_index == 2:
-        trace_path = path.join(project_root.DIR, 'env', '3.04mbps-poisson.trace')
-        mm_cmd = 'mm-delay 130 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=426' % (trace_path, trace_path)
+        trace_path = path.join(project_root.DIR, 'env',
+                               '3.04mbps-poisson.trace')
+        mm_cmd = 'mm-delay 130 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=426' % (
+            trace_path, trace_path)
         best_cwnd = 70
     elif task_index <= 18:
         bandwidth = [5, 10, 20, 50]
@@ -84,19 +131,23 @@ def create_env(task_index):
         bandwidth, delay = cartesian[task_index - 3]
 
         uplink_trace, downlink_trace = prepare_traces(bandwidth)
-        mm_cmd = 'mm-delay %d mm-link %s %s' % (delay, uplink_trace, downlink_trace)
+        mm_cmd = 'mm-delay %d mm-link %s %s' % (
+            delay, uplink_trace, downlink_trace)
         best_cwnd = best_cwnd_map[bandwidth][delay]
     elif task_index == 19:
         trace_path = path.join(project_root.DIR, 'env', '100.42mbps.trace')
-        mm_cmd = 'mm-delay 27 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=173' % (trace_path, trace_path)
+        mm_cmd = 'mm-delay 27 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=173' % (
+            trace_path, trace_path)
         best_cwnd = 500
     elif task_index == 20:
         trace_path = path.join(project_root.DIR, 'env', '77.72mbps.trace')
-        mm_cmd = 'mm-delay 51 mm-loss uplink 0.0006 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=94' % (trace_path, trace_path)
+        mm_cmd = 'mm-delay 51 mm-loss uplink 0.0006 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=94' % (
+            trace_path, trace_path)
         best_cwnd = 690
     elif task_index == 21:
         trace_path = path.join(project_root.DIR, 'env', '114.68mbps.trace')
-        mm_cmd = 'mm-delay 45 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=450' % (trace_path, trace_path)
+        mm_cmd = 'mm-delay 45 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=450' % (
+            trace_path, trace_path)
         best_cwnd = 870
     elif task_index <= 29:
         bandwidth = [100, 200]
@@ -106,7 +157,8 @@ def create_env(task_index):
         bandwidth, delay = cartesian[task_index - 26]
 
         uplink_trace, downlink_trace = prepare_traces(bandwidth)
-        mm_cmd = 'mm-delay %d mm-link %s %s' % (delay, uplink_trace, downlink_trace)
+        mm_cmd = 'mm-delay %d mm-link %s %s' % (
+            delay, uplink_trace, downlink_trace)
         best_cwnd = best_cwnd_map[bandwidth][delay]
 
     env = Environment(mm_cmd)
@@ -135,6 +187,9 @@ def run(args):
         # Sets up the queue, shared variables, and global classifier.
         worker_tasks = set([idx for idx in xrange(num_workers)])
         leader = DaggerLeader(cluster, server, worker_tasks)
+        t = threading.Thread(target = leader.wait_to_save,args=(ps_hosts,))
+        t.setDaemon(True)
+        t.start()
         try:
             leader.run(debug=True)
         except KeyboardInterrupt:
@@ -144,7 +199,8 @@ def run(args):
 
     elif job_name == 'worker':
         # Sets up the env, shared variables (sync, classifier, queue, etc)
-        env = create_env(task_index)
+        # env = create_env(task_index)
+        env = create_mininet_env(num_workers, task_index)
         learner = DaggerWorker(cluster, server, task_index, env)
         try:
             learner.run(debug=True)

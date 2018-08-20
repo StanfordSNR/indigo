@@ -1,18 +1,17 @@
-"""
-Copyright 2018 Francis Y. Yan, Jestin Ma
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-"""
+# Copyright 2018 Francis Y. Yan, Jestin Ma
+# Copyright 2018 Huawei Technologies
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#     Unless required by applicable law or agreed to in writing, software
+#     distributed under the License is distributed on an "AS IS" BASIS,
+#     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#     See the License for the specific language governing permissions and
+#     limitations under the License.
 
 
 import numpy as np
@@ -43,18 +42,18 @@ class DaggerLSTM(object):
         self.add_one = self.cnt.assign_add(1.0)
 
         # self.input: [batch_size, max_time, state_dim]
-        self.input = tf.placeholder(tf.float32, [None, None, state_dim])
+        self.input = tf.placeholder(tf.float32, [None, None, state_dim], name='input_node')
 
-        self.num_layers = 1
-        self.lstm_dim = 32
+        self.num_layers = 2
+        self.lstm_dim = 256
         stacked_lstm = rnn.MultiRNNCell([rnn.BasicLSTMCell(self.lstm_dim)
-            for _ in xrange(self.num_layers)])
+                                        for _ in xrange(self.num_layers)])
 
         self.state_in = []
         state_tuple_in = []
-        for _ in xrange(self.num_layers):
-            c_in = tf.placeholder(tf.float32, [None, self.lstm_dim])
-            h_in = tf.placeholder(tf.float32, [None, self.lstm_dim])
+        for tmp_i in xrange(self.num_layers):
+            c_in = tf.placeholder(tf.float32, [None, self.lstm_dim], name='state_c_{}'.format(tmp_i))
+            h_in = tf.placeholder(tf.float32, [None, self.lstm_dim], name='state_h_{}'.format(tmp_i))
             self.state_in.append((c_in, h_in))
             state_tuple_in.append(rnn.LSTMStateTuple(c_in, h_in))
 
@@ -66,13 +65,17 @@ class DaggerLSTM(object):
             stacked_lstm, self.input, initial_state=state_tuple_in)
 
         self.state_out = self.convert_state_out(state_tuple_out)
+        self.state_out_identity = tf.identity(self.state_out, name='state_out')
 
         # map output to scores
         self.action_scores = layers.linear(output, action_cnt)
-        self.action_probs = tf.nn.softmax(self.action_scores)
+        self.action_probs = tf.nn.softmax(self.action_scores, name='output_node')
 
         self.trainable_vars = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+
+        # add self saver
+        self.saver = tf.train.Saver(tf.global_variables())
 
     def convert_state_out(self, state_tuple_out):
         state_out = []

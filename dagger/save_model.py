@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-# Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Huawei Technologies
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,29 +15,20 @@
 #     limitations under the License.
 
 
+import threading
+import socket
+import time
 import argparse
-from receiver import Receiver
 
+parser = argparse.ArgumentParser()
+parser.add_argument('ip',help='log mir')
+args = parser.parse_args()
+ip = str(args.ip)
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('ip', metavar='IP')
-    parser.add_argument('port', type=int)
-    parser.add_argument('-t', help='log file name in test')
-    args = parser.parse_args()
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    receiver = Receiver(args.ip, args.port)
-    if args.t is not None:
-        receiver.set_test_name(args.t)
+address = (ip,14514)
 
-    try:
-        receiver.handshake()
-        receiver.run()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        receiver.cleanup()
-
-
-if __name__ == '__main__':
-    main()
+data = 'save model'
+s.sendto(data,address)
+s.close()

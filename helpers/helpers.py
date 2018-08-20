@@ -1,18 +1,17 @@
-"""
-Copyright 2018 Francis Y. Yan, Jestin Ma
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
-"""
+# Copyright 2018 Francis Y. Yan, Jestin Ma
+# Copyright 2018 Huawei Technologies
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#     Unless required by applicable law or agreed to in writing, software
+#     distributed under the License is distributed on an "AS IS" BASIS,
+#     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#     See the License for the specific language governing permissions and
+#     limitations under the License.
 
 
 import os
@@ -67,9 +66,30 @@ def get_open_udp_port():
     return port
 
 
+def get_open_tcp_port():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    s.bind(('', 0))
+    port = s.getsockname()[1]
+    s.close()
+    time.sleep(0.1)
+    return port
+
+
+def check_pid(pid):
+    """ Check For the existence of a unix pid. """
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    else:
+        return True
+
+
 def normalize(state):
-    return [state[0] / 200.0, state[1] / 200.0,
-            state[2] / 200.0, state[3] / 5000.0]
+    return [state[0] / 20.0, state[1] / 1000.0,
+            state[2] / 1000.0, state[3] / 1000.0]
 
 
 def one_hot(action, action_cnt):

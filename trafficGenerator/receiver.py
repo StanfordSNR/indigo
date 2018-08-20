@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-# Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Huawei Technologies
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,29 +15,23 @@
 #     limitations under the License.
 
 
-import argparse
-from receiver import Receiver
+import socket
+import sys
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('ip', metavar='IP')
-    parser.add_argument('port', type=int)
-    parser.add_argument('-t', help='log file name in test')
-    args = parser.parse_args()
+def main(args):
+    bind_addr = (args[1], int(args[2]))
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(bind_addr)
 
-    receiver = Receiver(args.ip, args.port)
-    if args.t is not None:
-        receiver.set_test_name(args.t)
-
-    try:
-        receiver.handshake()
-        receiver.run()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        receiver.cleanup()
+    while True:
+        data, addr = s.recvfrom(2048)
+        if not data:
+            print('ERROR: null msg from client.')
+            break
+        # print('receive {} from {}'.format(len(data), addr))
+    s.close()
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv)
