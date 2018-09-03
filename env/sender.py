@@ -85,7 +85,7 @@ class Sender(object):
         self.poller.register(self.sock, ALL_FLAGS)
 
         self.indigo_header = 28
-        self.indigo_payload = 'x' * (Sender.pkt_size - self.indigo_header - 8 - 20 - 18)
+        self.indigo_payload = 'x' * 2764
         self.indigo_length = self.indigo_header + len(self.indigo_payload)
 
         if self.debug:
