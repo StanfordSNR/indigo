@@ -21,12 +21,13 @@ import sys
 import socket
 import select
 import struct
-# import threading
 import datetime
 import numpy as np
 import project_root
 from os import path
 from helpers.helpers import (curr_ts_ms, apply_op, READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, WRITE_FLAGS, ALL_FLAGS)
+from multiprocessing import Process, Queue, Pipe
+
 
 
 def format_actions(action_list):
@@ -47,7 +48,7 @@ class Ack():
 
 class Sender(object):
     # RL exposed class/static variables
-    max_cwnd = 12500  # packet of 3000B
+    max_cwnd = 25000  # packet of 1500B
     min_cwnd = 10
 
     max_rtt_normorlize = 300.0  # ms
@@ -66,6 +67,8 @@ class Sender(object):
     action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
+    usable_size = 1392
+
     def __init__(self, port=0, train=False, debug=False):
         self.train = train
         self.debug = debug
@@ -83,7 +86,7 @@ class Sender(object):
         self.poller.register(self.sock, ALL_FLAGS)
 
         self.indigo_header = 28
-        self.indigo_payload = 'x' * 1364
+        self.indigo_payload = 'x' * (Sender.usable_size - self.indigo_header)
         self.indigo_length = self.indigo_header + len(self.indigo_payload)
 
         if self.debug:
@@ -110,10 +113,21 @@ class Sender(object):
         self.last_check_seq = 0
         self.last_check_seq_1 = 0
         self.last_check_time = None
-        self.last_check_time_1 = None
+        self.last_send_time = None
 
         self.sent_queue = collections.deque()
-        # self.mutex = threading.Lock()
+
+        # preemptive params
+        self.preemptive = False
+        self.gain_flag = 0
+        if self.preemptive == True:
+            self.gain_cycle = 8
+            self.gain_cycle_index = 0
+            self.gain_flag = 0
+            self.ec = None
+            self.last_gain_time = None
+
+        self.pacing = 1
 
         self.last_delivered = 0
         self.sampling_flag = 0
@@ -139,10 +153,16 @@ class Sender(object):
             self.pc = None
             self.test_name = None
 
+        self.send_queue_out, self.send_queue_in  = Pipe(False)
+        self.send_process = Process(target=self.send_process_func)
+
     def cleanup(self):
         if self.debug and self.sampling_file:
             self.sampling_file.close()
         self.sock.close()
+        self.send_queue_out.close()
+        self.send_queue_in.close()
+        self.send_process.terminate()
 
     def handshake(self):
         """Handshake with peer receiver. Must be called before run()."""
@@ -158,50 +178,11 @@ class Sender(object):
 
         self.sock.setblocking(0)  # non-blocking UDP socket
         self.test_start_time = curr_ts_ms()
+        self.send_process.start()
 
     def set_sample_action(self, sample_action):
         """Set the policy. Must be called before run()."""
-
         self.sample_action = sample_action
-
-    def update_state(self, ack):
-        """ Update the state variables listed in __init__() """
-        self.next_ack = max(self.next_ack, ack.seq_num + 1)
-        curr_time_ms = curr_ts_ms()
-
-        # Update RTT
-        rtt = float(curr_time_ms - ack.send_ts)
-        self.min_rtt = min(self.min_rtt, rtt)
-        self.min_rtt = max(0.001, self.min_rtt)
-
-        if self.train:
-            if self.ts_first is None:
-                self.ts_first = curr_time_ms
-            self.rtt_buf.append(rtt)
-
-        delay = rtt - self.min_rtt
-        if self.delay_ewma is None:
-            self.delay_ewma = delay
-        else:
-            self.delay_ewma = 0.875 * self.delay_ewma + 0.125 * delay
-
-        # Update BBR's delivery rate
-        self.delivered += ack.ack_bytes
-        self.delivered_time = curr_time_ms
-        delivery_rate = (0.008 * (self.delivered - ack.delivered) / max(1, self.delivered_time - ack.delivered_time))
-
-        if self.delivery_rate_ewma is None:
-            self.delivery_rate_ewma = delivery_rate
-        else:
-            self.delivery_rate_ewma = (0.875 * self.delivery_rate_ewma + 0.125 * delivery_rate)
-
-        # Update Vegas sending rate
-        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / max(1, rtt)
-
-        if self.send_rate_ewma is None:
-            self.send_rate_ewma = send_rate
-        else:
-            self.send_rate_ewma = (0.875 * self.send_rate_ewma + 0.125 * send_rate)
 
     def update_state_relative(self, ack):
         """ Update the state variables listed in __init__() """
@@ -214,7 +195,7 @@ class Sender(object):
         self.min_rtt = min(self.min_rtt, rtt)
         self.min_rtt = max(1, self.min_rtt)
         rtt = max(1, rtt)
-        # print rtt, self.min_rtt
+        #print rtt, self.min_rtt
 
         if self.train:
             if self.ts_first is None:
@@ -293,47 +274,25 @@ class Sender(object):
     def take_action(self, action_idx):
         # old_cwnd = self.cwnd
         op, val = self.action_mapping[action_idx]
-
         self.cwnd = apply_op(op, self.cwnd, val)
         self.cwnd = max(Sender.min_cwnd, self.cwnd)
         self.cwnd = min(Sender.max_cwnd, self.cwnd)
-        # self.cwnd = 10
+        #self.cwnd = 10
 
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd
 
     def send(self):
-        # data = datagram_pb2.Data()
-        # data.seq_num = self.seq_num
-        # data.send_ts = curr_ts_ms()
-        # data.sent_bytes = self.sent_bytes
-        # data.delivered_time = self.delivered_time
-        # data.delivered = self.delivered
-        # data.payload = self.dummy_payload
-
-        # serialized_data = data.SerializeToString()
-        # self.sock.sendto(serialized_data, self.peer_addr)
-
         send_ts = curr_ts_ms()
-        data = (self.seq_num, send_ts, self.sent_bytes, self.delivered_time, self.delivered, self.indigo_payload)
-        packed_data = struct.pack('!iiqiq{}s'.format(len(self.indigo_payload)), *data)
-        try:
-            send_len = self.sock.sendto(packed_data, self.peer_addr)
-        except socket.error:
-            # print 'socket error'
-            return -1
+        data = (self.seq_num, send_ts, self.sent_bytes, self.delivered_time, self.delivered)
 
-        if send_len != len(packed_data):
-            print 'send error', send_len
-            return -1
+        self.send_queue_in.send(data)
 
         self.seq_num += 1
-        # self.sent_bytes += len(serialized_data)
-        self.sent_bytes += len(packed_data)
-
-        # self.mutex.acquire()
+        self.sent_bytes += self.indigo_length
         self.sent_queue.append((send_ts, self.sent_bytes))
-        # self.mutex.release()
+        self.last_send_time = send_ts
+
         return 0
 
     def cal_loss_rate(self, ack):
@@ -370,7 +329,6 @@ class Sender(object):
         return max(0, loss_rate)
 
     def recv(self):
-        # serialized_ack, addr = self.sock.recvfrom(1600)
         try:
             unpaced_data, addr = self.sock.recvfrom(1600)
         except socket.error:
@@ -379,8 +337,6 @@ class Sender(object):
         if addr != self.peer_addr or len(unpaced_data) < 28:
             return 0
 
-        # ack = datagram_pb2.Ack()
-        # ack.ParseFromString(serialized_ack)
         ack = Ack(struct.unpack('!iiqiqi', unpaced_data))
         # print ack.seq_num, ack.send_ts, ack.sent_bytes, ack.delivered_time, ack.delivered, ack.ack_bytes
 
@@ -392,9 +348,7 @@ class Sender(object):
         # At each step end, feed the state:
         cur_time = curr_ts_ms()
         if cur_time - self.step_start_ms > self.step_len_ms:  # step's end
-            # self.mutex.acquire()
             self.loss_rate = self.cal_loss_rate(ack)
-            # self.mutex.release()
 
             state0 = [self.delay_ewma,
                       self.delivery_rate_ewma,
@@ -415,24 +369,31 @@ class Sender(object):
             state7 = [self.rtt_abs, self.delay_abs, self.send_abs,
                       self.delivery_abs, 1.0*self.cwnd/Sender.max_cwnd]
 
+            state8 = [self.rtt_abs, self.delay_abs, self.send_abs,
+                      self.delivery_abs, self.loss_rate, self.gain_flag, 1.0*self.cwnd/Sender.max_cwnd] # preemptive state
+
             state_dict = {'state0': state0,
                           'state1': state1,
                           'state2': state2,
                           'state5': state5,
                           'state6': state6,
-                          'state7': state7}
+                          'state7': state7,
+                          'state8': state8}
 
             selected_state = state_dict[Sender.cfg.get('global', 'state')]
-            #print selected_state
+            # print selected_state
             # time how long it takes to get an action from the NN
             if self.debug:
                 start_sample = time.time()
+            if not self.train:
+                invoke_start_time = datetime.datetime.now()
 
             action = self.sample_action(selected_state)
+
             if action == -1:
                 return -1
 
-            if self.debug:
+            if self.debug :
                 self.sampling_file.write('%.2f ms\n' % (
                     (time.time() - start_sample) * 1000))
 
@@ -454,19 +415,23 @@ class Sender(object):
             else:
                 if self.pc is not None:
                     self.pc.upload_cwnd(self.cwnd)
+                    #print self.cwnd
                 if curr_ts_ms() - self.test_start_time >= Sender.max_test_time:
                     if self.test_name is not None:
                         self.test_start_time = 0
                         self.performance_for_test()
                         time.sleep(0.2)  # wait for all the packeted arriving at receiver
                         self.running = False
-                    #else:
-                    #    self.print_performance()
-                    #    self.running = False
+                    else:
+                        self.print_performance()
+                        self.running = False
         return 1
 
     def set_perf_client(self, pc):
         self.pc = pc
+
+    def set_expert_client(self, ec):
+        self.ec = ec
 
     def get_recv_num(self):
         recv_num = self.cwnd / (Sender.max_cwnd/50)
@@ -483,8 +448,11 @@ class Sender(object):
         if self.last_check_time is None:
             self.last_check_time = curr_ts_ms()
 
-        if self.last_check_time_1 is None:
-            self.last_check_time_1 = curr_ts_ms()
+        if self.last_send_time is None:
+            self.last_send_time = curr_ts_ms()
+
+        if self.preemptive == True:
+            self.last_gain_time = curr_ts_ms()
 
         pre_time = datetime.datetime.now()
         borrowed_pkt = 0.0
@@ -504,12 +472,21 @@ class Sender(object):
                 rtt = 10
             else:
                 rtt = self.rtt_ewma
-            if current_time - self.last_check_time_1 > rtt:
-                if self.last_check_seq_1 == self.seq_num:
-                    self.send()
-                else:
-                    self.last_check_time_1 = current_time
-                    self.last_check_seq_1  = self.seq_num
+
+            if current_time - self.last_send_time > rtt:
+                self.send()
+
+            if self.preemptive == True:
+                if current_time - self.last_gain_time > rtt:
+                    self.gain_cycle_index += 1
+                    if self.gain_cycle_index % self.gain_cycle == 0:
+                        self.gain_flag = 1
+                        self.gain_cycle_index = 0
+                    else:
+                        self.gain_flag = 0
+                    if self.train:
+                        self.ec.gain_flag = self.gain_flag
+                    self.last_gain_time = current_time
 
             if self.window_is_open():
                 if curr_flags != ALL_FLAGS:
@@ -541,114 +518,57 @@ class Sender(object):
                             break
                         elif ret == -1:  # expert server error
                             return -1
-                    # res = self.recv()
+                    #res = self.recv()
 
                 if flag & WRITE_FLAGS:
                     if self.window_is_open():
-                        # num = 0
-                        # self.send()
-                        # for i in xrange((int(self.cwnd) - (self.seq_num - self.next_ack))/2):
-                        #     if self.send() == -1 or i > 100:
-                        #         break
-                        #     num += 1
-                        # print num
-                        if self.rtt_ewma is None:
-                            n = 1
+
+                        if self.pacing == 1:
+                            if self.rtt_ewma is None:
+                                n = 0.5
+                            else:
+                                n = self.cwnd / self.min_rtt
+
+
+                            _now = datetime.datetime.now()
+                            if ((_now - pre_time).microseconds >= interval):
+                                n = (_now - pre_time).microseconds / interval * (n*(interval/1000.0))
+                                pre_time = _now
+
+                                borrowed_pkt += n - int(n)
+                                if borrowed_pkt >= 1:
+                                    n += int(borrowed_pkt)
+                                    borrowed_pkt = borrowed_pkt - int(borrowed_pkt)
+
+                                num = 0
+                                n = int(n)
+
+                                availbable_cwnd = int(self.cwnd) - (self.seq_num - self.next_ack)
+
+                                c = min(availbable_cwnd, n)
+
+                                while num < c:
+                                    if self.send() == 0:
+                                        num = num + 1
+                                    else:
+                                        break
+                                borrowed_pkt += c - num
                         else:
-                            n = self.cwnd / self.min_rtt
-
-                        _now = datetime.datetime.now()
-                        if ((_now - pre_time).microseconds >= interval):
-                            n = (_now - pre_time).microseconds / interval * (n*(interval/1000.0))
-                            pre_time = _now
-
-                            borrowed_pkt += n - int(n)
-                            if borrowed_pkt >= 1:
-                                n += int(borrowed_pkt)
-                                borrowed_pkt = borrowed_pkt - int(borrowed_pkt)
-
-                            num = 0
-                            n = int(n)
-
-                            availbable_cwnd = int(self.cwnd) - (self.seq_num - self.next_ack)
-
-                            c = min(availbable_cwnd, n)
-
-                            while num < c:
-                                if self.send() == 0:
-                                    num = num + 1
-                                else:
+                            cwnd = int(self.cwnd) - (self.seq_num - self.next_ack)
+                            for i in xrange(cwnd):
+                                if self.send() == -1 or i > 100:
                                     break
-                            borrowed_pkt += c - num
+
         return 0
 
-    # def send_thread_func(self):
-    #     pre_time = datetime.datetime.now()
-    #     borrowed_pkt = 0.0
-    #     interval = 1000.0
-
-    #     while self.running:
-    #         if self.rtt_ewma is None:
-    #             n = 1.0
-    #         else:
-    #             n = self.cwnd / self.min_rtt / 2.0
-
-    #         _now = datetime.datetime.now()
-    #         if ((_now - pre_time).microseconds >= interval):
-    #             n = (_now - pre_time).microseconds / interval * (n*(interval/1000.0))
-    #             borrowed_pkt += n - int(n)
-    #             if borrowed_pkt >= 1:
-    #                 n += int(borrowed_pkt)
-    #                 borrowed_pkt = borrowed_pkt - int(borrowed_pkt)
-
-    #             pre_time = _now
-    #             i = 0
-    #             n = int(n)
-    #             while i < n:
-    #                 if self.send() == 0:
-    #                     i = i + 1
-    #                 else:
-    #                     break
-    #             borrowed_pkt += n - i
-    #             # print 'send i', self.cwnd,i
-
-    # def recv_thread_func(self):
-    #     TIMEOUT = 1000  # ms
-    #     self.poller.modify(self.sock, READ_FLAGS)
-    #     while self.running:
-    #         self.poller.modify(self.sock, READ_FLAGS)
-    #         events = self.poller.poll(TIMEOUT)
-
-    #         for fd, flag in events:
-    #             assert self.sock.fileno() == fd
-
-    #             if flag & READ_FLAGS:
-    #                 self.recv()
-    #                 print 'recn'
-
-    # def run_rate(self):
-    #     TIMEOUT = 1000  # ms
-
-    #     if self.last_check_time is None:
-    #         self.last_check_time = curr_ts_ms()
-
-    #     cal_thread = threading.Thread(target=self.send_thread_func)
-    #     cal_thread.start()
-
-    #     try:
-    #         while self.running:
-    #             self.poller.modify(self.sock, READ_FLAGS)
-    #             events = self.poller.poll(TIMEOUT)
-
-    #             for fd, flag in events:
-    #                 assert self.sock.fileno() == fd
-
-    #                 if flag & READ_FLAGS:
-    #                     self.recv()
-
-    #     except KeyboardInterrupt:
-    #         self.running = False
-    #     return 0
+    def send_process_func(self):
+        while True:
+            seq_num, send_ts, sent_bytes, delivered_time, delivered = self.send_queue_out.recv()
+            data = (seq_num, send_ts, sent_bytes, delivered_time, delivered)
+            packed_data = struct.pack('!iiqiq', *data)
+            ret = -1
+            while ret == -1:
+                ret = self.sock.sendto(packed_data + self.indigo_payload, self.peer_addr)
 
     def compute_performance(self):
         duration = curr_ts_ms() - self.ts_first
@@ -664,7 +584,7 @@ class Sender(object):
         perc_delay = np.percentile(self.rtt_buf, 95)
         avg_delay = np.percentile(self.rtt_buf, 50)
 
-        print ('thx: %.2f, delay: %d(95th) %d(50th), sent_bytes: %d\n' % (tput, perc_delay,avg_delay,self.sent_bytes))
+        print ('thx: %.2f, delay: %d(95th) %d(50th), sent_bytes: %d\n' % (tput, perc_delay, avg_delay, self.sent_bytes))
 
     def set_test_name(self, name):
         self.test_name = name
