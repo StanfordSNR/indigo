@@ -66,8 +66,6 @@ class Sender(object):
     action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
-    pkt_size = 3000  # indigo_length + 8 + 20 + 18
-
     def __init__(self, port=0, train=False, debug=False):
         self.train = train
         self.debug = debug
@@ -85,7 +83,7 @@ class Sender(object):
         self.poller.register(self.sock, ALL_FLAGS)
 
         self.indigo_header = 28
-        self.indigo_payload = 'x' * 2764
+        self.indigo_payload = 'x' * 1364
         self.indigo_length = self.indigo_header + len(self.indigo_payload)
 
         if self.debug:
