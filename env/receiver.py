@@ -112,7 +112,7 @@ class Receiver(object):
                     sys.exit('Channel closed or error occurred')
 
                 if flag & READ_FLAGS:
-                    msg, addr = self.sock.recvfrom(5000)
+                    msg, addr = self.sock.recvfrom(1500)
 
                     if addr == self.peer_addr:
                         if msg != 'Hello from sender':
@@ -130,7 +130,7 @@ class Receiver(object):
         on_ack = 0
         try:
             while True:
-                serialized_data, addr = self.sock.recvfrom(5000)
+                serialized_data, addr = self.sock.recvfrom(1500)
                 received_bytes = received_bytes + len(serialized_data)
                 on_ack += 1
                 if on_ack == 2:
