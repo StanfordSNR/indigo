@@ -64,9 +64,10 @@ class Sender(object):
     cfg.read(cfg_path)
     state_dim = int(cfg.get('global', 'state_dim'))
 
-    action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
+    action_mapping = format_actions(["/2.0", "/1.025", "+0.0", "*1.025", "*2.0"])
     action_cnt = len(action_mapping)
 
+    pkt_size = 1500
     usable_size = 1392
 
     def __init__(self, port=0, train=False, debug=False):
@@ -143,6 +144,8 @@ class Sender(object):
 
         self.step_start_ms = None
         self.running = True
+        self.start_phase_time = 0
+        self.start_phase_max = 12
 
         self.rtt_buf = []
         if self.train:
@@ -277,10 +280,29 @@ class Sender(object):
         self.cwnd = apply_op(op, self.cwnd, val)
         self.cwnd = max(Sender.min_cwnd, self.cwnd)
         self.cwnd = min(Sender.max_cwnd, self.cwnd)
-        #self.cwnd = 10
+
+        #print self.cwnd
 
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd
+
+    def msend(self, num):
+        if num == 0:
+            return
+
+        data_array = []
+        for i in xrange(num):
+            send_ts = curr_ts_ms()
+            data = (self.seq_num, send_ts, self.sent_bytes, self.delivered_time, self.delivered)
+
+            data_array.append(data)
+
+            self.seq_num += 1
+            self.sent_bytes += self.indigo_length
+            self.sent_queue.append((send_ts, self.sent_bytes))
+            self.last_send_time = send_ts
+
+        self.send_queue_in.send(data_array)
 
     def send(self):
         send_ts = curr_ts_ms()
@@ -328,6 +350,18 @@ class Sender(object):
 
         return max(0, loss_rate)
 
+    def check_update(self, cur_time):
+        if self.train:
+            if cur_time - self.step_start_ms > self.step_len_ms:
+                return True
+        else:
+            if (self.start_phase_time < self.start_phase_max and cur_time - self.step_start_ms > max(self.min_rtt, self.step_len_ms)) or (self.start_phase_time >= self.start_phase_max and cur_time - self.step_start_ms > max(self.min_rtt/4.0, self.step_len_ms)):
+                if self.start_phase_time < self.start_phase_max:
+                    self.start_phase_time = self.start_phase_time + 1
+                return True
+
+        return False
+
     def recv(self):
         try:
             unpaced_data, addr = self.sock.recvfrom(1600)
@@ -347,7 +381,8 @@ class Sender(object):
 
         # At each step end, feed the state:
         cur_time = curr_ts_ms()
-        if cur_time - self.step_start_ms > self.step_len_ms:  # step's end
+        if self.check_update(cur_time):
+        #if cur_time - self.step_start_ms > self.step_len_ms: # step's end
             self.loss_rate = self.cal_loss_rate(ack)
 
             state0 = [self.delay_ewma,
@@ -381,7 +416,7 @@ class Sender(object):
                           'state8': state8}
 
             selected_state = state_dict[Sender.cfg.get('global', 'state')]
-            # print selected_state
+            #print selected_state
             # time how long it takes to get an action from the NN
             if self.debug:
                 start_sample = time.time()
@@ -469,12 +504,12 @@ class Sender(object):
                     self.last_check_seq = self.seq_num
 
             if self.rtt_ewma is None:
-                rtt = 10
+                rtt = 100
             else:
                 rtt = self.rtt_ewma
 
             if current_time - self.last_send_time > rtt:
-                self.send()
+                self.msend(1)
 
             if self.preemptive == True:
                 if current_time - self.last_gain_time > rtt:
@@ -498,9 +533,8 @@ class Sender(object):
                     curr_flags = READ_ERR_FLAGS
 
             events = self.poller.poll(TIMEOUT)
-
             if not events:  # timed out
-                self.send()
+                self.msend(1)
 
             for fd, flag in events:
                 assert self.sock.fileno() == fd
@@ -519,7 +553,6 @@ class Sender(object):
                         elif ret == -1:  # expert server error
                             return -1
                     #res = self.recv()
-
                 if flag & WRITE_FLAGS:
                     if self.window_is_open():
 
@@ -547,28 +580,39 @@ class Sender(object):
 
                                 c = min(availbable_cwnd, n)
 
-                                while num < c:
-                                    if self.send() == 0:
-                                        num = num + 1
-                                    else:
-                                        break
-                                borrowed_pkt += c - num
+                                # while num < c:
+                                #     if self.send() == 0:
+                                #         num = num + 1
+                                #     else:
+                                #         break
+                                #borrowed_pkt += c - num
+                                self.msend(c)
                         else:
                             cwnd = int(self.cwnd) - (self.seq_num - self.next_ack)
-                            for i in xrange(cwnd):
-                                if self.send() == -1 or i > 100:
-                                    break
+                            self.msend(cwnd)
 
         return 0
 
+    # def send_process_func(self):
+    #     while True:
+    #         self.send_queue_out.poll()
+    #         seq_num, send_ts, sent_bytes, delivered_time, delivered = self.send_queue_out.recv()
+    #         data = (seq_num, send_ts, sent_bytes, delivered_time, delivered)
+    #         packed_data = struct.pack('!iiqiq', *data)
+    #         ret = -1
+    #         while ret == -1:
+    #             ret = self.sock.sendto(packed_data + self.indigo_payload, self.peer_addr)
+
     def send_process_func(self):
         while True:
-            seq_num, send_ts, sent_bytes, delivered_time, delivered = self.send_queue_out.recv()
-            data = (seq_num, send_ts, sent_bytes, delivered_time, delivered)
-            packed_data = struct.pack('!iiqiq', *data)
-            ret = -1
-            while ret == -1:
-                ret = self.sock.sendto(packed_data + self.indigo_payload, self.peer_addr)
+            #self.send_queue_out.poll()
+            data_array = self.send_queue_out.recv()
+
+            for seq_num, send_ts, sent_bytes, delivered_time, delivered in data_array:
+                packed_data = struct.pack('!iiqiq', seq_num, send_ts, sent_bytes, delivered_time, delivered)
+                ret = -1
+                while ret == -1:
+                    ret = self.sock.sendto(packed_data + self.indigo_payload, self.peer_addr)
 
     def compute_performance(self):
         duration = curr_ts_ms() - self.ts_first
