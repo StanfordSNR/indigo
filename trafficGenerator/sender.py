@@ -221,25 +221,25 @@ def get_func(shape, bound):
 
     def func_expression_60(x):    # unit: Mbps
         x = float(x)              # unit: second
-        return min_x_max(0.0, 50.0 * x, 499.0)
+        return min_x_max(0.0, 2.0 * x, 19.5)
 
     def func_expression_61(x):    # unit: Mbps
         x = float(x)              # unit: second
-        return min_x_max(0.0, 500.0 - 50.0 * x, 499.0)
+        return min_x_max(0.0, 20.0 - 2.0 * x, 19.5)
 
     def func_expression_62(x):    # unit: Mbps
         x = float(x)             # unit: second
         if x <= 5:
-            return 100
+            return 4.0
         else:
-            return min_x_max(100.0, 100 + 50.0 * (x - 5), 499.0)
+            return min_x_max(4.0, 4 + 2.0 * (x - 5), 19.5)
 
     def func_expression_63(x):    # unit: Mbps
         x = float(x)             # unit: second
         if x <= 5:
-            return 400
+            return 16.0
         else:
-            return min_x_max(0.0, 400 - 50.0 * (x - 5), 400.0)
+            return min_x_max(0.0, 16 - 2.0 * (x - 5), 16.0)
 
     def func_expression_70(x):    # unit: Mbps
         x = float(x)              # unit: second
@@ -262,6 +262,10 @@ def get_func(shape, bound):
             return 80
         else:
             return min_x_max(0.0, 80 - 10.0 * (x - 5), 80.0)
+
+
+    def func_expression_999(x):
+        return 0
 
     def func_expression_1000(x):    # unit: Mbps
         x = float(x)              # unit: second
@@ -359,15 +363,15 @@ def get_func(shape, bound):
         return 0
 
     def func_expression_112(x):
-        return 450
+        return 18
 
     def func_expression_113(x):
         x = float(x)
-        return min_x_max(0.0, 500.0 - 10.0 * x, 500.0)
+        return min_x_max(0.0, 20.0 - 0.4 * x, 20.0)
 
     def func_expression_114(x):
         x = float(x)
-        return min_x_max(0.0, 10.0 * x, 500.0)
+        return min_x_max(0.0, 0.4 * x, 20.0)
 
     def func_expression_115(x):
         x = int(x)
@@ -376,54 +380,54 @@ def get_func(shape, bound):
         if x == 0:
             return 0.0
         elif x == 1:
-            return 450.0
+            return 18.0
         elif x == 2:
-            return 50.0
+            return 2.0
         elif x == 3:
-            return 400.0
+            return 16.0
         elif x == 4:
-            return 100.0
+            return 4.0
         elif x == 5:
-            return 350.0
+            return 14.0
         elif x == 6:
-            return 150.0
+            return 6.0
         elif x == 7:
-            return 300.0
+            return 12.0
         elif x == 8:
-            return 200.0
+            return 8.0
         else:
-            return 250.0
+            return 10.0
 
     def func_expression_116(x):
         x = float(x)
         if x < 10:
-            return 250
+            return 10
         elif x < 20:
-            return min_x_max(0.0, 250.0 - 100.0 * (x - 10), 1000.0)
+            return min_x_max(0.0, 10.0 - 4.0 * (x - 10), 20.0)
         else:
-            return min_x_max(0.0, 100.0 * (x - 20), 1000.0)
+            return min_x_max(0.0, 4.0 * (x - 20), 20.0)
 
     def func_expression_117(x):
         x = float(x)
         if x < 10:
-            return 100
+            return 4
         elif x < 20:
-            return min_x_max(0.0, 250.0 + 10.0 * (x - 10), 500.0)
+            return min_x_max(0.0, 10.0 + 0.4 * (x - 10), 20.0)
         else:
-            return min_x_max(0.0, 500.0 - 10.0 * (x - 20), 500.0)
+            return min_x_max(0.0, 20.0 - 0.4 * (x - 20), 20.0)
 
     def func_expression_118(x):
         x = float(x)
         if x < 10:
-            return 400
+            return 16
         elif x < 15:
-            return min_x_max(0.0, 400.0 - 50.0 * (x - 10), 500.0)
+            return min_x_max(0.0, 16.0 - 2.0 * (x - 10), 20.0)
         elif x < 20:
-            return min_x_max(0.0, 150.0 + 60.0 * (x - 15), 500.0)
+            return min_x_max(0.0, 6.0 + 2.4 * (x - 15), 20.0)
         elif x < 25:
-            return min_x_max(0.0, 450.0 - 90.0 * (x - 20), 500.0)
+            return min_x_max(0.0, 18.0 - 3.6 * (x - 20), 20.0)
         else:
-            return min_x_max(0.0, 100.0 * (x - 25), 500.0)
+            return min_x_max(0.0, 4.0 * (x - 25), 20.0)
 
     def func_expression_121(x):
         return 0
@@ -649,6 +653,8 @@ def get_func(shape, bound):
     func_127 = Function(func_expression_127, func_domain, func_definition)
     func_128 = Function(func_expression_128, func_domain, func_definition)
 
+
+    func_999 =  Function(func_expression_999, func_domain, func_definition)
     # for different bw
     func_1000 = Function(func_expression_1000, func_domain, func_definition)
     func_1001 = Function(func_expression_1001, func_domain, func_definition)
@@ -673,8 +679,9 @@ def get_func(shape, bound):
                  101: func_101, 102: func_102, 103: func_103, 104: func_104, 105: func_105, 106: func_106, 107: func_107, 108: func_108,
                  111: func_111, 112: func_112, 113: func_113, 114: func_114, 115: func_115, 116: func_116, 117: func_117, 118: func_118,
                  121: func_121, 122: func_122, 123: func_123, 124: func_124, 125: func_125, 126: func_126, 127: func_127, 128: func_128,
-                 1000:func_1000,1001:func_1001,1002:func_1002,1003:func_1003,
-                 2001:func_2001,2002:func_2002,2003:func_2003,2004:func_2004,2005:func_2005,2006:func_2006,2007:func_2007,2008:func_2008}
+                 999:func_999,
+                 1000: func_1000, 1001: func_1001, 1002: func_1002, 1003: func_1003,
+                 2001: func_2001, 2002: func_2002, 2003: func_2003, 2004: func_2004, 2005: func_2005, 2006: func_2006, 2007: func_2007, 2008: func_2008}
 
     if shape < 1000:
         return func_list[shape]
@@ -690,7 +697,7 @@ def generate_traffic(addr, port, dev, shape, bound):
     bind_addr = (addr, port)
     sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    msg = 'x' * 2954
+    msg = 'x' * 1392
     func = get_func(shape, bound)
     pacing_bin = func.get_pacing_bin()
     bin_len = len(pacing_bin)
