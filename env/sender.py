@@ -612,7 +612,10 @@ class Sender(object):
                 packed_data = struct.pack('!iiqiq', seq_num, send_ts, sent_bytes, delivered_time, delivered)
                 ret = -1
                 while ret == -1:
-                    ret = self.sock.sendto(packed_data + self.indigo_payload, self.peer_addr)
+                    try:
+                        ret = self.sock.sendto(packed_data + self.indigo_payload, self.peer_addr)
+                    except socket.error:
+                        ret = -1
 
     def compute_performance(self):
         duration = curr_ts_ms() - self.ts_first
