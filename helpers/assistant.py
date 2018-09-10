@@ -36,18 +36,18 @@ def run_cmd(args, host, procs):
 
     elif cmd == 'git_checkout':
         cmd_in_ssh = ('cd %s && git fetch --all && '
-                      'git checkout %s' % (args.rlcc_dir, args.commit))
+                      'git checkout %s' % (args.indigo_dir, args.commit))
 
     elif cmd == 'git_pull':
         cmd_in_ssh = ('cd %s && git fetch --all && '
-                      'git reset --hard @~1 && git pull' % args.rlcc_dir)
+                      'git reset --hard @~1 && git pull' % args.indigo_dir)
 
     elif cmd == 'rm_history':
-        cmd_in_ssh = ('rm -f %s/history' % args.rlcc_dir)
+        cmd_in_ssh = ('rm -f %s/history' % args.indigo_dir)
 
     elif cmd == 'cp_history':
         cmd_to_run = ('rsync --ignore-missing-args %s:%s/history %s/%s_history'
-                      % (host, args.rlcc_dir, args.local_rlcc_dir, host))
+                      % (host, args.indigo_dir, args.local_indigo_dir, host))
         check_call(cmd_to_run, shell=True)
 
     else:
@@ -65,14 +65,14 @@ def main():
         '--remote', required=True, metavar='IP,...',
         help='comma-separated list of IP addresses of remote hosts')
     parser.add_argument(
-        '--username', default='francisyyan',
-        help='username used in ssh (default: francisyyan)')
+        '--username', default='ubuntu',
+        help='username used in ssh (default: ubuntu)')
     parser.add_argument(
-        '--rlcc-dir', metavar='DIR', default='~/RLCC',
-        help='path to RLCC/ (default: ~/RLCC)')
+        '--indigo-dir', metavar='DIR', default='~/indigo',
+        help='path to indigo (default: ~/indigo)')
     parser.add_argument(
-        '--local-rlcc-dir', metavar='DIR', default='~/RLCC',
-        help='path to RLCC/ (default: ~/RLCC)')
+        '--local-indigo-dir', metavar='DIR', default='~/indigo',
+        help='path to indigo (default: ~/indigo)')
     parser.add_argument(
         '--commit', metavar='COMMIT', default='master',
         help='Commit to use when checking out (default: master)')

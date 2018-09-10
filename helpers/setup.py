@@ -60,7 +60,7 @@ def setup(args):
             host = args.username + '@' + ip
             ssh_cmd = ['ssh', host, '-o', 'StrictHostKeyChecking=no']
 
-            setup_src = path.join(args.rlcc_dir, 'helpers', 'setup.py')
+            setup_src = path.join(args.indigo_dir, 'helpers', 'setup.py')
             cmd = ssh_cmd + ['python', setup_src, '--local']
 
             if args.install_deps:
@@ -87,11 +87,11 @@ def main():
         '--install-deps', action='store_true',
         help='install dependencies: tensorflow, mahimahi, etc.')
     parser.add_argument(
-        '--username', default='francisyyan',
-        help='username used in ssh connection (default: francisyyan)')
+        '--username', default='ubuntu',
+        help='username used in ssh connection (default: ubuntu)')
     parser.add_argument(
-        '--rlcc-dir', metavar='DIR', default='/home/francisyyan/RLCC',
-        help='absolute path to RLCC/ (default: /home/francisyyan/RLCC)')
+        '--indigo-dir', metavar='DIR', default='/home/ubuntu/indigo',
+        help='absolute path to indigo/ (default: /home/ubuntu/indigo)')
     args = parser.parse_args()
 
     setup(args)

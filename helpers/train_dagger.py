@@ -25,11 +25,11 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-            '--username', default='francisyyan',
-            help='username used in ssh (default: francisyyan)')
+            '--username', default='ubuntu',
+            help='username used in ssh (default: ubuntu)')
     parser.add_argument(
-            '--rlcc-dir', default='~/RLCC',
-            help='path to RLCC/ (default: ~/RLCC)')
+            '--indigo-dir', default='~/indigo',
+            help='path to indigo/ (default: ~/indigo)')
     parser.add_argument(
             '--table', default='TABLE',
             help='table for my_gce_helper.py (default: TABLE)')
@@ -46,15 +46,15 @@ def main():
     args = parser.parse_args()
 
     gce_helper_cmd = ('%s/helpers/my_gce_helper.py --table %s --username %s'
-                      % (args.rlcc_dir, args.table, args.username))
+                      % (args.indigo_dir, args.table, args.username))
     gce_helper_out = check_output(gce_helper_cmd, shell=True).split('\n')
     train_cmd = gce_helper_out[0]
     remote_ip = gce_helper_out[1]
 
     assistant_cmd = ('%s/helpers/assistant.py --remote=%s --username=%s '
-                     '--rlcc-dir=%s '
-                     % (args.rlcc_dir, remote_ip,
-                        args.username, args.rlcc_dir))
+                     '--indigo-dir=%s '
+                     % (args.indigo_dir, remote_ip,
+                        args.username, args.indigo_dir))
 
     if args.git_push:
         check_call('git add -A && '

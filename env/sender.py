@@ -100,7 +100,7 @@ class Sender(object):
         self.step_len_ms = 10
         self.pre_ack = 0
 
-        # state variables for RLCC
+        # state variables of Indigo
         self.delivered_time = 0
         self.delivered = 0
         self.sent_bytes = 0

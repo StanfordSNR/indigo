@@ -61,15 +61,15 @@ def cleanup(args):
             sys.stderr.write('%s\n' % e)
 
     host_set = set(args['ps_list'] + args['worker_list'])
-    pkill_script = path.join(args['rlcc_dir'], 'helpers', 'pkill.py')
+    pkill_script = path.join(args['indigo_dir'], 'helpers', 'pkill.py')
 
     for host in set(args['worker_list']):
-        kill_cmd = ['ssh', host, 'python', pkill_script, args['rlcc_dir']]
+        kill_cmd = ['ssh', host, 'python', pkill_script, args['indigo_dir']]
         sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
         call(kill_cmd)
 
     for host in set(args['ps_list']):
-        kill_cmd = ['ssh', host, 'pkill', '-f', args['rlcc_dir']]
+        kill_cmd = ['ssh', host, 'pkill', '-f', args['indigo_dir']]
         sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
         call(kill_cmd)
 
@@ -81,8 +81,8 @@ def construct_args(prog_args):
     args = {}
 
     # file paths
-    args['rlcc_dir'] = prog_args.rlcc_dir
-    args['worker_src'] = path.join(args['rlcc_dir'], 'dagger', 'worker.py')
+    args['indigo_dir'] = prog_args.indigo_dir
+    args['worker_src'] = path.join(args['indigo_dir'], 'dagger', 'worker.py')
 
     # hostnames and processes
     args['ps_hosts'] = prog_args.ps_hosts
@@ -90,13 +90,13 @@ def construct_args(prog_args):
 
     args['ps_list'] = prog_args.ps_hosts.split(',')
     args['worker_list'] = prog_args.worker_hosts.split(',')
-    args['username'] = prog_args.username
+    args['user'] = prog_args.user
 
     for i, host in enumerate(args['ps_list']):
-        args['ps_list'][i] = args['username'] + '@' + host.split(':')[0]
+        args['ps_list'][i] = args['user'] + '@' + host.split(':')[0]
 
     for i, host in enumerate(args['worker_list']):
-        args['worker_list'][i] = args['username'] + '@' + host.split(':')[0]
+        args['worker_list'][i] = args['user'] + '@' + host.split(':')[0]
 
     args['ps_procs'] = []
     args['worker_procs'] = []
@@ -112,12 +112,10 @@ def main():
     parser.add_argument(
         '--worker-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
         help='comma-separated list of hostname:port of workers')
-    parser.add_argument(
-        '--username', default='ubuntu',
-        help='username used in ssh connection (default: ubuntu)')
-    parser.add_argument(
-        '--rlcc-dir', metavar='DIR', default='/home/ubuntu/RLCC',
-        help='absolute path to RLCC/ (default: /home/ubuntu/RLCC)')
+    parser.add_argument('--user', required=True, metavar='NAME',
+                        help='username used in ssh connection')
+    parser.add_argument('--indigo-dir', required=True, metavar='DIR',
+                        help='absolute path to indigo')
     prog_args = parser.parse_args()
     args = construct_args(prog_args)
 
