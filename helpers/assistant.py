@@ -87,12 +87,9 @@ def main():
     for ip in ip_list:
         host = args.username + '@' + ip
 
-        if args.cmd == 'remove_key':
-            call('ssh-keygen -f "/home/%s/.ssh/known_hosts" -R %s' % (args.username, ip), shell=True)
-        elif args.cmd == 'test_ssh':
-            call(['ssh', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=4', host, 'echo $HOSTNAME'])
-        else:
-            run_cmd(args, host, procs)
+        if args.ssh is not None:
+            # run commands over SSH
+            procs.append(Popen(ssh_cmd(host) + [args.ssh]))
 
     for proc in procs:
         proc.communicate()

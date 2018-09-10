@@ -25,7 +25,7 @@ def main(args):
     s.bind(bind_addr)
 
     while True:
-        data, addr = s.recvfrom(2048)
+        data, addr = s.recvfrom(1500)
         if not data:
             print('ERROR: null msg from client.')
             break
