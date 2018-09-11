@@ -17,7 +17,7 @@
 
 import sys
 import signal
-from subprocess import call
+from subprocess_wrappers import Popen
 
 
 def signal_handler(signum, frame):
@@ -36,6 +36,10 @@ if len(sys.argv) == 2:
 pkill_cmds.append('pkill -f expert_server')
 pkill_cmds.append('mn -c 1>/dev/null 2>&1')
 
+procs = []
+
 for cmd in pkill_cmds:
-    sys.stderr.write('$ %s\n' % cmd)
-    call(cmd, shell=True)
+    procs.append(Popen(cmd, shell=True))
+
+for proc in procs:
+    proc.communicate()

@@ -23,9 +23,11 @@ from subprocess import check_output
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--username', default='ubuntu',
+        '--user', default='ubuntu',
         help='username used for train cmd (default: ubuntu)')
-
+    parser.add_argument(
+        '--indigo-dir', default='/home/ubuntu/indigo', metavar='DIR',
+        help='absolute path to indigo (default /home/ubuntu/indigo)')
     parser.add_argument(
         '--table', metavar='TABLE', nargs='?', default='TABLE',
         help='(messy) table of VM instances copied from Google Cloud Platform')
@@ -34,8 +36,8 @@ def main():
     cmd = 'grep -E -o "([0-9]{1,3}[\.]){3}[0-9]{1,3}" ' + args.table
     ip_list = check_output(cmd, shell=True).split()
 
-    ret_cmd = ('~/indigo/dagger/train.py --username %s --indigo-dir '
-               '/home/%s/indigo --ps-hosts ') % (args.username, args.username)
+    ret_cmd = './train.py --user %s --indigo-dir %s --ps-hosts ' % (
+              args.user, args.indigo_dir)
     ret_int_ip_list = ''
     ret_ext_ip_list = ''
 

@@ -63,15 +63,20 @@ def cleanup(args):
     host_set = set(args['ps_list'] + args['worker_list'])
     pkill_script = path.join(args['indigo_dir'], 'helpers', 'pkill.py')
 
+    procs = []
+
     for host in set(args['worker_list']):
         kill_cmd = ['ssh', host, 'python', pkill_script, args['indigo_dir']]
         sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
-        call(kill_cmd)
+        procs.append(Popen(kill_cmd))
 
     for host in set(args['ps_list']):
         kill_cmd = ['ssh', host, 'pkill', '-f', args['indigo_dir']]
         sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
-        call(kill_cmd)
+        procs.append(Popen(kill_cmd))
+
+    for proc in procs:
+        proc.communicate()
 
     sys.stderr.write('\nAll cleaned up.\n')
 
