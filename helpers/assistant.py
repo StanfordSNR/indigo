@@ -17,79 +17,40 @@
 
 import sys
 import argparse
-from subprocess import Popen, check_call, check_output, call
-
-
-def run_cmd(args, host, procs):
-    cmd = args.cmd
-    cmd_in_ssh = None
-
-    if cmd == 'copy_key':
-        cmd_to_run = ('KEY=$(cat ~/.ssh/id_rsa.pub); '
-                      'ssh -o StrictHostKeyChecking=no %s '
-                      '"grep -qF \'$KEY\' .ssh/authorized_keys || '
-                      'echo \'$KEY\' >> .ssh/authorized_keys"' % host)
-        check_call(cmd_to_run, shell=True)
-
-    elif cmd == 'git_clone':
-        cmd_in_ssh = 'git clone https://github.com/StanfordSNR/indigo.git'
-
-    elif cmd == 'git_checkout':
-        cmd_in_ssh = ('cd %s && git fetch --all && '
-                      'git checkout %s' % (args.indigo_dir, args.commit))
-
-    elif cmd == 'git_pull':
-        cmd_in_ssh = ('cd %s && git fetch --all && '
-                      'git reset --hard @~1 && git pull' % args.indigo_dir)
-
-    elif cmd == 'rm_history':
-        cmd_in_ssh = ('rm -f %s/history' % args.indigo_dir)
-
-    elif cmd == 'cp_history':
-        cmd_to_run = ('rsync --ignore-missing-args %s:%s/history %s/%s_history'
-                      % (host, args.indigo_dir, args.local_indigo_dir, host))
-        check_call(cmd_to_run, shell=True)
-
-    else:
-        cmd_in_ssh = cmd
-
-    if cmd_in_ssh:
-        cmd = ['ssh', '-o', 'StrictHostKeyChecking=no', host, cmd_in_ssh]
-        procs.append(Popen(cmd))
+from subprocess_wrappers import Popen
+from helpers import ssh_cmd
 
 
 def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--remote', required=True, metavar='IP,...',
+        '--ip', required=True, metavar='IP,...',
         help='comma-separated list of IP addresses of remote hosts')
     parser.add_argument(
-        '--username', default='ubuntu',
+        '--user', default='ubuntu',
         help='username used in ssh (default: ubuntu)')
-    parser.add_argument(
-        '--indigo-dir', metavar='DIR', default='~/indigo',
-        help='path to indigo (default: ~/indigo)')
-    parser.add_argument(
-        '--local-indigo-dir', metavar='DIR', default='~/indigo',
-        help='path to indigo (default: ~/indigo)')
-    parser.add_argument(
-        '--commit', metavar='COMMIT', default='master',
-        help='Commit to use when checking out (default: master)')
-    parser.add_argument('cmd')
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--ssh', metavar='CMD', help='commands to run over SSH')
+    group.add_argument('--cmd', metavar='CMD', help='predefined commands')
     args = parser.parse_args()
 
-    ip_list = args.remote.split(',')
+    ip_list = args.ip.split(',')
     procs = []
 
     sys.stderr.write('%d IPs in total\n' % len(ip_list))
 
     for ip in ip_list:
-        host = args.username + '@' + ip
+        host = args.user + '@' + ip
 
         if args.ssh is not None:
             # run commands over SSH
             procs.append(Popen(ssh_cmd(host) + [args.ssh]))
+        elif args.cmd is not None:
+            if args.cmd == 'remove_key':
+                procs.append(Popen(['ssh-keygen', '-f',
+                    '/home/%s/.ssh/known_hosts' % args.user, '-R', ip]))
 
     for proc in procs:
         proc.communicate()

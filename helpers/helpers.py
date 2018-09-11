@@ -181,3 +181,8 @@ class MeanVarHistory(object):
         self.mean = 0.0
         self.square_mean = 0.0
         self.var = 0.0
+
+
+def ssh_cmd(host):
+    return ['ssh', '-q', '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=5', host]

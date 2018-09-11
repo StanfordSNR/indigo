@@ -18,20 +18,17 @@
 import sys
 import argparse
 from os import path
-from subprocess import check_call, Popen
+from subprocess_wrappers import check_call, Popen
+from helpers import ssh_cmd
 
 
 def setup_local(args):
     if args.install_deps:
-        cmd = 'sudo add-apt-repository -y ppa:keithw/mahimahi'
-        sys.stderr.write('$ %s\n' % cmd)
-        check_call(cmd, shell=True)
-
         cmd = 'sudo apt-get -y update'
         sys.stderr.write('$ %s\n' % cmd)
         check_call(cmd, shell=True)
 
-        deps = 'mahimahi python-pip python-dev'
+        deps = 'python-dev'
         cmd = 'sudo apt-get -yq --force-yes install %s' % deps
         sys.stderr.write('$ %s\n' % cmd)
         check_call(cmd, shell=True)
@@ -57,7 +54,7 @@ def setup(args):
         ip_list = args.remote.split(',')
 
         for ip in ip_list:
-            host = args.username + '@' + ip
+            host = args.user + '@' + ip
             ssh_cmd = ['ssh', host, '-o', 'StrictHostKeyChecking=no']
 
             setup_src = path.join(args.indigo_dir, 'helpers', 'setup.py')
@@ -87,7 +84,7 @@ def main():
         '--install-deps', action='store_true',
         help='install dependencies: tensorflow, mahimahi, etc.')
     parser.add_argument(
-        '--username', default='ubuntu',
+        '--user', default='ubuntu',
         help='username used in ssh connection (default: ubuntu)')
     parser.add_argument(
         '--indigo-dir', metavar='DIR', default='/home/ubuntu/indigo',
