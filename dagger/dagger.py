@@ -78,7 +78,7 @@ class DaggerLeader(object):
         gpu_vars = self.global_network.trainable_vars
         self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(cpu_vars, gpu_vars)])
 
-        self.default_batch_size = 300
+        self.default_batch_size = 32
         self.default_init_state = self.global_network.zero_init_state(self.default_batch_size)
 
         # Each element is [[aug_state]], [action]
@@ -302,7 +302,7 @@ class DaggerLeader(object):
             mean_loss = 0.0
             max_loss = 0.0
 
-            for batch_num in xrange(num_batches):
+            for batch_num in np.random.permutation(num_batches):
                 self.train_step += 1
 
                 start = batch_num * batch_size
@@ -328,7 +328,7 @@ class DaggerLeader(object):
             else:
                 iters_since_min_loss += 1
 
-            if curr_iter > 50:
+            if curr_iter > 20:
                 break
 
             if iters_since_min_loss >= max(0.2 * curr_iter, 10):
