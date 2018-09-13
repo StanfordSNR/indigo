@@ -328,7 +328,7 @@ class DaggerLeader(object):
             else:
                 iters_since_min_loss += 1
 
-            if curr_iter > 20:
+            if curr_iter > 100:
                 break
 
             if iters_since_min_loss >= max(0.2 * curr_iter, 10):
