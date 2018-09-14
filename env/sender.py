@@ -64,7 +64,7 @@ class Sender(object):
     cfg.read(cfg_path)
     state_dim = int(cfg.get('global', 'state_dim'))
 
-    action_mapping = format_actions(["/2.0", "/1.025", "+0.0", "*1.025", "*2.0"])
+    action_mapping = format_actions(["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"])
     action_cnt = len(action_mapping)
 
     pkt_size = 1500
