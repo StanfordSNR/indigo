@@ -187,7 +187,7 @@ def run(args):
         # Sets up the queue, shared variables, and global classifier.
         worker_tasks = set([idx for idx in xrange(num_workers)])
         leader = DaggerLeader(cluster, server, worker_tasks)
-        t = threading.Thread(target = leader.wait_to_save,args=(ps_hosts,))
+        t = threading.Thread(target = leader.wait_to_save, args=(ps_hosts,))
         t.setDaemon(True)
         t.start()
         try:

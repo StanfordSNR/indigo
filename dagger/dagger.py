@@ -15,7 +15,6 @@
 
 
 import ConfigParser
-import cPickle as pickle
 import datetime
 import numpy as np
 import project_root
@@ -67,12 +66,14 @@ class DaggerLeader(object):
 
         # Create the master network and training/sync queues
         with tf.variable_scope('global'):
-            self.global_network = DaggerLSTM(state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
+            self.global_network = DaggerLSTM(state_dim=self.aug_state_dim,
+                                             action_cnt=self.action_cnt)
 
         self.leader_device_cpu = '/job:ps/task:0/cpu:0'
         with tf.device(self.leader_device_cpu):
             with tf.variable_scope('global_cpu'):
-                self.global_network_cpu = DaggerLSTM(state_dim=self.aug_state_dim, action_cnt=self.action_cnt)
+                self.global_network_cpu = DaggerLSTM(state_dim=self.aug_state_dim,
+                                                     action_cnt=self.action_cnt)
 
         cpu_vars = self.global_network_cpu.trainable_vars
         gpu_vars = self.global_network.trainable_vars
@@ -103,10 +104,10 @@ class DaggerLeader(object):
         self.save_model()
 
     def wait_to_save(self, ps_hosts):
-        s = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-        s.bind((ps_hosts[0].split(':')[0],14514))
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.bind((ps_hosts[0].split(':')[0], 14514))
         while True:
-            data,addr = s.recvfrom(1024)
+            data, addr = s.recvfrom(1024)
             if data == 'save model':
                 self.save_model(self.curr_ep)
 
@@ -117,23 +118,10 @@ class DaggerLeader(object):
         else:
             model_path = path.join(self.logdir, 'checkpoint-{}'.format(checkpoint))
 
-        if checkpoint is None:
-            data_path = path.join(self.logdir, 'data.pkl')
-        else:
-            data_path = path.join(self.logdir, 'data-{}.pkl'.format(checkpoint))
-
         # save parameters to parameter server
         saver = tf.train.Saver(self.global_network.trainable_vars)
         saver.save(self.sess, model_path)
         sys.stderr.write('\nModel saved to param. server at {}\n'.format(model_path))
-        # save data and label
-        data = []
-        for i in range(len(self.aggregated_states)):  # number of iters
-            for j in range(len(self.aggregated_states[0])):  # sender max steps
-                data.append([list(self.aggregated_states[i][j]), self.aggregated_cwnds[i][j],
-                             self.aggregated_soft_targets[i][j], self.aggregated_actions[i][j]])
-        with open(data_path, 'wb') as fdw:
-            pickle.dump(data, fdw, True)
 
     def setup_tf_ops(self, server):
         """ Sets up Tensorboard operators and tools, such as the optimizer,
@@ -162,7 +150,8 @@ class DaggerLeader(object):
                 labels=self.soft_targets,
                 logits=self.global_network.action_scores))
 
-        cross_entropy_loss = (1.0 - self.rho) * hard_cross_entropy_loss + self.rho * soft_cross_entropy_loss
+        cross_entropy_loss = ((1.0 - self.rho) * hard_cross_entropy_loss +
+                              self.rho * soft_cross_entropy_loss)
 
         self.total_loss = cross_entropy_loss + reg_loss
 
@@ -183,8 +172,7 @@ class DaggerLeader(object):
         self.summary_writer = tf.summary.FileWriter(self.logdir)
 
     def wait_on_workers(self):
-        """ Update which workers are done or dead. Stale tokens will
-        eventually be cleaned out.
+        """ Update which workers are done or dead. Stale tokens will eventually be cleaned out.
         Returns the number of workers that finished their episode.
         """
         workers_ep_done = 0
@@ -216,16 +204,18 @@ class DaggerLeader(object):
         for i in range(len(ep_cwnds)):  # sender max steps
             curr_cwnd = ep_cwnds[i][0]
             best_cwnd = ep_cwnds[i][1]
-            action_distance = np.array([-1.0 * abs(max(float(Sender.min_cwnd), curr_cwnd/2.0) - best_cwnd),
-                                        -1.0 * abs(max(float(Sender.min_cwnd), curr_cwnd-10.0) - best_cwnd),
-                                        -1.0 * abs(curr_cwnd - best_cwnd),
-                                        -1.0 * abs(min(float(Sender.max_cwnd), curr_cwnd+10.0) - best_cwnd),
-                                        -1.0 * abs(min(float(Sender.max_cwnd), curr_cwnd*2.0) - best_cwnd)])
+            action_distance = np.array(
+                [-1.0 * abs(max(float(Sender.min_cwnd), curr_cwnd / 2.0) - best_cwnd),
+                 -1.0 * abs(max(float(Sender.min_cwnd), curr_cwnd - 10.0) - best_cwnd),
+                 -1.0 * abs(curr_cwnd - best_cwnd),
+                 -1.0 * abs(min(float(Sender.max_cwnd), curr_cwnd + 10.0) - best_cwnd),
+                 -1.0 * abs(min(float(Sender.max_cwnd), curr_cwnd * 2.0) - best_cwnd)])
             # transform to Gaussian distribution
             if np.std(action_distance) == 0.0:
                 normalized_distance = action_distance
             else:
-                normalized_distance = (action_distance - np.mean(action_distance)) / np.std(action_distance)
+                normalized_distance = ((action_distance - np.mean(action_distance)) /
+                                       np.std(action_distance))
             soft_targets[i] = softmax(normalized_distance)
         return soft_targets
 
@@ -237,16 +227,18 @@ class DaggerLeader(object):
             for j in range(len(batch_cwnds[0])):  # sender max steps
                 curr_cwnd = batch_cwnds[i][j][0]
                 best_cwnd = batch_cwnds[i][j][1]
-                action_distance = np.array([-1.0 * abs(max(float(Sender.min_cwnd), curr_cwnd/2.0) - best_cwnd),
-                                            -1.0 * abs(max(float(Sender.min_cwnd), curr_cwnd-10.0) - best_cwnd),
-                                            -1.0 * abs(curr_cwnd - best_cwnd),
-                                            -1.0 * abs(min(float(Sender.max_cwnd), curr_cwnd+10.0) - best_cwnd),
-                                            -1.0 * abs(min(float(Sender.max_cwnd), curr_cwnd*2.0) - best_cwnd)])
+                action_distance = np.array(
+                    [-1.0 * abs(max(float(Sender.min_cwnd), curr_cwnd / 2.0) - best_cwnd),
+                     -1.0 * abs(max(float(Sender.min_cwnd), curr_cwnd - 10.0) - best_cwnd),
+                     -1.0 * abs(curr_cwnd - best_cwnd),
+                     -1.0 * abs(min(float(Sender.max_cwnd), curr_cwnd + 10.0) - best_cwnd),
+                     -1.0 * abs(min(float(Sender.max_cwnd), curr_cwnd * 2.0) - best_cwnd)])
                 # transform to Gaussian distribution
                 if np.std(action_distance) == 0.0:
                     normalized_distance = action_distance
                 else:
-                    normalized_distance = (action_distance - np.mean(action_distance)) / np.std(action_distance)
+                    normalized_distance = ((action_distance - np.mean(action_distance)) /
+                                           np.std(action_distance))
                 soft_targets[i][j] = softmax(normalized_distance)
         return soft_targets
 
@@ -283,7 +275,6 @@ class DaggerLeader(object):
     def train(self):
         """ Runs the training operator until the loss converges.
         """
-        curr_iter = 0
 
         min_loss = float('inf')
         iters_since_min_loss = 0
@@ -296,9 +287,9 @@ class DaggerLeader(object):
         else:
             self.init_state = self.default_init_state
 
-        while True:
-            curr_iter += 1
-
+        curr_epoch = 1
+        MAX_EPOCH = 100
+        while curr_epoch <= MAX_EPOCH:
             mean_loss = 0.0
             max_loss = 0.0
 
@@ -319,29 +310,19 @@ class DaggerLeader(object):
 
             mean_loss /= num_batches
 
-            sys.stderr.write('--- iter %d: max loss %.4f, mean loss %.4f\n' %
-                             (curr_iter, max_loss, mean_loss))
-
-            if max_loss < min_loss - 0.001:
-                min_loss = max_loss
-                iters_since_min_loss = 0
-            else:
-                iters_since_min_loss += 1
-
-            if curr_iter > 20:
-                break
-
-            if iters_since_min_loss >= max(0.2 * curr_iter, 10):
-                break
+            sys.stderr.write('--- epoch %d: max loss %.4f, mean loss %.4f\n' %
+                             (curr_epoch, max_loss, mean_loss))
+            curr_epoch += 1
 
         self.sess.run(self.global_network.add_one)
 
         # copy trained variables from GPU to CPU
         self.sess.run(self.sync_op)
 
-        print 'DaggerLeader:global_network:cnt', self.sess.run(self.global_network.cnt)
-        print 'DaggerLeader:global_network_cpu:cnt', self.sess.run(self.global_network_cpu.cnt)
-        sys.stdout.flush()
+        sys.stderr.write('DaggerLeader:global_network:cnt %d' %
+                         self.sess.run(self.global_network.cnt))
+        sys.stderr.write('DaggerLeader:global_network_cpu:cnt %d' %
+                         self.sess.run(self.global_network_cpu.cnt))
 
     def run(self, debug=False):
         for curr_ep in xrange(self.max_eps):
@@ -414,7 +395,8 @@ class DaggerWorker(object):
 
         # Set up Tensorflow for synchronization, training
         self.setup_tf_ops()
-        self.sess = tf.Session(server.target, config=tf.ConfigProto(allow_soft_placement=True))
+        self.sess = tf.Session(server.target,
+                               config=tf.ConfigProto(allow_soft_placement=True))
         self.sess.run(tf.global_variables_initializer())
 
     def cleanup(self):
@@ -461,7 +443,7 @@ class DaggerWorker(object):
         Appends to the state/action buffers the state and the
         "correct" action to take according to the expert.
         """
-        cwnd = state[self.state_dim - 1]*Sender.max_cwnd
+        cwnd = state[self.state_dim - 1] * Sender.max_cwnd
         expert_action = self.expert.sample_action(cwnd)
         if expert_action == -1:
             return -1
@@ -474,7 +456,6 @@ class DaggerWorker(object):
         one_hot_action = one_hot(self.prev_action, self.action_cnt)
         aug_state = norm_state + one_hot_action
 
-        # print '[DaggerWork]: state buffer, action buffer', aug_state, expert_action
         # Fill in state_buf, action_buf
         self.state_buf.append(aug_state)
         self.action_buf.append([cwnd, expert_cwnd, expert_action])
@@ -498,9 +479,6 @@ class DaggerWorker(object):
         action = np.argmax(action_probs[0][0])
         self.prev_action = action
 
-        # cwnd_action_tuple = (cwnd, action, expert_cwnd, expert_action)
-        # print '[DaggerWorker]: cwnd {}, model_action {}, expert_cwnd {}, expert_action {}'.format(*cwnd_action_tuple)
-
         return action
 
     def rollout(self):
@@ -519,27 +497,27 @@ class DaggerWorker(object):
 
         while True:
             if debug:
-                sys.stderr.write('[WORKER %d Ep %d] Starting...\n' %
+                sys.stderr.write('[WORKER %d EP %d] Starting...\n' %
                                  (self.task_idx, self.curr_ep))
 
             # Reset local parameters to global
             self.sess.run(self.sync_op)
 
-            print 'DaggerWorker:global_network_cpu:cnt', self.sess.run(self.global_network_cpu.cnt)
-            print 'DaggerWorker:local_network:cnt', self.sess.run(self.local_network.cnt)
-            sys.stdout.flush()
+            sys.stderr.write('DaggerWorker:global_network_cpu:cnt %d' %
+                             self.sess.run(self.global_network_cpu.cnt))
+            sys.stderr.write('DaggerWorker:local_network:cnt %d' %
+                             self.sess.run(self.local_network.cnt))
 
             # Start a single episode, populating state-action buffers.
             ret = self.rollout()
             if ret == -1:
-                sys.stderr.write('Sender error ,restart env...\n')
+                sys.stderr.write('Sender error, restart env...\n')
                 continue
 
             if debug:
                 queue_size = self.sess.run(self.train_q.size())
                 sys.stderr.write(
-                    '[WORKER %d Ep %d]: enqueueing a sequence of data '
-                    'into queue of size %d\n' %
+                    '[WORKER %d EP %d]: enqueueing a sequence of data into queue of size %d\n' %
                     (self.task_idx, self.curr_ep, queue_size))
 
             # Enqueue a sequence of data into the training queue.
@@ -556,12 +534,11 @@ class DaggerWorker(object):
             if debug:
                 queue_size = self.sess.run(self.train_q.size())
                 sys.stderr.write(
-                    '[WORKER %d Ep %d]: finished queueing data. '
-                    'queue size now %d\n' %
+                    '[WORKER %d EP %d]: finished queueing data. queue size now %d\n' %
                     (self.task_idx, self.curr_ep, queue_size))
 
             if debug:
-                sys.stderr.write('[WORKER %d Ep %d]: waiting for server\n' %
+                sys.stderr.write('[WORKER %d EP %d]: waiting for server\n' %
                                  (self.task_idx, self.curr_ep))
 
             # Let the leader dequeue EP_DONE

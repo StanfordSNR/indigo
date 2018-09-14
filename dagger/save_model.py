@@ -21,14 +21,14 @@ import time
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('ip',help='log mir')
+parser.add_argument('ip', help='log mir')
 args = parser.parse_args()
 ip = str(args.ip)
 
 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-address = (ip,14514)
+address = (ip, 14514)
 
 data = 'save model'
-s.sendto(data,address)
+s.sendto(data, address)
 s.close()
