@@ -15,13 +15,11 @@
 
 
 import sys
-# import json
 import socket
 import select
 import struct
 import signal
 from os import path
-# import datagram_pb2
 import context
 from helpers.helpers import READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, ALL_FLAGS
 
@@ -59,26 +57,13 @@ class Receiver(object):
     def cleanup(self):
         self.sock.close()
 
-    # def construct_ack_from_data(self, serialized_data):
     def construct_ack_from_data(self, unpacked_data):
         """Construct a serialized ACK that acks a serialized datagram."""
 
-        # data = datagram_pb2.Data()
-        # data.ParseFromString(serialized_data)
-
-        # ack = datagram_pb2.Ack()
-        # ack.seq_num = data.seq_num
-        # ack.send_ts = data.send_ts
-        # ack.sent_bytes = data.sent_bytes
-        # ack.delivered_time = data.delivered_time
-        # ack.delivered = data.delivered
-        # ack.ack_bytes = len(serialized_data)
         if len(unpacked_data) < 28:
             return None
 
         return struct.pack('!28si', unpacked_data[:28], len(unpacked_data) * 2)
-
-        # return ack.SerializeToString()
 
     def handshake(self):
         """Handshake with peer sender. Must be called before run()."""

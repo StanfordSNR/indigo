@@ -26,6 +26,7 @@ def signal_handler(signum, frame):
 
 
 def main():
+    # prevent itself from being killed by accident
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -35,7 +36,7 @@ def main():
         pkill_cmds.append('pkill -f %s' % sys.argv[1])
 
     pkill_cmds.append('pkill -f expert_server')
-    pkill_cmds.append('mn -c 1>/dev/null 2>&1')
+    pkill_cmds.append('mn -c >/dev/null 2>&1')
 
     procs = []
 
