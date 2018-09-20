@@ -51,14 +51,15 @@ class Sender(object):
     max_cwnd = 25000  # packet of 1500B
     min_cwnd = 10
 
-    max_rtt_normorlize = 300.0  # ms
-    max_delay_normorlize = max_rtt_normorlize
-    max_delivery_rate_normorlize = 1000.0  # Mbps
-    max_send_rate_normorlize = max_delivery_rate_normorlize
+    max_rtt = 300.0  # ms
+    max_delay = max_rtt
+    max_delivery_rate = 1000.0  # Mbps
+    max_send_rate = max_delivery_rate
 
     max_steps = 1000
-    max_test_time = 30000
+    max_test_time = 30000  # ms
 
+    # parse config.ini
     cfg = ConfigParser.ConfigParser()
     cfg_path = path.join(context.base_dir, 'config.ini')
     cfg.read(cfg_path)
@@ -76,10 +77,8 @@ class Sender(object):
 
         # UDP socket and poller
         self.peer_addr = None
-
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SENDBUF, 32*1024)
         self.sock.bind(('0.0.0.0', port))
         sys.stderr.write('[sender] Listening on port %s\n' % self.sock.getsockname()[1])
 
@@ -156,13 +155,15 @@ class Sender(object):
             self.pc = None
             self.test_name = None
 
-        self.send_queue_out, self.send_queue_in  = Pipe(False)
+        self.send_queue_out, self.send_queue_in = Pipe(False)
         self.send_process = Process(target=self.send_process_func)
 
     def cleanup(self):
         if self.debug and self.sampling_file:
             self.sampling_file.close()
+
         self.sock.close()
+
         self.send_queue_out.close()
         self.send_queue_in.close()
         self.send_process.terminate()
@@ -171,7 +172,7 @@ class Sender(object):
         """Handshake with peer receiver. Must be called before run()."""
 
         while True:
-            msg, addr = self.sock.recvfrom(1600)
+            msg, addr = self.sock.recvfrom(1500)
             if msg == 'Hello from receiver' and self.peer_addr is None:
                 self.peer_addr = addr
                 self.sock.sendto('Hello from sender', self.peer_addr)
@@ -194,11 +195,8 @@ class Sender(object):
         curr_time_ms = curr_ts_ms()
 
         # Update RTT
-        rtt = float(curr_time_ms - ack.send_ts)
-        self.min_rtt = min(self.min_rtt, rtt)
-        self.min_rtt = max(1, self.min_rtt)
-        rtt = max(1, rtt)
-        #print rtt, self.min_rtt
+        rtt = max(1, float(curr_time_ms - ack.send_ts))
+        self.min_rtt = max(1, min(self.min_rtt, rtt))
 
         if self.train:
             if self.ts_first is None:
@@ -222,18 +220,19 @@ class Sender(object):
         # Update BBR's delivery rate
         self.delivered += ack.ack_bytes
         self.delivered_time = curr_time_ms
-        delivery_rate = (0.008 * (self.delivered - ack.delivered) / max(1, self.delivered_time - ack.delivered_time))
+        delivery_rate = (0.008 * (self.delivered - ack.delivered)
+                         / max(1, self.delivered_time - ack.delivered_time))
 
         if self.delivery_rate_ewma is None:
             self.delivery_rate_ewma = delivery_rate
         else:
-            self.delivery_rate_ewma = (0.875 * self.delivery_rate_ewma + 0.125 * delivery_rate)
+            self.delivery_rate_ewma = 0.875 * self.delivery_rate_ewma + 0.125 * delivery_rate
 
         self.min_delivery_rate_ewma = min(self.min_delivery_rate_ewma, self.delivery_rate_ewma)
         self.max_delivery_rate_ewma = max(self.max_delivery_rate_ewma, self.delivery_rate_ewma)
 
         # Update Vegas sending rate
-        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / max(1, rtt)
+        send_rate = 0.008 * (self.sent_bytes - ack.sent_bytes) / rtt
 
         if self.send_rate_ewma is None:
             self.send_rate_ewma = send_rate
@@ -243,45 +242,40 @@ class Sender(object):
         self.min_send_rate_ewma = min(self.min_send_rate_ewma, self.send_rate_ewma)
         self.max_send_rate_ewma = max(self.max_send_rate_ewma, self.send_rate_ewma)
 
-        # ##############################-BEGIN---Normorlized send/delivery rate min_ewma & max_ewma ################################
-        self.min_send_rate_ewma_normorlized = self.min_send_rate_ewma / Sender.max_send_rate_normorlize
-        self.max_send_rate_ewma_normorlized = self.max_send_rate_ewma / Sender.max_send_rate_normorlize
-        self.min_delivery_rate_ewma_normorlized = self.min_delivery_rate_ewma / Sender.max_delivery_rate_normorlize
-        self.max_delivery_rate_ewma_normorlized = self.max_delivery_rate_ewma / Sender.max_delivery_rate_normorlize
-        # ##############################-BEGIN---Normorlized min_ewma, max_ewma ####################################################
+        # normalization
+        self.min_send_rate_ewma_norm = self.min_send_rate_ewma / Sender.max_send_rate
+        self.max_send_rate_ewma_norm = self.max_send_rate_ewma / Sender.max_send_rate
+        self.min_delivery_rate_ewma_norm = self.min_delivery_rate_ewma / Sender.max_delivery_rate
+        self.max_delivery_rate_ewma_norm = self.max_delivery_rate_ewma / Sender.max_delivery_rate
 
-        # ############################## BEGIN---Relative value (Normorlized): (x-min_ewma)/(max_ewma-min_ewma) ####################
-        if self.max_delay_ewma-self.min_delay_ewma == 0:
+        if self.max_delay_ewma - self.min_delay_ewma == 0:
             self.delay_rel = 0
         else:
-            self.delay_rel = (self.delay_ewma-self.min_delay_ewma) / (self.max_delay_ewma-self.min_delay_ewma)
+            self.delay_rel = (self.delay_ewma - self.min_delay_ewma) / (self.max_delay_ewma - self.min_delay_ewma)
 
-        if self.max_delivery_rate_ewma-self.min_delivery_rate_ewma == 0:
+        if self.max_delivery_rate_ewma - self.min_delivery_rate_ewma == 0:
             self.deliver_rel = 0
         else:
-            self.deliver_rel = (self.delivery_rate_ewma - self.min_delivery_rate_ewma) / (self.max_delivery_rate_ewma - self.min_delivery_rate_ewma)
+            self.deliver_rel = ((self.delivery_rate_ewma - self.min_delivery_rate_ewma) /
+                                (self.max_delivery_rate_ewma - self.min_delivery_rate_ewma))
 
-        if self.max_send_rate_ewma-self.min_send_rate_ewma == 0:
+        if self.max_send_rate_ewma - self.min_send_rate_ewma == 0:
             self.send_rel = 0
         else:
-            self.send_rel = (self.send_rate_ewma-self.min_send_rate_ewma) / (self.max_send_rate_ewma-self.min_send_rate_ewma)
-        # ############################## END---Relative value: (x-min_ewma)/(max_ewma-min_ewma) ###################################
+            self.send_rel = ((self.send_rate_ewma - self.min_send_rate_ewma) /
+                             (self.max_send_rate_ewma - self.min_send_rate_ewma))
 
-        # ################################## BEGIN---Absolute value (Normorlized): x/MAX ##########################################
-        self.rtt_abs = self.rtt_ewma / Sender.max_rtt_normorlize
+        self.rtt_abs = self.rtt_ewma / Sender.max_rtt
         self.delay_abs = self.delay_ewma / self.min_rtt
-        self.send_abs = self.send_rate_ewma / Sender.max_send_rate_normorlize
-        self.delivery_abs = self.delivery_rate_ewma / Sender.max_delivery_rate_normorlize
-        # ################################## END---Absolute value (Normorlized): x/MAX ############################################
+        self.send_abs = self.send_rate_ewma / Sender.max_send_rate
+        self.delivery_abs = self.delivery_rate_ewma / Sender.max_delivery_rate
+
+        self.cwnd_norm = 1.0 * self.cwnd / Sender.max_cwnd
 
     def take_action(self, action_idx):
-        # old_cwnd = self.cwnd
         op, val = self.action_mapping[action_idx]
         self.cwnd = apply_op(op, self.cwnd, val)
-        self.cwnd = max(Sender.min_cwnd, self.cwnd)
-        self.cwnd = min(Sender.max_cwnd, self.cwnd)
-
-        #print self.cwnd
+        self.cwnd = min(Sender.max_cwnd, max(Sender.min_cwnd, self.cwnd))
 
     def window_is_open(self):
         return self.seq_num - self.next_ack < self.cwnd
@@ -318,8 +312,6 @@ class Sender(object):
         return 0
 
     def cal_loss_rate(self, ack):
-        # sent_queue = self.sent_queue
-
         queue_len = len(self.sent_queue)
         if queue_len == 0:
             return 0
@@ -337,15 +329,15 @@ class Sender(object):
             return 0
 
         t, pre_sent_bytes = self.sent_queue[0]
-        if (sent_bytes - pre_sent_bytes) == 0:
+        if sent_bytes - pre_sent_bytes == 0:
             return 0
 
-        loss_rate = 1 - float(1.0*(self.delivered-self.last_delivered) / (sent_bytes - pre_sent_bytes))
-        self.loss_pkt = ((sent_bytes - pre_sent_bytes) - (self.delivered-self.last_delivered)) / self.indigo_length
+        loss_rate = 1 - float(1.0 * (self.delivered - self.last_delivered) / (sent_bytes - pre_sent_bytes))
+        self.loss_pkt = ((sent_bytes - pre_sent_bytes) - (self.delivered - self.last_delivered)) / self.indigo_length
 
         self.last_delivered = self.delivered
 
-        for i in xrange(remove_num-1):
+        for i in xrange(remove_num - 1):
             self.sent_queue.popleft()
 
         return max(0, loss_rate)
@@ -355,7 +347,10 @@ class Sender(object):
             if cur_time - self.step_start_ms > self.step_len_ms:
                 return True
         else:
-            if (self.start_phase_time < self.start_phase_max and cur_time - self.step_start_ms > max(self.min_rtt, self.step_len_ms)) or (self.start_phase_time >= self.start_phase_max and cur_time - self.step_start_ms > max(self.min_rtt/4.0, self.step_len_ms)):
+            if ((self.start_phase_time < self.start_phase_max and
+                 cur_time - self.step_start_ms > max(self.min_rtt, self.step_len_ms)) or
+                (self.start_phase_time >= self.start_phase_max and
+                 cur_time - self.step_start_ms > max(self.min_rtt / 4.0, self.step_len_ms))):
                 if self.start_phase_time < self.start_phase_max:
                     self.start_phase_time = self.start_phase_time + 1
                 return True
@@ -364,48 +359,34 @@ class Sender(object):
 
     def recv(self):
         try:
-            unpaced_data, addr = self.sock.recvfrom(1600)
+            packed_data, addr = self.sock.recvfrom(1500)
         except socket.error:
             return 0
 
-        if addr != self.peer_addr or len(unpaced_data) < 28:
+        if addr != self.peer_addr or len(packed_data) < 28:
             return 0
 
-        ack = Ack(struct.unpack('!iiqiqi', unpaced_data))
-        # print ack.seq_num, ack.send_ts, ack.sent_bytes, ack.delivered_time, ack.delivered, ack.ack_bytes
+        ack = Ack(struct.unpack('!iiqiqi', packed_data))
 
         self.update_state_relative(ack)
 
         if self.step_start_ms is None:
             self.step_start_ms = curr_ts_ms()
 
-        # At each step end, feed the state:
+        # at the end of each step, feed the state:
         cur_time = curr_ts_ms()
         if self.check_update(cur_time):
-        #if cur_time - self.step_start_ms > self.step_len_ms: # step's end
             self.loss_rate = self.cal_loss_rate(ack)
 
-            state0 = [self.delay_ewma,
-                      self.delivery_rate_ewma,
-                      self.send_rate_ewma,
-                      self.cwnd/Sender.max_cwnd]
-            state1 = [self.delay_rel,
-                      self.deliver_rel,
-                      self.send_rel,
-                      self.cwnd/Sender.max_cwnd]
-            state2 = [self.delay_rel,
-                      self.delivery_abs,
-                      self.loss_rate,
-                      1.0*self.cwnd/Sender.max_cwnd]
-            state5 = [self.rtt_abs, self.delay_abs, self.send_abs, self.delivery_abs, self.max_send_rate_ewma_normorlized,
-                      self.max_delivery_rate_ewma_normorlized, self.loss_rate, 1.0*self.cwnd/Sender.max_cwnd]
-            state6 = [self.rtt_abs, self.delay_abs, self.send_abs,
-                      self.delivery_abs, self.loss_rate, 1.0*self.cwnd/Sender.max_cwnd]
-            state7 = [self.rtt_abs, self.delay_abs, self.send_abs,
-                      self.delivery_abs, 1.0*self.cwnd/Sender.max_cwnd]
-
+            state0 = [self.delay_ewma, self.delivery_rate_ewma, self.send_rate_ewma, self.cwnd_norm]
+            state1 = [self.delay_rel, self.deliver_rel, self.send_rel, self.cwnd_norm]
+            state2 = [self.delay_rel, self.delivery_abs, self.loss_rate, self.cwnd_norm]
+            state5 = [self.rtt_abs, self.delay_abs, self.send_abs, self.delivery_abs, self.max_send_rate_ewma_norm,
+                      self.max_delivery_rate_ewma_norm, self.loss_rate, self.cwnd_norm]
+            state6 = [self.rtt_abs, self.delay_abs, self.send_abs, self.delivery_abs, self.loss_rate, self.cwnd_norm]
+            state7 = [self.rtt_abs, self.delay_abs, self.send_abs, self.delivery_abs, self.cwnd_norm]
             state8 = [self.rtt_abs, self.delay_abs, self.send_abs,
-                      self.delivery_abs, self.loss_rate, self.gain_flag, 1.0*self.cwnd/Sender.max_cwnd] # preemptive state
+                      self.delivery_abs, self.loss_rate, self.gain_flag, self.cwnd_norm] # preemptive state
 
             state_dict = {'state0': state0,
                           'state1': state1,
@@ -416,21 +397,19 @@ class Sender(object):
                           'state8': state8}
 
             selected_state = state_dict[Sender.cfg.get('global', 'state')]
-            #print selected_state
-            # time how long it takes to get an action from the NN
+
+            # how long it takes to get an action from the NN
             if self.debug:
                 start_sample = time.time()
             if not self.train:
                 invoke_start_time = datetime.datetime.now()
 
             action = self.sample_action(selected_state)
-
             if action == -1:
                 return -1
 
             if self.debug :
-                self.sampling_file.write('%.2f ms\n' % (
-                    (time.time() - start_sample) * 1000))
+                self.sampling_file.write('%.2f ms\n' % ((time.time() - start_sample) * 1000))
 
             self.take_action(action)
 
@@ -450,7 +429,6 @@ class Sender(object):
             else:
                 if self.pc is not None:
                     self.pc.upload_cwnd(self.cwnd)
-                    #print self.cwnd
                 if curr_ts_ms() - self.test_start_time >= Sender.max_test_time:
                     if self.test_name is not None:
                         self.test_start_time = 0
@@ -469,9 +447,8 @@ class Sender(object):
         self.ec = ec
 
     def get_recv_num(self):
-        recv_num = self.cwnd / (Sender.max_cwnd/50)
-        recv_num = min(50, recv_num)
-        recv_num = max(1, recv_num)
+        recv_num = self.cwnd / (Sender.max_cwnd / 50)
+        recv_num = max(1, min(50, recv_num))
         return recv_num
 
     def run(self):
@@ -489,7 +466,7 @@ class Sender(object):
         if self.preemptive == True:
             self.last_gain_time = curr_ts_ms()
 
-        pre_time = datetime.datetime.now()
+        prev_datetime = datetime.datetime.now()
         borrowed_pkt = 0.0
         interval = 500.0
 
@@ -552,10 +529,8 @@ class Sender(object):
                             break
                         elif ret == -1:  # expert server error
                             return -1
-                    #res = self.recv()
                 if flag & WRITE_FLAGS:
                     if self.window_is_open():
-
                         if self.pacing == 1:
                             if self.rtt_ewma is None:
                                 n = 0.5
@@ -563,10 +538,10 @@ class Sender(object):
                                 n = self.cwnd / self.min_rtt
 
 
-                            _now = datetime.datetime.now()
-                            if ((_now - pre_time).microseconds >= interval):
-                                n = (_now - pre_time).microseconds / interval * (n*(interval/1000.0))
-                                pre_time = _now
+                            curr_datetime = datetime.datetime.now()
+                            if (curr_datetime - prev_datetime).microseconds >= interval:
+                                n = (curr_datetime - prev_datetime).microseconds / interval * (n * (interval / 1000.0))
+                                prev_datetime = curr_datetime
 
                                 borrowed_pkt += n - int(n)
                                 if borrowed_pkt >= 1:
@@ -577,15 +552,7 @@ class Sender(object):
                                 n = int(n)
 
                                 availbable_cwnd = int(self.cwnd) - (self.seq_num - self.next_ack)
-
                                 c = min(availbable_cwnd, n)
-
-                                # while num < c:
-                                #     if self.send() == 0:
-                                #         num = num + 1
-                                #     else:
-                                #         break
-                                #borrowed_pkt += c - num
                                 self.msend(c)
                         else:
                             cwnd = int(self.cwnd) - (self.seq_num - self.next_ack)
@@ -593,19 +560,8 @@ class Sender(object):
 
         return 0
 
-    # def send_process_func(self):
-    #     while True:
-    #         self.send_queue_out.poll()
-    #         seq_num, send_ts, sent_bytes, delivered_time, delivered = self.send_queue_out.recv()
-    #         data = (seq_num, send_ts, sent_bytes, delivered_time, delivered)
-    #         packed_data = struct.pack('!iiqiq', *data)
-    #         ret = -1
-    #         while ret == -1:
-    #             ret = self.sock.sendto(packed_data + self.indigo_payload, self.peer_addr)
-
     def send_process_func(self):
         while True:
-            #self.send_queue_out.poll()
             data_array = self.send_queue_out.recv()
 
             for seq_num, send_ts, sent_bytes, delivered_time, delivered in data_array:
@@ -631,7 +587,8 @@ class Sender(object):
         perc_delay = np.percentile(self.rtt_buf, 95)
         avg_delay = np.percentile(self.rtt_buf, 50)
 
-        print ('thx: %.2f, delay: %d(95th) %d(50th), sent_bytes: %d\n' % (tput, perc_delay, avg_delay, self.sent_bytes))
+        print('tput: %.2f, delay: %d(95th) %d(50th), sent_bytes: %d\n' %
+              (tput, perc_delay, avg_delay, self.sent_bytes))
 
     def set_test_name(self, name):
         self.test_name = name

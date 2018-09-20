@@ -27,9 +27,9 @@ received_bytes = 0
 test_name_str = None
 
 
-def on_quit(a, b):
+def on_quit(signal, frame):
     if test_name_str is not None:
-        file = path.join(context.base_dir, 'tests', 'rtt_loss', 'receiver_'+test_name_str)
+        file = path.join(context.base_dir, 'tests', 'rtt_loss', 'receiver_' + test_name_str)
         file = open(file, 'w')
         file.write(str(received_bytes)+'\n')
         file.close()
