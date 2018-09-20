@@ -23,7 +23,7 @@ import select
 import struct
 import datetime
 import numpy as np
-import project_root
+import context
 from os import path
 from helpers.helpers import (curr_ts_ms, apply_op, READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, WRITE_FLAGS, ALL_FLAGS)
 from multiprocessing import Process, Queue, Pipe
@@ -60,7 +60,7 @@ class Sender(object):
     max_test_time = 30000
 
     cfg = ConfigParser.ConfigParser()
-    cfg_path = path.join(project_root.DIR, 'config.ini')
+    cfg_path = path.join(context.base_dir, 'config.ini')
     cfg.read(cfg_path)
     state_dim = int(cfg.get('global', 'state_dim'))
 
@@ -91,7 +91,7 @@ class Sender(object):
         self.indigo_length = self.indigo_header + len(self.indigo_payload)
 
         if self.debug:
-            self.sampling_file = open(path.join(project_root.DIR, 'env', 'sampling_time'), 'w', 0)
+            self.sampling_file = open(path.join(context.base_dir, 'env', 'sampling_time'), 'w', 0)
 
         # congestion control related
         self.seq_num = 0
@@ -622,7 +622,7 @@ class Sender(object):
         tput = 0.008 * self.delivered / duration
         perc_delay = np.percentile(self.rtt_buf, 95)
 
-        with open(path.join(project_root.DIR, 'env', 'perf'), 'a', 0) as perf:
+        with open(path.join(context.base_dir, 'env', 'perf'), 'a', 0) as perf:
             perf.write('%.2f %d\n' % (tput, perc_delay))
 
     def print_performance(self):
@@ -637,7 +637,7 @@ class Sender(object):
         self.test_name = name
 
     def performance_for_test(self):
-        rtt_file = path.join(project_root.DIR, 'tests', 'rtt_loss', 'sender_rtt_'+self.test_name)
+        rtt_file = path.join(context.base_dir, 'tests', 'rtt_loss', 'sender_rtt_'+self.test_name)
         file = open(rtt_file, 'w')
         file.write(str(self.sent_bytes)+'\n')
         for rtt in self.rtt_buf:

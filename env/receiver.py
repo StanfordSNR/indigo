@@ -22,7 +22,7 @@ import struct
 import signal
 from os import path
 # import datagram_pb2
-import project_root
+import context
 from helpers.helpers import READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, ALL_FLAGS
 
 received_bytes = 0
@@ -31,7 +31,7 @@ test_name_str = None
 
 def on_quit(a, b):
     if test_name_str is not None:
-        file = path.join(project_root.DIR, 'tests', 'rtt_loss', 'receiver_'+test_name_str)
+        file = path.join(context.base_dir, 'tests', 'rtt_loss', 'receiver_'+test_name_str)
         file = open(file, 'w')
         file.write(str(received_bytes)+'\n')
         file.close()

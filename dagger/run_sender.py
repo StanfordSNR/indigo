@@ -17,7 +17,7 @@
 
 
 import argparse
-import project_root
+import context
 import numpy as np
 import tensorflow as tf
 from os import path
@@ -50,9 +50,9 @@ class Learner(object):
         uninit_vars -= set(self.model.trainable_vars)
         self.sess.run(tf.variables_initializer(uninit_vars))
 
-        # cpp_model_path = path.join(project_root.DIR, 'dagger', 'model_cpp')
+        # cpp_model_path = path.join(context.base_dir, 'dagger', 'model_cpp')
         # tf.train.write_graph(self.sess.graph_def, cpp_model_path, "cpp_model.pbtxt", as_text=True)
-        # checkpoint_path = path.join(project_root.DIR, 'dagger', 'model_cpp', 'cpp_model.ckpt')
+        # checkpoint_path = path.join(context.base_dir, 'dagger', 'model_cpp', 'cpp_model.ckpt')
         # self.model.saver.save(self.sess, checkpoint_path)
         # print "export cpp model complete"
 

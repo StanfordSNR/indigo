@@ -19,7 +19,7 @@ import argparse
 import ast
 import ConfigParser
 import os
-import project_root
+import context
 import shutil
 import tensorflow as tf
 from dagger.run_sender import Learner
@@ -34,7 +34,7 @@ def get_mininet_env_param():
     total_env_set = []
 
     cfg = ConfigParser.ConfigParser()
-    cfg_path = os.path.join(project_root.DIR, 'config.ini')
+    cfg_path = os.path.join(context.base_dir, 'config.ini')
     cfg.read(cfg_path)
 
     test_env = cfg.options('test_env')
@@ -53,8 +53,8 @@ def main():
     args = parser.parse_args()
 
     # set up dir for log
-    perf_log_path = os.path.join(project_root.DIR, 'tests', 'perf_log')
-    rtt_loss_path = os.path.join(project_root.DIR, 'tests', 'rtt_loss')
+    perf_log_path = os.path.join(context.base_dir, 'tests', 'perf_log')
+    rtt_loss_path = os.path.join(context.base_dir, 'tests', 'rtt_loss')
     if os.path.exists(perf_log_path):
         shutil.rmtree(perf_log_path)
     if os.path.exists(rtt_loss_path):

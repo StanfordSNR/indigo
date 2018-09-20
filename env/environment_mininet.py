@@ -13,17 +13,18 @@
 #     limitations under the License.
 
 
-import ast
-import ConfigParser
 import os
+from os import path
 import sys
 import signal
-import subprocess
-import project_root
 import time
-from os import path
-from helpers.helpers import get_open_port, check_pid
+import ast
+import ConfigParser
+from subprocess import Popen, PIPE
 from sender import Sender
+
+import context
+from helpers.helpers import get_open_port, check_pid
 
 
 def get_mininet_env_param(train):
@@ -36,7 +37,7 @@ def get_mininet_env_param(train):
         option_name = 'test_env'
 
     cfg = ConfigParser.ConfigParser()
-    cfg_path = os.path.join(project_root.DIR, 'config.ini')
+    cfg_path = os.path.join(context.base_dir, 'config.ini')
     cfg.read(cfg_path)
 
     env = cfg.options(option_name)
@@ -98,11 +99,11 @@ class Environment_Mininet(object):
 
         if self.train:
             sys.stderr.write('start emulator expert server\n')
-            expert_server_path = path.join(project_root.DIR, 'dagger', 'expert_server.py')
+            expert_server_path = path.join(context.base_dir, 'dagger', 'expert_server.py')
             for i in xrange(5):
                 self.tcp_port = get_open_port()
                 cmd = ('python ' + expert_server_path + ' {} '.format(self.tcp_port)).split(' ')
-                self.expert_server = subprocess.Popen(cmd, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w')) #
+                self.expert_server = Popen(cmd, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w')) #
                 if check_pid(self.expert_server.pid):
                     sys.stderr.write('start expert server successfully\n')
                     break
@@ -111,11 +112,11 @@ class Environment_Mininet(object):
 
         else:
             sys.stderr.write('start emulator perf server\n')
-            expert_server_path = path.join(project_root.DIR, 'dagger', 'perf_server.py')
+            expert_server_path = path.join(context.base_dir, 'dagger', 'perf_server.py')
             for i in xrange(5):
                 self.tcp_port = get_open_port()
                 cmd = ('python ' + expert_server_path + ' {} {} {} {}'.format(self.tcp_port, self.env_set_index, self.traffic_shape_set_index_1, self.traffic_shape_set_index_2)).split(' ')
-                self.expert_server = subprocess.Popen(cmd, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
+                self.expert_server = Popen(cmd, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
                 if check_pid(self.expert_server.pid):
                     sys.stderr.write('start perf server successfully\n')
                     break
@@ -139,10 +140,10 @@ class Environment_Mininet(object):
         cmd_para = ' ' + self.env_set[self.env_set_index][0] + ' ' + self.env_set[self.env_set_index][1] + \
                    ' ' + self.env_set[self.env_set_index][2] + ' ' + self.env_set[self.env_set_index][3]
         sys.stderr.write(cmd_para+'\n')
-        emulator_path = path.join(project_root.DIR, 'env', 'mininet_topo.py')
+        emulator_path = path.join(context.base_dir, 'env', 'mininet_topo.py')
         cmd = ['python', emulator_path, self.env_set[self.env_set_index][0], self.env_set[self.env_set_index]
                [1], self.env_set[self.env_set_index][2], self.env_set[self.env_set_index][3]]
-        self.emulator = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.emulator = Popen(cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE)
         # print self.emulator.stdout.read()
         # time.sleep(1.5)
 
@@ -159,7 +160,7 @@ class Environment_Mininet(object):
         else:
             sys.stderr.write('start traffic generator\n')
             # tg-receiver:
-            tg_receiver_path = path.join(project_root.DIR, 'trafficGenerator', 'receiver.py')
+            tg_receiver_path = path.join(context.base_dir, 'traffic-generator', 'receiver.py')
             self.emulator.stdin.write('h2 python ' + tg_receiver_path + ' 192.168.42.2 6666 &\n')
             self.emulator.stdin.flush()
             # time.sleep(0.5)
@@ -167,7 +168,7 @@ class Environment_Mininet(object):
             # start traffic generator (tg)
             # tg-sender: PARAMETER ip port NIC traffic_shape duration
             sys.stderr.write('Traffic shape index is {} \n'.format(self.traffic_shape))
-            tg_sender_path = path.join(project_root.DIR, 'trafficGenerator', 'sender.py')
+            tg_sender_path = path.join(context.base_dir, 'traffic-generator', 'sender.py')
             self.emulator.stdin.write('h1 python ' + tg_sender_path + ' 192.168.42.2 6666 h1-eth0 {} 0 &\n'.format(self.traffic_shape))
             self.emulator.stdin.flush()
 
@@ -185,7 +186,7 @@ class Environment_Mininet(object):
 
         # start receiver
         sys.stderr.write('Start receiver\n')
-        receiver_path = path.join(project_root.DIR, 'env', 'run_receiver.py')
+        receiver_path = path.join(context.base_dir, 'env', 'run_receiver.py')
         if self.train:
             self.emulator.stdin.write('h3 python ' + receiver_path + ' 192.168.42.111 ' + str(self.port) + ' & \n')
         else:
@@ -233,9 +234,9 @@ class Environment_Mininet(object):
 
         if self.expert_server:
             if self.train:
-                subprocess.Popen('pkill -f expert_server', shell=True)
+                Popen('pkill -f expert_server', shell=True)
             else:
-                subprocess.Popen('pkill -f perf_server', shell=True)
+                Popen('pkill -f perf_server', shell=True)
             self.expert_server = None
 
         if self.expert:

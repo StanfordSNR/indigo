@@ -17,7 +17,7 @@
 import ConfigParser
 import datetime
 import numpy as np
-import project_root
+import context
 import sys
 import tensorflow as tf
 import time
@@ -56,7 +56,7 @@ class DaggerLeader(object):
         self.curr_ep = 0
 
         cfg = ConfigParser.ConfigParser()
-        cfg_path = path.join(project_root.DIR, 'config.ini')
+        cfg_path = path.join(context.base_dir, 'config.ini')
         cfg.read(cfg_path)
         self.rho = float(cfg.get('global', 'rho'))
 
@@ -164,10 +164,10 @@ class DaggerLeader(object):
         tf.summary.scalar('total_loss', self.total_loss)
         self.summary_op = tf.summary.merge_all()
 
-        git_commit = check_output('cd %s && git rev-parse @' % project_root.DIR, shell=True)
+        git_commit = check_output('cd %s && git rev-parse @' % context.base_dir, shell=True)
         date_time = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
         log_name = date_time + '-%s' % git_commit.strip()
-        self.logdir = path.join(project_root.DIR, 'dagger', 'logs', log_name)
+        self.logdir = path.join(context.base_dir, 'dagger', 'logs', log_name)
         make_sure_path_exists(self.logdir)
         self.summary_writer = tf.summary.FileWriter(self.logdir)
 

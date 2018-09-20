@@ -21,7 +21,7 @@ import sys
 import time
 import signal
 import argparse
-import project_root
+import context
 from os import path
 from subprocess import Popen, call
 
@@ -118,7 +118,7 @@ def main():
         help='comma-separated list of hostname:port of workers')
     parser.add_argument('--user', required=True, metavar='NAME',
                         help='username used in ssh connection')
-    parser.add_argument('--indigo-dir', required=True, metavar='DIR',
+    parser.add_argument('--indigo-dir', required=True, metavar='base_dir',
                         help='absolute path to indigo')
     prog_args = parser.parse_args()
     args = construct_args(prog_args)

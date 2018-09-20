@@ -17,7 +17,7 @@
 
 import ConfigParser
 import os
-import project_root
+import context
 import threading
 import socket
 import subprocess
@@ -194,7 +194,7 @@ class Expert_Mininet():
         #                 best_cwnd = best_cwnd + q * left_queue_size #  0 <= q <= 1, q is the aggressive factor
 
         cfg = ConfigParser.ConfigParser()
-        cfg_path = os.path.join(project_root.DIR, 'config.ini')
+        cfg_path = os.path.join(context.base_dir, 'config.ini')
         cfg.read(cfg_path)
         q = float(cfg.get('global', 'fri'))
 
@@ -214,7 +214,7 @@ class Expert_Mininet():
         #                 best_cwnd = best_cwnd + q * left_queue_size #  0 <= q <= 1, q is the aggressive factor
 
         cfg = ConfigParser.ConfigParser()
-        cfg_path = os.path.join(project_root.DIR, 'config.ini')
+        cfg_path = os.path.join(context.base_dir, 'config.ini')
         cfg.read(cfg_path)
         # q = float(cfg.get('global', 'fri'))
 

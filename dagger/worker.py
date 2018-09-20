@@ -23,7 +23,7 @@ import sys
 import yaml
 import argparse
 import threading
-import project_root
+import context
 import tensorflow as tf
 from subprocess import check_call
 from os import path
@@ -33,13 +33,13 @@ from env.environment_mininet import Environment_Mininet
 
 
 def prepare_traces(bandwidth):
-    trace_dir = path.join(project_root.DIR, 'env')
+    trace_dir = path.join(context.base_dir, 'env')
 
     if type(bandwidth) == int:
         trace_path = path.join(trace_dir, '%dmbps.trace' % bandwidth)
 
         if not path.exists(trace_path):
-            gen_trace = path.join(project_root.DIR, 'helpers',
+            gen_trace = path.join(context.base_dir, 'helpers',
                                   'generate_trace.py')
             cmd = ['python', gen_trace, '--output-dir', trace_dir,
                    '--bandwidth', str(bandwidth)]
@@ -62,7 +62,7 @@ def get_mininet_env_param():
     total_env_set = []
 
     cfg = ConfigParser.ConfigParser()
-    cfg_path = os.path.join(project_root.DIR, 'config.ini')
+    cfg_path = os.path.join(context.base_dir, 'config.ini')
     cfg.read(cfg_path)
 
     train_env = cfg.options('train_env')
@@ -102,23 +102,23 @@ def create_env(task_index):
     shells. The environment knows the best cwnd to pass to the expert policy.
     """
 
-    best_cwnds_file = path.join(project_root.DIR, 'dagger', 'best_cwnds.yml')
+    best_cwnds_file = path.join(context.base_dir, 'dagger', 'best_cwnds.yml')
     best_cwnd_map = yaml.load(open(best_cwnds_file))
 
     if task_index == 0:
-        trace_path = path.join(project_root.DIR, 'env',
+        trace_path = path.join(context.base_dir, 'env',
                                '0.57mbps-poisson.trace')
         mm_cmd = 'mm-delay 28 mm-loss uplink 0.0477 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=14' % (
             trace_path, trace_path)
         best_cwnd = 5
     elif task_index == 1:
-        trace_path = path.join(project_root.DIR, 'env',
+        trace_path = path.join(context.base_dir, 'env',
                                '2.64mbps-poisson.trace')
         mm_cmd = 'mm-delay 88 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=130' % (
             trace_path, trace_path)
         best_cwnd = 40
     elif task_index == 2:
-        trace_path = path.join(project_root.DIR, 'env',
+        trace_path = path.join(context.base_dir, 'env',
                                '3.04mbps-poisson.trace')
         mm_cmd = 'mm-delay 130 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=426' % (
             trace_path, trace_path)
@@ -135,17 +135,17 @@ def create_env(task_index):
             delay, uplink_trace, downlink_trace)
         best_cwnd = best_cwnd_map[bandwidth][delay]
     elif task_index == 19:
-        trace_path = path.join(project_root.DIR, 'env', '100.42mbps.trace')
+        trace_path = path.join(context.base_dir, 'env', '100.42mbps.trace')
         mm_cmd = 'mm-delay 27 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=173' % (
             trace_path, trace_path)
         best_cwnd = 500
     elif task_index == 20:
-        trace_path = path.join(project_root.DIR, 'env', '77.72mbps.trace')
+        trace_path = path.join(context.base_dir, 'env', '77.72mbps.trace')
         mm_cmd = 'mm-delay 51 mm-loss uplink 0.0006 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=94' % (
             trace_path, trace_path)
         best_cwnd = 690
     elif task_index == 21:
-        trace_path = path.join(project_root.DIR, 'env', '114.68mbps.trace')
+        trace_path = path.join(context.base_dir, 'env', '114.68mbps.trace')
         mm_cmd = 'mm-delay 45 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=450' % (
             trace_path, trace_path)
         best_cwnd = 870

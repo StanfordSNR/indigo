@@ -19,12 +19,12 @@
 from os import path
 import sys
 import numpy as np
-import project_root
+import context
 from env.environment import Environment
 
 
 def create_env():
-    uplink_trace = path.join(project_root.DIR, 'env', '12mbps.trace')
+    uplink_trace = path.join(context.base_dir, 'env', '12mbps.trace')
     downlink_trace = uplink_trace
     mahimahi_cmd = (
         'mm-delay 20 mm-link %s %s '

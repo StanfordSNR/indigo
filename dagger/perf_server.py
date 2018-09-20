@@ -23,7 +23,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import project_root
+import context
 import socket
 import subprocess
 import sys
@@ -225,7 +225,7 @@ class Expert_Mininet():
         #                 best_cwnd = best_cwnd + q * left_queue_size #  0 <= q <= 1, q is the aggressive factor
 
         cfg = ConfigParser.ConfigParser()
-        cfg_path = os.path.join(project_root.DIR, 'config.ini')
+        cfg_path = os.path.join(context.base_dir, 'config.ini')
         cfg.read(cfg_path)
         q = float(cfg.get('global', 'fri'))
 
@@ -339,7 +339,7 @@ def get_mininet_env_param():
     total_env_name_set = []
 
     cfg = ConfigParser.ConfigParser()
-    cfg_path = os.path.join(project_root.DIR, 'config.ini')
+    cfg_path = os.path.join(context.base_dir, 'config.ini')
     cfg.read(cfg_path)
 
     test_env = cfg.options('test_env')
@@ -375,7 +375,7 @@ def thread_fun():
 
 if __name__ == '__main__':
     log_file_name = '{}_tp_{}_performance.log'.format(curr_env_name, curr_tp_name)
-    log_file_path = os.path.join(project_root.DIR, 'tests', 'perf_log', log_file_name)
+    log_file_path = os.path.join(context.base_dir, 'tests', 'perf_log', log_file_name)
     logging.basicConfig(level=logging.INFO, format='%(message)s', filename=log_file_path)
     logging.info('bandwidth, min_rtt, queueing_factor, non_congestion_loss, congestion_loss_bn, tg_traffic, sender_traffic, best_cwnd, indigo_cwnd')
 

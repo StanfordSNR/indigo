@@ -1,5 +1,4 @@
 # Copyright 2018 Francis Y. Yan, Jestin Ma
-# Copyright 2018 Huawei Technologies
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +19,8 @@ import sys
 import signal
 from subprocess import Popen
 from sender import Sender
-import project_root
+
+import context
 from helpers.helpers import get_open_port
 
 
@@ -54,7 +54,7 @@ class Environment(object):
         # start receiver in a subprocess
         sys.stderr.write('Starting receiver...\n')
         receiver_src = path.join(
-            project_root.DIR, 'env', 'run_receiver.py')
+            context.base_dir, 'env', 'run_receiver.py')
         recv_cmd = 'python %s $MAHIMAHI_BASE %s' % (receiver_src, self.port)
         cmd = "%s -- sh -c '%s'" % (self.mahimahi_cmd, recv_cmd)
         sys.stderr.write('$ %s\n' % cmd)
