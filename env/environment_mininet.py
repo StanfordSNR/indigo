@@ -139,7 +139,7 @@ class Environment_Mininet(object):
         cmd_para = ' ' + self.env_set[self.env_set_index][0] + ' ' + self.env_set[self.env_set_index][1] + \
                    ' ' + self.env_set[self.env_set_index][2] + ' ' + self.env_set[self.env_set_index][3]
         sys.stderr.write(cmd_para+'\n')
-        emulator_path = path.join(project_root.DIR, 'netEmulator', 'emulator_topo.py')
+        emulator_path = path.join(project_root.DIR, 'env', 'mininet_topo.py')
         cmd = ['python', emulator_path, self.env_set[self.env_set_index][0], self.env_set[self.env_set_index]
                [1], self.env_set[self.env_set_index][2], self.env_set[self.env_set_index][3]]
         self.emulator = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
