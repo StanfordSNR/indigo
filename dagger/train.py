@@ -24,7 +24,6 @@ import argparse
 import project_root
 from os import path
 from subprocess import Popen, call
-from helpers.helpers import get_open_udp_port
 
 
 def run(args):

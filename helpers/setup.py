@@ -82,13 +82,13 @@ def main():
 
     parser.add_argument(
         '--install-deps', action='store_true',
-        help='install dependencies: tensorflow, mahimahi, etc.')
+        help='install dependencies: tensorflow, etc.')
     parser.add_argument(
         '--user', default='ubuntu',
         help='username used in ssh connection (default: ubuntu)')
     parser.add_argument(
         '--indigo-dir', metavar='DIR', default='/home/ubuntu/indigo',
-        help='absolute path to indigo/ (default: /home/ubuntu/indigo)')
+        help='absolute path to indigo (default: /home/ubuntu/indigo)')
     args = parser.parse_args()
 
     setup(args)

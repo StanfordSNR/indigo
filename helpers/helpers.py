@@ -55,40 +55,24 @@ def make_sure_path_exists(path):
             raise
 
 
-def get_open_udp_port():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+def get_open_port():
+    sock = socket.socket(socket.AF_INET)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    s.bind(('', 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def get_open_tcp_port():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    s.bind(('', 0))
-    port = s.getsockname()[1]
-    s.close()
-    time.sleep(0.1)
+    sock.bind(('', 0))
+    port = sock.getsockname()[1]
+    sock.close()
     return port
 
 
 def check_pid(pid):
-    """ Check For the existence of a unix pid. """
+    """ Check for the existence of a unix pid """
     try:
         os.kill(pid, 0)
     except OSError:
         return False
     else:
         return True
-
-
-def normalize(state):
-    return [state[0] / 20.0, state[1] / 1000.0,
-            state[2] / 1000.0, state[3] / 1000.0]
 
 
 def one_hot(action, action_cnt):

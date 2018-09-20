@@ -21,7 +21,7 @@ import signal
 from subprocess import Popen
 from sender import Sender
 import project_root
-from helpers.helpers import get_open_udp_port
+from helpers.helpers import get_open_port
 
 
 class Environment(object):
@@ -44,7 +44,7 @@ class Environment(object):
 
         self.cleanup()
 
-        self.port = get_open_udp_port()
+        self.port = get_open_port()
 
         # start sender as an instance of Sender class
         sys.stderr.write('Starting sender...\n')

@@ -1,1 +1,3 @@
-# Indigo: Empirically learned congestion control
+# Indigo v2
+
+Work in progress.

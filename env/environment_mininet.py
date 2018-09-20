@@ -22,7 +22,7 @@ import subprocess
 import project_root
 import time
 from os import path
-from helpers.helpers import get_open_udp_port, get_open_tcp_port, check_pid
+from helpers.helpers import get_open_port, check_pid
 from sender import Sender
 
 
@@ -94,13 +94,13 @@ class Environment_Mininet(object):
 
         self.cleanup()
 
-        self.port = get_open_udp_port()
+        self.port = get_open_port()
 
         if self.train:
             sys.stderr.write('start emulator expert server\n')
             expert_server_path = path.join(project_root.DIR, 'dagger', 'expert_server.py')
             for i in xrange(5):
-                self.tcp_port = get_open_tcp_port()
+                self.tcp_port = get_open_port()
                 cmd = ('python ' + expert_server_path + ' {} '.format(self.tcp_port)).split(' ')
                 self.expert_server = subprocess.Popen(cmd, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w')) #
                 if check_pid(self.expert_server.pid):
@@ -113,7 +113,7 @@ class Environment_Mininet(object):
             sys.stderr.write('start emulator perf server\n')
             expert_server_path = path.join(project_root.DIR, 'dagger', 'perf_server.py')
             for i in xrange(5):
-                self.tcp_port = get_open_tcp_port()
+                self.tcp_port = get_open_port()
                 cmd = ('python ' + expert_server_path + ' {} {} {} {}'.format(self.tcp_port, self.env_set_index, self.traffic_shape_set_index_1, self.traffic_shape_set_index_2)).split(' ')
                 self.expert_server = subprocess.Popen(cmd, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
                 if check_pid(self.expert_server.pid):
