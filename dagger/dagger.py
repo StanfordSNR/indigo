@@ -24,7 +24,7 @@ import time
 import socket
 from env.sender import Sender
 from experts import Mininet_Expert
-from helpers.helpers import (make_sure_path_exists, one_hot, curr_ts_ms, softmax)
+from helpers.utils import (make_sure_path_exists, one_hot, curr_ts_ms, softmax)
 from models import DaggerLSTM
 from os import path
 from subprocess import check_output

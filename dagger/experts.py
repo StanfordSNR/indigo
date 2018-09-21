@@ -16,7 +16,7 @@
 
 import socket
 from env.sender import Sender
-from helpers.helpers import apply_op
+from helpers.utils import apply_op
 
 
 def action_error(actions, idx, cwnd, target):

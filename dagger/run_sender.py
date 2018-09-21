@@ -23,7 +23,7 @@ import tensorflow as tf
 from os import path
 from env.sender import Sender
 from models import DaggerLSTM
-from helpers.helpers import one_hot
+from helpers.utils import one_hot
 
 
 class Learner(object):

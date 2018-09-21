@@ -24,7 +24,7 @@ from subprocess import Popen, PIPE
 from sender import Sender
 
 import context
-from helpers.helpers import get_open_port, check_pid
+from helpers.utils import get_open_port, check_pid
 
 
 def get_mininet_env_param(train):

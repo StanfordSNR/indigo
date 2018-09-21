@@ -60,7 +60,7 @@ def cleanup(args):
             sys.stderr.write('%s\n' % e)
 
     host_set = set(args['ps_list'] + args['worker_list'])
-    pkill_script = path.join(args['indigo_dir'], 'helpers', 'pkill.py')
+    pkill_script = path.join(args['indigo_dir'], 'tools', 'pkill.py')
 
     procs = []
 

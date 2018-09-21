@@ -18,7 +18,7 @@
 
 import numpy as np
 import context
-from helpers.helpers import RingBuffer, MeanVarHistory
+from helpers.utils import RingBuffer, MeanVarHistory
 
 
 def test_ring_buffer():

@@ -28,7 +28,6 @@ import tensorflow as tf
 from subprocess import check_call
 from os import path
 from dagger import DaggerLeader, DaggerWorker
-from env.environment import Environment
 from env.environment_mininet import Environment_Mininet
 
 
@@ -96,77 +95,6 @@ def create_mininet_env(worker_num, worker_index):
     return env
 
 
-def create_env(task_index):
-    """ Creates and returns an Environment which contains a single
-    sender-receiver connection. The environment is run inside mahimahi
-    shells. The environment knows the best cwnd to pass to the expert policy.
-    """
-
-    best_cwnds_file = path.join(context.base_dir, 'dagger', 'best_cwnds.yml')
-    best_cwnd_map = yaml.load(open(best_cwnds_file))
-
-    if task_index == 0:
-        trace_path = path.join(context.base_dir, 'env',
-                               '0.57mbps-poisson.trace')
-        mm_cmd = 'mm-delay 28 mm-loss uplink 0.0477 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=14' % (
-            trace_path, trace_path)
-        best_cwnd = 5
-    elif task_index == 1:
-        trace_path = path.join(context.base_dir, 'env',
-                               '2.64mbps-poisson.trace')
-        mm_cmd = 'mm-delay 88 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=130' % (
-            trace_path, trace_path)
-        best_cwnd = 40
-    elif task_index == 2:
-        trace_path = path.join(context.base_dir, 'env',
-                               '3.04mbps-poisson.trace')
-        mm_cmd = 'mm-delay 130 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=426' % (
-            trace_path, trace_path)
-        best_cwnd = 70
-    elif task_index <= 18:
-        bandwidth = [5, 10, 20, 50]
-        delay = [10, 20, 40, 80]
-
-        cartesian = [(b, d) for b in bandwidth for d in delay]
-        bandwidth, delay = cartesian[task_index - 3]
-
-        uplink_trace, downlink_trace = prepare_traces(bandwidth)
-        mm_cmd = 'mm-delay %d mm-link %s %s' % (
-            delay, uplink_trace, downlink_trace)
-        best_cwnd = best_cwnd_map[bandwidth][delay]
-    elif task_index == 19:
-        trace_path = path.join(context.base_dir, 'env', '100.42mbps.trace')
-        mm_cmd = 'mm-delay 27 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=173' % (
-            trace_path, trace_path)
-        best_cwnd = 500
-    elif task_index == 20:
-        trace_path = path.join(context.base_dir, 'env', '77.72mbps.trace')
-        mm_cmd = 'mm-delay 51 mm-loss uplink 0.0006 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=94' % (
-            trace_path, trace_path)
-        best_cwnd = 690
-    elif task_index == 21:
-        trace_path = path.join(context.base_dir, 'env', '114.68mbps.trace')
-        mm_cmd = 'mm-delay 45 mm-link %s %s --uplink-queue=droptail --uplink-queue-args=packets=450' % (
-            trace_path, trace_path)
-        best_cwnd = 870
-    elif task_index <= 29:
-        bandwidth = [100, 200]
-        delay = [10, 20, 40, 80]
-
-        cartesian = [(b, d) for b in bandwidth for d in delay]
-        bandwidth, delay = cartesian[task_index - 26]
-
-        uplink_trace, downlink_trace = prepare_traces(bandwidth)
-        mm_cmd = 'mm-delay %d mm-link %s %s' % (
-            delay, uplink_trace, downlink_trace)
-        best_cwnd = best_cwnd_map[bandwidth][delay]
-
-    env = Environment(mm_cmd)
-    env.best_cwnd = best_cwnd
-
-    return env
-
-
 def run(args):
     """ For each worker/parameter server, starts the appropriate job
     associated with the cluster and server.
@@ -199,7 +127,6 @@ def run(args):
 
     elif job_name == 'worker':
         # Sets up the env, shared variables (sync, classifier, queue, etc)
-        # env = create_env(task_index)
         env = create_mininet_env(num_workers, task_index)
         learner = DaggerWorker(cluster, server, task_index, env)
         try:

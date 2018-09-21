@@ -1,7 +1,7 @@
 from message import Message
 
 import context
-from helpers.helpers import curr_ts_ms
+from helpers.utils import curr_ts_ms
 
 
 class Policy(object):

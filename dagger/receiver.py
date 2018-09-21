@@ -53,7 +53,7 @@ def main():
         receiver = Receiver(args.port)
         receiver.run()
     except KeyboardInterrupt:
-        sys.stderr.write('receiver is stopped\n')
+        sys.stderr.write('[receiver] stopped\n')
     finally:
         receiver.cleanup()
 

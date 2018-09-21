@@ -23,8 +23,8 @@ import argparse
 from policy import Policy
 from message import Message
 import context
-from helpers.helpers import (READ_FLAGS, WRITE_FLAGS, ERR_FLAGS,
-                             READ_ERR_FLAGS, ALL_FLAGS, curr_ts_ms)
+from helpers.utils import (READ_FLAGS, WRITE_FLAGS, ERR_FLAGS,
+                           READ_ERR_FLAGS, ALL_FLAGS, curr_ts_ms)
 
 
 class Sender(object):
@@ -105,7 +105,7 @@ def main():
         sender = Sender(args.ip, args.port)
         sender.run()
     except KeyboardInterrupt:
-        sys.stderr.write('sender is stopped\n')
+        sys.stderr.write('[sender] stopped\n')
     finally:
         sender.cleanup()
 
