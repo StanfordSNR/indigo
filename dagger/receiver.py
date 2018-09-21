@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Huawei Technologies
 #
@@ -16,6 +18,8 @@
 
 import sys
 import socket
+import argparse
+
 from message import Message
 
 
@@ -33,15 +37,27 @@ class Receiver(object):
         self.sock.close()
 
     def run(self):
-        on_ack = 0  # reply an ACK on every two datagrams
-
         while True:
             msg_str, addr = self.sock.recvfrom(1500)
 
-            on_ack += 1
-            if on_ack == 2:
-                on_ack = 0
+            data = Message.parse(msg_str)
+            if data:
+                self.sock.sendto(data.to_ack(), addr)
 
-                msg_recd = Message.parse(msg_str)
-                if msg_recd:
-                    self.sock.sendto(msg_recd.to_ack(), addr)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('port', type=int)
+    args = parser.parse_args()
+
+    try:
+        receiver = Receiver(args.port)
+        receiver.run()
+    except KeyboardInterrupt:
+        sys.stderr.write('Receiver is stopped\n')
+    finally:
+        receiver.cleanup()
+
+
+if __name__ == '__main__':
+    main()
