@@ -64,11 +64,9 @@ class Sender(object):
 
     def recv(self):
         msg_str, addr = self.sock.recvfrom(1500)
-
         ack = Message.parse(msg_str)
-        if not ack:  # ignore invalid ACKs
-            return
 
+        # update next ACK's sequence number to expect
         self.next_ack = max(self.next_ack, ack.seq_num + 1)
 
         # tell policy that an ack was received
@@ -107,7 +105,7 @@ def main():
         sender = Sender(args.ip, args.port)
         sender.run()
     except KeyboardInterrupt:
-        sys.stderr.write('Sender is stopped\n')
+        sys.stderr.write('sender is stopped\n')
     finally:
         sender.cleanup()
 

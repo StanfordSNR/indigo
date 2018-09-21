@@ -17,7 +17,7 @@ import struct
 
 
 class Message(object):
-    total_size = 1392  # max usable size (header + payload) on known networks
+    total_size = 1396  # max usable size (header + payload)
     header_fmt = '>QQQQQ'
     header_size = struct.calcsize(header_fmt)
     payload_size = total_size - header_size
@@ -43,7 +43,7 @@ class Message(object):
     @classmethod
     def parse(cls, message_string):
         if len(message_string) < Message.header_size:
-            return None
+            sys.exit('message is too small to contain header')
 
         return cls(*struct.unpack(Message.header_fmt,
                                   message_string[:Message.header_size]))

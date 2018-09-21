@@ -39,10 +39,9 @@ class Receiver(object):
     def run(self):
         while True:
             msg_str, addr = self.sock.recvfrom(1500)
-
             data = Message.parse(msg_str)
-            if data:
-                self.sock.sendto(data.to_ack(), addr)
+
+            self.sock.sendto(data.to_ack(), addr)
 
 
 def main():
@@ -54,7 +53,7 @@ def main():
         receiver = Receiver(args.port)
         receiver.run()
     except KeyboardInterrupt:
-        sys.stderr.write('Receiver is stopped\n')
+        sys.stderr.write('receiver is stopped\n')
     finally:
         receiver.cleanup()
 
