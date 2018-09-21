@@ -17,10 +17,10 @@ import struct
 
 
 class Message(object):
-    usable_size = 1392  # max usable size (header + payload) on known networks
+    total_size = 1392  # max usable size (header + payload) on known networks
     header_fmt = '>QQQQQ'
     header_size = struct.calcsize(header_fmt)
-    payload_size = usable_size - header_size
+    payload_size = total_size - header_size
     dummy_payload = 'x' * payload_size
 
     def __init__(self, seq_num, send_ts, bytes_sent, ack_recv_ts, bytes_acked):
