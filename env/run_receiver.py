@@ -16,26 +16,21 @@
 #     limitations under the License.
 
 
+import sys
 import argparse
 from receiver import Receiver
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('ip', metavar='IP')
     parser.add_argument('port', type=int)
-    parser.add_argument('-t', help='log file name in test')
     args = parser.parse_args()
 
-    receiver = Receiver(args.ip, args.port)
-    if args.t is not None:
-        receiver.set_test_name(args.t)
-
     try:
-        receiver.handshake()
+        receiver = Receiver(args.port)
         receiver.run()
     except KeyboardInterrupt:
-        pass
+        sys.stderr.write('Receiver is stopped\n')
     finally:
         receiver.cleanup()
 

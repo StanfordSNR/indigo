@@ -16,115 +16,32 @@
 
 import sys
 import socket
-import select
-import struct
-import signal
-from os import path
-import context
-from helpers.helpers import READ_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, ALL_FLAGS
-
-received_bytes = 0
-test_name_str = None
-
-
-def on_quit(signal, frame):
-    if test_name_str is not None:
-        file = path.join(context.base_dir, 'tests', 'rtt_loss', 'receiver_' + test_name_str)
-        file = open(file, 'w')
-        file.write(str(received_bytes)+'\n')
-        file.close()
+from message import Message
 
 
 class Receiver(object):
-    def __init__(self, ip, port):
-        self.peer_addr = (ip, port)
-
-        # UDP socket and poller
+    def __init__(self, port=0):
+        # blocking UDP socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind(('0.0.0.0', port))
 
-        self.poller = select.poll()
-        self.poller.register(self.sock, ALL_FLAGS)
-
-        signal.signal(signal.SIGTERM, on_quit)
-        signal.signal(signal.SIGQUIT, on_quit)
-        signal.signal(signal.SIGALRM, on_quit)
-
-    def set_test_name(self, name):
-        global test_name_str
-        test_name_str = name
+        sys.stderr.write('[receiver] listening on port %s\n' %
+                         self.sock.getsockname()[1])
 
     def cleanup(self):
         self.sock.close()
 
-    def construct_ack_from_data(self, unpacked_data):
-        """Construct a serialized ACK that acks a serialized datagram."""
-
-        if len(unpacked_data) < 28:
-            return None
-
-        return struct.pack('!28si', unpacked_data[:28], len(unpacked_data) * 2)
-
-    def handshake(self):
-        """Handshake with peer sender. Must be called before run()."""
-
-        self.sock.setblocking(0)  # non-blocking UDP socket
-
-        TIMEOUT = 1000  # ms
-
-        retry_times = 0
-        self.poller.modify(self.sock, READ_ERR_FLAGS)
+    def run(self):
+        on_ack = 0  # reply an ACK on every two datagrams
 
         while True:
-            self.sock.sendto('Hello from receiver', self.peer_addr)
-            events = self.poller.poll(TIMEOUT)
+            msg_str, addr = self.sock.recvfrom(1500)
 
-            if not events:  # timed out
-                retry_times += 1
-                if retry_times > 10:
-                    sys.stderr.write(
-                        '[receiver] Handshake failed after 10 retries\n')
-                    return
-                else:
-                    sys.stderr.write(
-                        '[receiver] Handshake timed out and retrying...\n')
-                    continue
+            on_ack += 1
+            if on_ack == 2:
+                on_ack = 0
 
-            for fd, flag in events:
-                assert self.sock.fileno() == fd
-
-                if flag & ERR_FLAGS:
-                    sys.exit('Channel closed or error occurred')
-
-                if flag & READ_FLAGS:
-                    msg, addr = self.sock.recvfrom(1500)
-
-                    if addr == self.peer_addr:
-                        if msg != 'Hello from sender':
-                            # 'Hello from sender' was presumably lost
-                            # received subsequent data from peer sender
-                            ack = self.construct_ack_from_data(msg)
-                            if ack is not None:
-                                self.sock.sendto(ack, self.peer_addr)
-                        return
-
-    def run(self):
-        global received_bytes
-        self.sock.setblocking(1)  # blocking UDP socket
-
-        on_ack = 0
-        try:
-            while True:
-                serialized_data, addr = self.sock.recvfrom(1500)
-                received_bytes = received_bytes + len(serialized_data)
-                on_ack += 1
-                if on_ack == 2:
-                    on_ack = 0
-                    if addr == self.peer_addr:
-                        ack = self.construct_ack_from_data(serialized_data)
-                        if ack is not None:
-                            self.sock.sendto(ack, self.peer_addr)
-        except KeyboardInterrupt:
-            on_quit(0,0)
-        finally:
-            self.sock.close()
+                msg_recd = Message.parse(msg_str)
+                if msg_recd:
+                    self.sock.sendto(msg_recd.to_ack(), addr)
