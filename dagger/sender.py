@@ -80,7 +80,7 @@ class Sender(object):
                 self.poller.modify(self.sock, READ_ERR_FLAGS)
 
             events = self.poller.poll(self.policy.timeout_ms())
-            if not events:
+            if not events:  # timed out; send one datagram to get rolling
                 self.send()
 
             for fd, flag in events:
