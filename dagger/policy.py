@@ -2,7 +2,7 @@ import sys
 
 from message import Message
 import context
-from helpers.utils import timestamp_ms, update_ewma
+from helpers.utils import timestamp_ms, update_ewma, format_actions
 
 
 class Policy(object):
@@ -15,6 +15,13 @@ class Policy(object):
     max_delivery_rate = max_send_rate
 
     min_step_len = 10  # ms
+
+    # state = [rtt_norm, delay_norm, send_rate_norm, delivery_rate_norm,
+    #          cwnd_norm]
+    state_dim = 5
+    action_list = ["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"]
+    action_cnt = len(action_list)
+    action_mapping = format_actions(action_list)
 
     def __init__(self):
     # public:
@@ -97,12 +104,15 @@ class Policy(object):
                                           self.delivery_rate_ewma)
 
     def sample_action(self, state):
-        # TODO: to be completed
-        return 0
+        assert len(state) == Policy.state_dim
+
+        # TODO: stay constant for now
+        return 2
 
     def take_action(self, action):
-        # TODO: to be completed
-        self.cwnd = max(Policy.min_cwnd, min(Policy.max_cwnd, self.cwnd + 1))
+        op, val = Policy.action_mapping[action]
+        self.cwnd = op(self.cwnd, val)
+        self.cwnd = max(Policy.min_cwnd, min(Policy.max_cwnd, self.cwnd))
 
     # reset some stats at each step
     def reset_step(self):

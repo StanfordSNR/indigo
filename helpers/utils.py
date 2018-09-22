@@ -18,8 +18,8 @@ import time
 import errno
 import select
 import socket
-import numpy as np
 import operator
+import numpy as np
 
 
 READ_FLAGS = select.POLLIN | select.POLLPRI
@@ -28,16 +28,24 @@ ERR_FLAGS = select.POLLERR | select.POLLHUP | select.POLLNVAL
 READ_ERR_FLAGS = READ_FLAGS | ERR_FLAGS
 ALL_FLAGS = READ_FLAGS | WRITE_FLAGS | ERR_FLAGS
 
-math_ops = {
-    '+': operator.add,
-    '-': operator.sub,
-    '*': operator.mul,
-    '/': operator.div,
-}
 
+def format_actions(action_list):
+    ret = []
 
-def apply_op(op, op1, op2):
-    return math_ops[op](op1, op2)
+    for action in action_list:
+        op = action[0]
+        val = float(action[1:])
+
+        if op == '+':
+            ret.append((operator.add, val))
+        elif op == '-':
+            ret.append((operator.sub, val))
+        elif op == '*':
+            ret.append((operator.mul, val))
+        elif op == '/':
+            ret.append((operator.div, val))
+
+    return ret
 
 
 def timestamp_ms():
