@@ -44,15 +44,13 @@ class Sender(object):
         self.next_ack = 0
 
         # congestion control policy
-        self.policy = Policy()
+        self.policy = None
 
-    def cleanup(self):
-        self.sock.close()
-
-    def window_is_open(self):
+# private
+    def __window_is_open(self):
         return self.seq_num - self.next_ack < self.policy.cwnd
 
-    def send(self):
+    def __send(self):
         msg = Message(self.seq_num, timestamp_ms(), self.policy.bytes_sent,
                       self.policy.ack_recv_ts, self.policy.bytes_acked)
         self.sock.sendto(msg.to_data(), self.peer_addr)
@@ -62,7 +60,7 @@ class Sender(object):
         # tell policy that a datagram was sent
         self.policy.data_sent(msg)
 
-    def recv(self):
+    def __recv(self):
         msg_str, addr = self.sock.recvfrom(1500)
         ack = Message.parse(msg_str)
 
@@ -72,27 +70,37 @@ class Sender(object):
         # tell policy that an ack was received
         self.policy.ack_received(ack)
 
+# public
+    def cleanup(self):
+        self.sock.close()
+
+    def set_policy(self, policy):
+        self.policy = policy
+
     def run(self):
-        while True:
-            if self.window_is_open():
+        if not self.policy:
+            sys.exit('sender\'s policy has not been set')
+
+        while self.policy.running:
+            if self.__window_is_open():
                 self.poller.modify(self.sock, ALL_FLAGS)
             else:
                 self.poller.modify(self.sock, READ_ERR_FLAGS)
 
             events = self.poller.poll(self.policy.timeout_ms())
             if not events:  # timed out; send one datagram to get rolling
-                self.send()
+                self.__send()
 
             for fd, flag in events:
                 if flag & ERR_FLAGS:
                     sys.exit('[sender] error returned from poller')
 
                 if flag & READ_FLAGS:
-                    self.recv()
+                    self.__recv()
 
                 if flag & WRITE_FLAGS:
-                    while self.window_is_open():
-                        self.send()
+                    while self.__window_is_open():
+                        self.__send()
 
 
 def main():
@@ -101,13 +109,20 @@ def main():
     parser.add_argument('port', type=int)
     args = parser.parse_args()
 
+    sender = None
     try:
+        # dummy policy
+        policy = Policy(False)
+        policy.set_sample_action(lambda state : 2)
+
         sender = Sender(args.ip, args.port)
+        sender.set_policy(policy)
         sender.run()
     except KeyboardInterrupt:
         sys.stderr.write('[sender] stopped\n')
     finally:
-        sender.cleanup()
+        if sender:
+            sender.cleanup()
 
 
 if __name__ == '__main__':

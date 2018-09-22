@@ -33,6 +33,7 @@ class Receiver(object):
         sys.stderr.write('[receiver] listening on port %s\n' %
                          self.sock.getsockname()[1])
 
+# public
     def cleanup(self):
         self.sock.close()
 
@@ -49,13 +50,15 @@ def main():
     parser.add_argument('port', type=int)
     args = parser.parse_args()
 
+    receiver = None
     try:
         receiver = Receiver(args.port)
         receiver.run()
     except KeyboardInterrupt:
         sys.stderr.write('[receiver] stopped\n')
     finally:
-        receiver.cleanup()
+        if receiver:
+            receiver.cleanup()
 
 
 if __name__ == '__main__':

@@ -23,14 +23,18 @@ class Policy(object):
     action_cnt = len(action_list)
     action_mapping = format_actions(action_list)
 
-    def __init__(self):
+    def __init__(self, train):
     # public:
         self.cwnd = 10.0
         self.bytes_sent = 0
         self.ack_recv_ts = 0
         self.bytes_acked = 0
+        self.running = True
 
     # private:
+        self.train = train
+        self.sample_action = None
+
         # step timer
         self.step_start_ts = None
 
@@ -49,29 +53,8 @@ class Policy(object):
         self.send_rate_ewma = None
         self.delivery_rate_ewma = None
 
-# public:
-    def ack_received(self, ack):
-        self.ack_recv_ts = timestamp_ms()
-        self.bytes_acked += Message.total_size
-
-        self.update_state(ack)
-
-        # check if the current step is ended
-        curr_ts = timestamp_ms()
-        if self.step_start_ts is None:
-            self.step_start_ts = curr_ts
-        if curr_ts - self.step_start_ts > Policy.min_step_len:
-            self.step_start_ts = curr_ts
-            self.step_ended()
-
-    def data_sent(self, data):
-        self.bytes_sent += Message.total_size
-
-    def timeout_ms(self):
-        return -1
-
 # private
-    def update_state(self, ack):
+    def __update_state(self, ack):
         # update RTT and queuing delay (in ms)
         rtt = max(1, self.ack_recv_ts - ack.send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
@@ -103,25 +86,22 @@ class Policy(object):
         self.max_delivery_rate_ewma = max(self.max_delivery_rate_ewma,
                                           self.delivery_rate_ewma)
 
-    def sample_action(self, state):
-        assert len(state) == Policy.state_dim
+    def __take_action(self, action):
+        if action < 0 or action >= Policy.action_cnt:
+            sys.exit('invalid action')
 
-        # TODO: stay constant for now
-        return 2
-
-    def take_action(self, action):
         op, val = Policy.action_mapping[action]
         self.cwnd = op(self.cwnd, val)
         self.cwnd = max(Policy.min_cwnd, min(Policy.max_cwnd, self.cwnd))
 
     # reset some stats at each step
-    def reset_step(self):
+    def __reset_step(self):
         self.rtt_ewma = None
         self.delay_ewma = None
         self.send_rate_ewma = None
         self.delivery_rate_ewma = None
 
-    def step_ended(self):
+    def __step_ended(self):
         # normalization
         rtt_norm = self.rtt_ewma / Policy.max_rtt
         delay_norm = self.delay_ewma / Policy.max_delay
@@ -132,8 +112,35 @@ class Policy(object):
         # state -> action
         state = [rtt_norm, delay_norm, send_rate_norm, delivery_rate_norm,
                  cwnd_norm]
+        if self.sample_action is None:
+            sys.exit('sample_action on policy has not been set')
         action = self.sample_action(state)
-        self.take_action(action)
+
+        self.__take_action(action)
 
         # reset at each step
-        self.reset_step()
+        self.__reset_step()
+
+# public:
+    def ack_received(self, ack):
+        self.ack_recv_ts = timestamp_ms()
+        self.bytes_acked += Message.total_size
+
+        self.__update_state(ack)
+
+        # check if the current step is ended
+        curr_ts = timestamp_ms()
+        if self.step_start_ts is None:
+            self.step_start_ts = curr_ts
+        if curr_ts - self.step_start_ts > Policy.min_step_len:
+            self.step_start_ts = curr_ts
+            self.__step_ended()
+
+    def data_sent(self, data):
+        self.bytes_sent += Message.total_size
+
+    def timeout_ms(self):
+        return -1
+
+    def set_sample_action(self, sample_action):
+        self.sample_action = sample_action
