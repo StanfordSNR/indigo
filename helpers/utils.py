@@ -41,7 +41,7 @@ def apply_op(op, op1, op2):
 
 
 def curr_ts_ms():
-    return int(round(time.time()) * 1000)
+    return int(round(time.time() * 1000))
 
 
 def make_sure_path_exists(path):
@@ -81,6 +81,13 @@ def one_hot(action, action_cnt):
 def softmax(x):
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum(axis=0)
+
+
+def update_ewma(ewma, new_value):
+    if ewma is None:
+        return float(new_value)
+    else:
+        return 0.875 * ewma + 0.125 * new_value
 
 
 class RingBuffer(object):
