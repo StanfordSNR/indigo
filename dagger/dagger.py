@@ -24,7 +24,7 @@ import time
 import socket
 from env.sender import Sender
 from experts import Mininet_Expert
-from helpers.utils import (make_sure_path_exists, one_hot, curr_ts_ms, softmax)
+from helpers.utils import (make_sure_path_exists, one_hot, timestamp_ms, softmax)
 from models import DaggerLSTM
 from os import path
 from subprocess import check_output
@@ -257,14 +257,14 @@ class DaggerLeader(object):
 
         pi = self.global_network
 
-        start_ts = curr_ts_ms()
+        start_ts = timestamp_ms()
 
         ret = self.sess.run(ops_to_run, feed_dict={pi.input: batch_states,
                                                    self.soft_targets: batch_soft_targets,
                                                    self.hard_targets: batch_actions,
                                                    pi.state_in: self.init_state})
 
-        elapsed = (curr_ts_ms() - start_ts) / 1000.0
+        elapsed = (timestamp_ms() - start_ts) / 1000.0
         sys.stderr.write('train step %d: time %.2f\n' % (self.train_step, elapsed))
 
         if summary:

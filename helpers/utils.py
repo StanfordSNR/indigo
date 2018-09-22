@@ -40,7 +40,7 @@ def apply_op(op, op1, op2):
     return math_ops[op](op1, op2)
 
 
-def curr_ts_ms():
+def timestamp_ms():
     return int(round(time.time() * 1000))
 
 

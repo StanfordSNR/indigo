@@ -24,7 +24,7 @@ from policy import Policy
 from message import Message
 import context
 from helpers.utils import (READ_FLAGS, WRITE_FLAGS, ERR_FLAGS,
-                           READ_ERR_FLAGS, ALL_FLAGS, curr_ts_ms)
+                           READ_ERR_FLAGS, ALL_FLAGS, timestamp_ms)
 
 
 class Sender(object):
@@ -53,7 +53,7 @@ class Sender(object):
         return self.seq_num - self.next_ack < self.policy.cwnd
 
     def send(self):
-        msg = Message(self.seq_num, curr_ts_ms(), self.policy.bytes_sent,
+        msg = Message(self.seq_num, timestamp_ms(), self.policy.bytes_sent,
                       self.policy.ack_recv_ts, self.policy.bytes_acked)
         self.sock.sendto(msg.to_data(), self.peer_addr)
 
