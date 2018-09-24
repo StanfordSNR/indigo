@@ -81,7 +81,7 @@ class Sender(object):
         if not self.policy:
             sys.exit('sender\'s policy has not been set')
 
-        while self.policy.running:
+        while not self.policy.stop_sender:
             if self.__window_is_open():
                 self.poller.modify(self.sock, ALL_FLAGS)
             else:

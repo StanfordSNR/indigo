@@ -1,3 +1,18 @@
+# Copyright 2018 Francis Y. Yan
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+#     Unless required by applicable law or agreed to in writing, software
+#     distributed under the License is distributed on an "AS IS" BASIS,
+#     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#     See the License for the specific language governing permissions and
+#     limitations under the License.
+
+
 import sys
 
 from message import Message
@@ -15,6 +30,7 @@ class Policy(object):
     max_delivery_rate = max_send_rate
 
     min_step_len = 10  # ms
+    steps_per_episode = 1000  # number of steps in each episode (in training)
 
     # state = [rtt_norm, delay_norm, send_rate_norm, delivery_rate_norm,
     #          cwnd_norm]
@@ -29,14 +45,17 @@ class Policy(object):
         self.bytes_sent = 0
         self.ack_recv_ts = 0
         self.bytes_acked = 0
-        self.running = True
+
+        # sender should stop or not
+        self.stop_sender = False
 
     # private:
         self.train = train
         self.sample_action = None
 
-        # step timer
+        # step timer and counting
         self.step_start_ts = None
+        self.step_num = 0
 
         # state related (persistent across steps)
         self.min_rtt = sys.maxint
@@ -101,6 +120,9 @@ class Policy(object):
         self.send_rate_ewma = None
         self.delivery_rate_ewma = None
 
+    def __episode_ended(self):
+        self.stop_sender = True
+
     def __step_ended(self):
         # normalization
         rtt_norm = self.rtt_ewma / Policy.max_rtt
@@ -120,6 +142,12 @@ class Policy(object):
 
         # reset at each step
         self.__reset_step()
+
+        # step counting
+        if self.train:
+            self.step_num += 1
+            if self.step_num >= Policy.steps_per_episode:
+                self.__episode_ended()
 
 # public:
     def ack_received(self, ack):
