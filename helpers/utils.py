@@ -1,4 +1,5 @@
-# Copyright 2018 Francis Y. Yan, Jestin Ma, Wei Wang, Yiyang Shao
+# Copyright 2018 Francis Y. Yan, Jestin Ma
+# Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -184,7 +185,7 @@ def ssh_cmd(host):
             '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=5', host]
 
 
-class Configuration(object):
+class Config(object):
     cfg = ConfigParser.ConfigParser()
     cfg_path = path.join(project_root.DIR, 'config.ini')
     cfg.read(cfg_path)

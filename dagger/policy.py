@@ -1,4 +1,5 @@
-# Copyright 2018 Francis Y. Yan, Wei Wang
+# Copyright 2018 Francis Y. Yan
+# Copyright 2018 Wei Wang (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +19,7 @@ import collections
 
 from message import Message
 import context
-from helpers.utils import (timestamp_ms, update_ewma, format_actions,
-                           Configuration)
+from helpers.utils import timestamp_ms, update_ewma, format_actions, Config
 
 
 class Policy(object):
@@ -35,8 +35,8 @@ class Policy(object):
     steps_per_episode = 1000  # number of steps in each episode (in training)
 
     # state = [rtt_norm, delay_norm, send_rate_norm, delivery_rate_norm,
-    #          cwnd_norm]
-    state_dim = Configuration.state_dim
+    #          loss_rate_norm, cwnd_norm]
+    state_dim = Config.state_dim
     action_list = ["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"]
     action_cnt = len(action_list)
     action_mapping = format_actions(action_list)
@@ -55,16 +55,11 @@ class Policy(object):
         self.train = train
         self.sample_action = None
 
-        # used for calculating loss rate
-        self.lasttime_bytes_acked = 0
-        self.lasttime_sent_bytes = 0
-        self.thistime_sent_bytes = 0
-
         # step timer and counting
         self.step_start_ts = None
         self.step_num = 0
-        self.start_phase_time = 0
-        self.start_phase_max = 4  # cwnd is udpated every rtt in the first 4 time
+        self.start_phase_cnt = 0
+        self.start_phase_max = 4  # max number of steps in start phase
 
         # state related (persistent across steps)
         self.min_rtt = sys.maxint
@@ -74,6 +69,11 @@ class Policy(object):
         self.max_send_rate_ewma = 0.0
         self.min_delivery_rate_ewma = float('inf')
         self.max_delivery_rate_ewma = 0.0
+
+        # variables to calculate loss rate (persistent across steps)
+        self.prev_bytes_acked = 0
+        self.prev_bytes_sent_in_ack = 0
+        self.bytes_sent_in_ack = 0
 
         # state related (reset at each step)
         self.rtt_ewma = None
@@ -114,23 +114,26 @@ class Policy(object):
         self.max_delivery_rate_ewma = max(self.max_delivery_rate_ewma,
                                           self.delivery_rate_ewma)
 
-        # loss rate is not updated per ack, just record the ack state
-        self.thistime_sent_bytes = ack.bytes_sent
+        # record the sent bytes in the current ACK
+        self.bytes_sent_in_ack = ack.bytes_sent
 
+    # calculate loss rate at the end of each step
+    # step_acked = acked bytes during this step
+    # step_sent = sent bytes recorded in ACKs received at this step
+    # loss = 1 - step_acked / step_sent
     def __cal_loss_rate(self):
-        # ignore re-ordering packets, loss rate is updated every action step
-
-        # first time when we receive ack or do not sent pkt, the loss rate is 0
-        if self.thistime_sent_bytes - self.lasttime_sent_bytes == 0:
+        step_sent = self.bytes_sent_in_ack - self.prev_bytes_sent_in_ack
+        if step_sent == 0:  # prevent divide-by-0 error
             return 0
 
-        loss_rate = 1 - (1.0 * (self.bytes_acked - self.lasttime_bytes_acked)
-                         / (self.thistime_sent_bytes - self.lasttime_sent_bytes))
+        step_acked = self.bytes_acked - self.prev_bytes_acked
+        loss_rate = 1.0 - float(step_acked) / step_sent
 
-        self.lasttime_bytes_acked = self.bytes_acked
-        self.lasttime_sent_bytes = self.thistime_sent_bytes
+        self.prev_bytes_acked = self.bytes_acked
+        self.prev_bytes_sent_in_ack = self.bytes_sent_in_ack
 
-        return max(0, loss_rate)
+        # in case packet reordering occurred
+        return min(max(0.0, loss_rate), 1.0)
 
     def __take_action(self, action):
         if action < 0 or action >= Policy.action_cnt:
@@ -157,7 +160,7 @@ class Policy(object):
         send_rate_norm = self.send_rate_ewma / Policy.max_send_rate
         delivery_rate_norm = self.delivery_rate_ewma / Policy.max_delivery_rate
         cwnd_norm = self.cwnd / Policy.max_cwnd
-        loss_rate_norm = self.__cal_loss_rate()/1.0
+        loss_rate_norm = self.__cal_loss_rate()  # loss is already in [0, 1]
 
         # state -> action
         state = [rtt_norm, delay_norm, send_rate_norm, delivery_rate_norm,
@@ -168,7 +171,7 @@ class Policy(object):
 
         self.__take_action(action)
 
-        # reset at each step
+        # reset at the end of each step
         self.__reset_step()
 
         # step counting
@@ -177,36 +180,29 @@ class Policy(object):
             if self.step_num >= Policy.steps_per_episode:
                 self.__episode_ended()
 
-    def __time_to_update(self, cur_time):
-        if self.train:
-            if cur_time - self.step_start_ts > self.min_step_len:
-                return True
+    def __is_step_ended(self, duration):
+        # cwnd is updated every RTT in start phase, and RTT/4 afterwards
+        if self.start_phase_cnt < self.start_phase_max:
+            threshold = max(self.min_rtt, self.min_step_len)
+            self.start_phase_cnt += 1
         else:
-            # in start phase, cwnd is updated every rtt; then cwnd is updated every 1/4*rtt
-            if ((self.start_phase_time < self.start_phase_max and
-                 cur_time - self.step_start_ts > max(self.min_rtt, self.min_step_len)) or
-                (self.start_phase_time >= self.start_phase_max and
-                 cur_time - self.step_start_ts > max(self.min_rtt/4.0, self.min_step_len))):
-                if self.start_phase_time < self.start_phase_max:
-                    self.start_phase_time = self.start_phase_time + 1
-                return True
+            threshold = max(self.min_rtt / 4.0, self.min_step_len)
 
-        return False
+        return duration >= threshold
 
 # public:
-    def bytes_acked(self, ack):
+    def ack_received(self, ack):
         self.ack_recv_ts = timestamp_ms()
         self.bytes_acked += Message.total_size
 
         self.__update_state(ack)
 
-        # check if the current step is ended
         curr_ts = timestamp_ms()
         if self.step_start_ts is None:
             self.step_start_ts = curr_ts
 
-        # cwnd update interval should be related to rtt
-        if self.__time_to_update(curr_ts):
+        # check if the current step has ended
+        if self.__is_step_ended(curr_ts - self.step_start_ts):
             self.step_start_ts = curr_ts
             self.__step_ended()
 
