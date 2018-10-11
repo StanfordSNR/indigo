@@ -15,6 +15,7 @@
 
 
 import os
+from os import path
 import time
 import errno
 import select
@@ -22,6 +23,9 @@ import socket
 import operator
 import numpy as np
 import ConfigParser
+import ast
+
+import context
 
 READ_FLAGS = select.POLLIN | select.POLLPRI
 WRITE_FLAGS = select.POLLOUT
@@ -187,7 +191,7 @@ def ssh_cmd(host):
 
 class Config(object):
     cfg = ConfigParser.ConfigParser()
-    cfg_path = path.join(project_root.DIR, 'config.ini')
+    cfg_path = path.join(context.base_dir, 'config.ini')
     cfg.read(cfg_path)
 
     state_dim = int(cfg.get('global', 'state_dim'))
