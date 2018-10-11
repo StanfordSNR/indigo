@@ -191,22 +191,25 @@ class Configuration(object):
 
     state_dim = int(cfg.get('global', 'state_dim'))
     state_idx = int(cfg.get('global', 'state'))
-    fri       = float(cfg.get('global', 'fri'))
-    rho       = float(cfg.get('global', 'rho'))
+    fri = float(cfg.get('global', 'fri'))
+    rho = float(cfg.get('global', 'rho'))
 
-    total_tp_set_train  = []
+    total_tp_set_train = []
     total_env_set_train = []
     train_env = cfg.options('train_env')
     for opt in train_env:
         env_param, tp_set_param = ast.literal_eval(cfg.get('train_env', opt))
-        total_tp_set_train.append(ast.literal_eval(cfg.get('global', tp_set_param)))
-        total_env_set_train.append(ast.literal_eval(cfg.get('global', env_param)))
+        total_tp_set_train.append(
+                ast.literal_eval(cfg.get('global', tp_set_param)))
+        total_env_set_train.append(
+                ast.literal_eval(cfg.get('global', env_param)))
 
-    total_tp_set_test  = []
+    total_tp_set_test = []
     total_env_set_test = []
     test_env = cfg.options('test_env')
     for opt in test_env:
         env_param, tp_set_param = ast.literal_eval(cfg.get('test_env', opt))
-        total_tp_set_test.append(ast.literal_eval(cfg.get('global', tp_set_param)))
-        total_env_set_test.append(ast.literal_eval(cfg.get('global', env_param)))
-
+        total_tp_set_test.append(
+                ast.literal_eval(cfg.get('global', tp_set_param)))
+        total_env_set_test.append(
+                ast.literal_eval(cfg.get('global', env_param)))
