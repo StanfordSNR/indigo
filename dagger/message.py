@@ -48,6 +48,14 @@ class Message(object):
         return cls(*struct.unpack(Message.header_fmt,
                                   message_string[:Message.header_size]))
 
+    # echo the message header directly without parsing
+    @classmethod
+    def transform_into_ack(cls, message_string):
+        if len(message_string) < Message.header_size:
+            sys.exit('message is too small to contain header')
+
+        return message_string[:Message.header_size]
+
     # serialize the header to network byte order
     def header_to_string(self):
         return struct.pack(Message.header_fmt,

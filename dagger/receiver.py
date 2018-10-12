@@ -40,9 +40,7 @@ class Receiver(object):
     def run(self):
         while True:
             msg_str, addr = self.sock.recvfrom(1500)
-            data = Message.parse(msg_str)
-
-            self.sock.sendto(data.to_ack(), addr)
+            self.sock.sendto(Message.transform_into_ack(msg_str), addr)
 
 
 def main():
