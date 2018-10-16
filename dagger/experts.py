@@ -1,5 +1,5 @@
 # Copyright 2018 Francis Y. Yan, Jestin Ma
-# Copyright 2018 Huawei Technologies
+# Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-
+import sys
 import socket
 from env.sender import Sender
 from helpers.utils import apply_op
@@ -33,7 +33,8 @@ def get_best_action(actions, cwnd, target):
     """ Returns the best action by finding the action that leads to the
     closest resulting cwnd to target.
     """
-    return min(actions, key=lambda idx: action_error(actions, idx, cwnd, target))
+    return min(actions,
+               key=lambda idx: action_error(actions, idx, cwnd, target))
 
 
 class NaiveDaggerExpert(object):
@@ -45,7 +46,7 @@ class NaiveDaggerExpert(object):
         self.gain = 1.0
 
     def sample_action(self, state, cwnd):
-        ewma_delay = state      # assume this is the state
+        ewma_delay = state  # assume this is the state
         self.base_delay = min(self.base_delay, ewma_delay)
         queuing_delay = ewma_delay - self.base_delay
         off_target = self.target - queuing_delay
@@ -62,9 +63,9 @@ class TrueDaggerExpert(object):
     """ Ground truth expert policy """
 
     def __init__(self, env):
-        assert hasattr(env, 'best_cwnd'), ('Using true dagger expert but not '
-                                           'given a best cwnd when creating '
-                                           'the environment in worker.py.')
+        assert hasattr(env, 'best_cwnd'), (
+            'Using true dagger expert but not given a best cwnd when creating '
+            'the environment in worker.py.')
         self.best_cwnd = env.best_cwnd
 
     def sample_action(self, cwnd):
@@ -89,9 +90,8 @@ class Mininet_Expert(object):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.socket.connect(self.address)
-            print 'expert socket connect success'
         except socket.error:
-            print 'connect to expert socket error:'
+            sys.stderr.write('connect to expert socket error\n')
             return -1
         return 0
 
@@ -99,16 +99,17 @@ class Mininet_Expert(object):
         # Gets the action that gives the resulting cwnd closest to the
         # best cwnd.
 
-        self.socket.send('Hello')
+        self.socket.send('Current best cwnd?')
         msg = self.socket.recv(512)
         try:
             best_cwnd = float(msg)
         except ValueError:
+            sys.stderr.write('Expert server returns invalid best cwnd\n')
             return -1
 
         self.best_cwnd = best_cwnd
         action = get_best_action(Sender.action_mapping, cwnd, self.best_cwnd)
-        # print '----best----privous----best action----', self.best_cwnd, cwnd, action
+
         return action
 
 
@@ -126,9 +127,8 @@ class Perf_Client(object):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.socket.connect(self.address)
-            print 'perf server socket connect success'
         except socket.error:
-            print 'connect to perf server error:'
+            sys.stderr.write('connect to perf server error\n')
             return -1
         return 0
 

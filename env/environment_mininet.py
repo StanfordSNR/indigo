@@ -1,4 +1,4 @@
-# Copyright 2018 Huawei Technologies
+# Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,56 +14,33 @@
 
 
 import os
-from os import path
 import sys
 import signal
 import time
-import ast
-import ConfigParser
+from os import path
 from subprocess import Popen, PIPE
-from sender import Sender
 
 import context
-from helpers.utils import get_open_port, check_pid
-
-
-def get_mininet_env_param(train):
-    total_tp_set = []
-    total_env_name_set = []
-
-    if train:
-        option_name = 'train_env'
-    else:
-        option_name = 'test_env'
-
-    cfg = ConfigParser.ConfigParser()
-    cfg_path = os.path.join(context.base_dir, 'config.ini')
-    cfg.read(cfg_path)
-
-    env = cfg.options(option_name)
-    for opt in env:
-        env_param, tp_set_param = ast.literal_eval(cfg.get(option_name, opt))
-        total_tp_set.append(ast.literal_eval(cfg.get('global', tp_set_param)))
-        total_env_name_set.append(env_param)
-
-    return total_tp_set, total_env_name_set
+from sender import Sender
+from policy import Policy
+from helpers.utils import get_open_port, check_pid, Config, DEVNULL
 
 
 class Environment_Mininet(object):
-    def __init__(self, traffic_shape_set, env_set, train):
-
-        self.traffic_shape = 1  # default traffic_shape
-        self.traffic_shape_set = traffic_shape_set
-        self.traffic_shape_set_len = len(self.traffic_shape_set)
-        self.traffic_shape_set_index_1 = 0
-        self.traffic_shape_set_index_2 = 0
+    def __init__(self, tfc_set, env_set, train):
+        # traffic shape index defined in traffic generator
+        self.tfc = 1
+        self.tfc_set = tfc_set
+        self.tfc_set_len = len(self.tfc_set)
+        self.tfc_set_idx_1 = 0
+        self.tfc_set_idx_2 = 0
 
         self.env_set = env_set
         self.env_set_len = len(self.env_set)
-        self.env_set_index = 0
+        self.env_set_idx = 0
 
-        self.state_dim = Sender.state_dim
-        self.action_cnt = Sender.action_cnt
+        self.state_dim = Policy.state_dim
+        self.action_cnt = Policy.action_cnt
 
         self.train = train
 
@@ -71,6 +48,7 @@ class Environment_Mininet(object):
 
         # variables below will be filled in during setup
         self.sender = None
+        self.policy = None
         self.receiver = None
         self.emulator = None
         self.expert = None
@@ -97,121 +75,132 @@ class Environment_Mininet(object):
 
         self.port = get_open_port()
 
+        curr_env_name = Config.total_env_name_set_test[self.env_set_idx]
+        curr_tp_name = Config.total_tp_set[self.tfc_set_idx_1][self.tfc_set_idx_2]
+        log_file_postfix = '{}_tp_{}.log'.format(curr_env_name, curr_tp_name)
+
+        # STEP 1: start expert server or perf server in train or test mode
+        # We must start up the server in new process to speed up
         if self.train:
-            sys.stderr.write('start emulator expert server\n')
-            expert_server_path = path.join(context.base_dir, 'dagger', 'expert_server.py')
-            for i in xrange(5):
-                self.tcp_port = get_open_port()
-                cmd = ('python ' + expert_server_path + ' {} '.format(self.tcp_port)).split(' ')
-                self.expert_server = Popen(cmd, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w')) #
+            expert_server_path = path.join(
+                context.base_dir, 'dagger', 'expert_server.py')
+            # try 3 times at most to ensure expert server is started normally
+            for i in xrange(3):
+                self.expert_server_port = get_open_port()
+                cmd = ['python', expert_server_path, self.expert_server_port]
+                self.expert_server = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
                 if check_pid(self.expert_server.pid):
                     sys.stderr.write('start expert server successfully\n')
                     break
                 else:
-                    sys.stderr.write('start expert server failed, try again...\n')
+                    sys.stderr.write(
+                        'start expert server failed, try again...\n')
+                    return -1
 
         else:
-            sys.stderr.write('start emulator perf server\n')
-            expert_server_path = path.join(context.base_dir, 'dagger', 'perf_server.py')
-            for i in xrange(5):
-                self.tcp_port = get_open_port()
-                cmd = ('python ' + expert_server_path + ' {} {} {} {}'.format(self.tcp_port, self.env_set_index, self.traffic_shape_set_index_1, self.traffic_shape_set_index_2)).split(' ')
-                self.expert_server = Popen(cmd, stdout=open('/dev/null', 'w'), stderr=open('/dev/null', 'w'))
+            expert_server_path = path.join(
+                context.base_dir, 'dagger', 'perf_server.py')
+            # try 3 times at most to ensure perf server is started normally
+            for i in xrange(3):
+                self.expert_server_port = get_open_port()
+                cmd = ['python', expert_server_path, self.expert_server_port,
+                       self.env_set_idx, self.tfc_set_idx_1, self.tfc_set_idx_2]
+                self.expert_server = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
                 if check_pid(self.expert_server.pid):
                     sys.stderr.write('start perf server successfully\n')
                     break
                 else:
-                    sys.stderr.write('start perf server failed, try again...\n')
+                    sys.stderr.write(
+                        'start perf server failed, try again...\n')
+                    return -1
 
-        # start sender as an instance of Sender class
-        self.sender = Sender(self.port, train=self.train)
-        self.sender.set_sample_action(self.sample_action)
+        # let the expert client connect with the server
+        time.sleep(1)
+        for i in xrange(3):
+            ret = self.expert.connect_expert_server(self.expert_server_port)
+            if ret == 0:
+                break
+            time.sleep(0.5)
 
-        total_tp_set, total_env_name_set = get_mininet_env_param(self.train)
-        curr_env_name = total_env_name_set[self.env_set_index]
-        curr_tp_name = total_tp_set[self.traffic_shape_set_index_1][self.traffic_shape_set_index_2]
-        log_file_postfix = '{}_tp_{}.log'.format(curr_env_name, curr_tp_name)
-
-        if not self.train:
-            self.sender.set_test_name(log_file_postfix)
-
-        # start emulator-mininet
+        # STEP 2: start mininet emulator
         sys.stderr.write('start mininet emulator\n')
-        cmd_para = ' ' + self.env_set[self.env_set_index][0] + ' ' + self.env_set[self.env_set_index][1] + \
-                   ' ' + self.env_set[self.env_set_index][2] + ' ' + self.env_set[self.env_set_index][3]
-        sys.stderr.write(cmd_para+'\n')
         emulator_path = path.join(context.base_dir, 'env', 'mininet_topo.py')
-        cmd = ['python', emulator_path, self.env_set[self.env_set_index][0], self.env_set[self.env_set_index]
-               [1], self.env_set[self.env_set_index][2], self.env_set[self.env_set_index][3]]
+        cmd = ['python', emulator_path] + self.env_set[self.env_set_idx][:4]
         self.emulator = Popen(cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-        # print self.emulator.stdout.read()
-        # time.sleep(1.5)
 
-        self.traffic_shape = self.traffic_shape_set[self.traffic_shape_set_index_1][self.traffic_shape_set_index_2]
+        self.tfc = self.tfc_set[self.tfc_set_idx_1][self.tfc_set_idx_2]
 
-        if self.traffic_shape == -1:
-            sys.stderr.write('start iperf server\n')
+        # tfc = -1 means that we use BBR as the background traffic with iperf;
+        # otherwise start traffic generator
+        if self.tfc == -1:
+            sys.stderr.write('start iperf tool server\n')
             self.emulator.stdin.write('h2 iperf3 -s &\n')
             self.emulator.stdin.flush()
-            # time.sleep(0.5)
 
-            self.emulator.stdin.write('h1 iperf3 -c 192.168.42.2 -C bbr -t 50 -M 2902&\n')
+            self.emulator.stdin.write(
+                'h1 iperf3 -c 192.168.42.2 -C bbr -t 50 -M 1396&\n')
             self.emulator.stdin.flush()
         else:
             sys.stderr.write('start traffic generator\n')
             # tg-receiver:
-            tg_receiver_path = path.join(context.base_dir, 'traffic-generator', 'receiver.py')
-            self.emulator.stdin.write('h2 python ' + tg_receiver_path + ' 192.168.42.2 6666 &\n')
-            self.emulator.stdin.flush()
-            # time.sleep(0.5)
-
-            # start traffic generator (tg)
-            # tg-sender: PARAMETER ip port NIC traffic_shape duration
-            sys.stderr.write('Traffic shape index is {} \n'.format(self.traffic_shape))
-            tg_sender_path = path.join(context.base_dir, 'traffic-generator', 'sender.py')
-            self.emulator.stdin.write('h1 python ' + tg_sender_path + ' 192.168.42.2 6666 h1-eth0 {} 0 &\n'.format(self.traffic_shape))
+            tg_receiver_path = path.join(
+                context.base_dir, 'traffic-generator', 'receiver.py')
+            self.emulator.stdin.write(
+                'h2 python ' + tg_receiver_path + ' 192.168.42.2 6666 &\n')
             self.emulator.stdin.flush()
 
-        if self.traffic_shape_set_index_2 == (len(self.traffic_shape_set[self.traffic_shape_set_index_1]) - 1):
-            self.env_set_index = self.env_set_index + 1
-            self.traffic_shape_set_index_1 = self.traffic_shape_set_index_1 + 1
-            self.traffic_shape_set_index_2 = 0
-            if self.env_set_index == self.env_set_len:
-                self.done = True
-                self.env_set_index = 0
-                self.traffic_shape_set_index_1 = 0
-                self.traffic_shape_set_index_2 = 0
-        else:
-            self.traffic_shape_set_index_2 = self.traffic_shape_set_index_2 + 1
+            # tg-sender: parameters: ip port NIC tfc duration
+            sys.stderr.write(
+                'Traffic shape index is {} \n'.format(self.tfc))
+            tg_sender_path = path.join(
+                context.base_dir, 'traffic-generator', 'sender.py')
+            self.emulator.stdin.write(
+                'h1 python ' + tg_sender_path +
+                ' 192.168.42.2 6666 h1-eth0 {} 0 &\n'.format(self.tfc))
+            self.emulator.stdin.flush()
 
-        # start receiver
+        # STEP 3: start receiver
         sys.stderr.write('Start receiver\n')
-        receiver_path = path.join(context.base_dir, 'env', 'run_receiver.py')
+        receiver_path = path.join(context.base_dir, 'dagger', 'receiver.py')
         if self.train:
-            self.emulator.stdin.write('h3 python ' + receiver_path + ' 192.168.42.111 ' + str(self.port) + ' & \n')
-        else:
-            self.emulator.stdin.write('h3 python ' + receiver_path + ' 192.168.42.111 ' + str(self.port) + ' -t ' + log_file_postfix + ' & \n')
+            self.emulator.stdin.write(
+                'h3 python ' + receiver_path + ' ' + str(self.port) + ' & \n')
+        # else: TODO: add para log file in receiver
+        #    self.emulator.stdin.write(
+        #       'h3 python ' + receiver_path + ' ' + str(self.port) + ' -t ' +
+        #       log_file_postfix + ' & \n')
         self.emulator.stdin.flush()
 
-        if self.train:
-            time.sleep(1)
-            for i in xrange(10):
-                ret = self.expert.connect_expert_server(self.tcp_port)
-                if ret == 0:
-                    break
-                time.sleep(0.5)
-        else:
-            time.sleep(1)
-            for i in xrange(5):
-                ret = self.expert.connect_perf_server(self.tcp_port)
-                if ret == 0:
-                    break
-                time.sleep(0.5)
-            self.sender.set_perf_client(self.expert)
+        # STEP 4: start sender
+        sys.stderr.write('Start sender\n')
+        # create a policy instance
+        self.policy = Policy(self.train)
+        self.policy.set_sample_action(self.sample_action)
+        # create a sender instance
+        self.sender = Sender('192.168.42.222', self.port)
+        self.sender.set_policy(self.policy)
 
-        # sender completes the handshake sent from receiver
-        sys.stderr.write('Starting sender...\n')
-        self.sender.handshake()
+        # TODO: if not self.train:
+        #     # set expet client to sender
+        #     self.sender.set_perf_client(self.expert)
+        #     # set log file name during test in sender and receiver
+        #     self.sender.set_test_name(log_file_postfix)
+
+        # STEP 5: Update env and corresponding traffic shape in this episode
+        if self.tfc_set_idx_2 == len(self.tfc_set[self.tfc_set_idx_1]) - 1:
+            # this env is done
+            self.env_set_idx = self.env_set_idx + 1
+            self.tfc_set_idx_1 = self.tfc_set_idx_1 + 1
+            self.tfc_set_idx_2 = 0
+            # all env and traffic shape are done
+            if self.env_set_idx == self.env_set_len:
+                self.done = True
+                self.env_set_idx = 0
+                self.tfc_set_idx_1 = 0
+                self.tfc_set_idx_2 = 0
+        else:
+            # get next traffic shape for this env
+            self.tfc_set_idx_2 = self.tfc_set_idx_2 + 1
 
         sys.stderr.write('env reset done\n')
 
@@ -225,9 +214,12 @@ class Environment_Mininet(object):
     def cleanup(self):
 
         if self.emulator:
-            if not self.train:
-                self.emulator.stdin.write('h3 pkill -f run_receiver\n')
-                time.sleep(0.5)
+            # stop tg-sender, tg-receiver, receiver
+            self.emulator.stdin.write('h1 pkill -f sender\n')
+            self.emulator.stdin.write('h2 pkill -f receiver\n')
+            self.emulator.stdin.write('h3 pkill -f receiver\n')
+            time.sleep(0.5)
+            # stop emulator
             self.emulator.stdin.write('quit()\n')
             self.emulator = None
             time.sleep(3)  # wait for the mininet to be closed completely
@@ -241,19 +233,8 @@ class Environment_Mininet(object):
 
         if self.expert:
             self.expert.cleanup()
+            self.expert = None
 
         if self.sender:
             self.sender.cleanup()
             self.sender = None
-
-        if self.receiver:
-            try:
-                os.killpg(os.getpgid(self.receiver.pid), signal.SIGTERM)
-            except OSError as e:
-                sys.stderr.write('%s\n' % e)
-            finally:
-                self.receiver = None
-
-    def get_best_cwnd(self):
-        best_rate, best_cwnd = self.expert.get_network_state()
-        return best_cwnd

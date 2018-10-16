@@ -27,8 +27,10 @@ import context
 import tensorflow as tf
 from subprocess import check_call
 from os import path
+
 from dagger import DaggerLeader, DaggerWorker
 from env.environment_mininet import Environment_Mininet
+from helpers.utils import Config
 
 
 def prepare_traces(bandwidth):
@@ -56,40 +58,30 @@ def prepare_traces(bandwidth):
     return uplink_trace, downlink_trace
 
 
-def get_mininet_env_param():
-    total_tp_set = []
-    total_env_set = []
-
-    cfg = ConfigParser.ConfigParser()
-    cfg_path = os.path.join(context.base_dir, 'config.ini')
-    cfg.read(cfg_path)
-
-    train_env = cfg.options('train_env')
-    for opt in train_env:
-        env_param, tp_set_param = ast.literal_eval(cfg.get('train_env', opt))
-        total_tp_set.append(ast.literal_eval(cfg.get('global', tp_set_param)))
-        total_env_set.append(ast.literal_eval(cfg.get('global', env_param)))
-
-    return total_tp_set, total_env_set
-
 
 def create_mininet_env(worker_num, worker_index):
-    total_tp_set, total_env_set = get_mininet_env_param()
+
+    # get total env and tp set
+    total_env_set = Config.total_env_set_train
+    total_tp_set = Config.total_tp_set_train
     total_env_len = len(total_env_set)
     tasks_per_work = total_env_len / worker_num
 
+    # allocate the evn and tp for this worker
     env_set = []
     tp_set = []
     if (worker_index < worker_num - 1):
         for i in xrange(tasks_per_work * worker_index, tasks_per_work * (worker_index+1)):
             tp_set.append(total_tp_set[i])
             env_set.append(total_env_set[i])
-            print 'worker', worker_index, 'is Allocated traffic pattern & env ', total_tp_set[i],total_env_set[i]
+            print('worker', worker_index, 'is Allocated tp& env: ',
+                  total_tp_set[i], total_env_set[i], '\n')
     else:  # last one
         for i in xrange(tasks_per_work * worker_index, total_env_len):
             tp_set.append(total_tp_set[i])
             env_set.append(total_env_set[i])
-            print 'worker', worker_index, 'is Allocated traffic pattern & env ', total_tp_set[i],total_env_set[i]
+            print('worker', worker_index, 'is Allocated tp & env: ',
+                  total_tp_set[i], total_env_set[i], '\n')
 
     env = Environment_Mininet(tp_set, env_set, True)
     return env
