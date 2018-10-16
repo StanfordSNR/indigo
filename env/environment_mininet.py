@@ -21,8 +21,8 @@ from os import path
 from subprocess import Popen, PIPE
 
 import context
-from sender import Sender
-from policy import Policy
+from dagger.sender import Sender
+from dagger.policy import Policy
 from helpers.utils import get_open_port, check_pid, Config, DEVNULL
 
 

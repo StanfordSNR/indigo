@@ -212,6 +212,7 @@ class Config(object):
     total_tp_set_train = []
     total_env_set_train = []
     total_env_name_set_train = []
+    total_tp_num_train = 0
     train_env = cfg.options('train_env')
     for opt in train_env:
         env_param, tp_set_param = ast.literal_eval(cfg.get('train_env', opt))
@@ -220,6 +221,8 @@ class Config(object):
                 ast.literal_eval(cfg.get('global', tp_set_param)))
         total_env_set_train.append(
                 ast.literal_eval(cfg.get('global', env_param)))
+    for tp in total_tp_set_train:
+        total_tp_num_train += len(tp)
 
     # env (mininet) parameter set and traffic pattern for test mode
     total_tp_set_test = []

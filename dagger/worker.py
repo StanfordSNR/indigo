@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # Copyright 2018 Francis Y. Yan, Jestin Ma
-# Copyright 2018 Huawei Technologies
+# Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
 #     limitations under the License.
 
 
-import ast
-import ConfigParser
 import os
 import sys
 import yaml
@@ -31,33 +29,6 @@ from os import path
 from dagger import DaggerLeader, DaggerWorker
 from env.environment_mininet import Environment_Mininet
 from helpers.utils import Config
-
-
-def prepare_traces(bandwidth):
-    trace_dir = path.join(context.base_dir, 'env')
-
-    if type(bandwidth) == int:
-        trace_path = path.join(trace_dir, '%dmbps.trace' % bandwidth)
-
-        if not path.exists(trace_path):
-            gen_trace = path.join(context.base_dir, 'helpers',
-                                  'generate_trace.py')
-            cmd = ['python', gen_trace, '--output-dir', trace_dir,
-                   '--bandwidth', str(bandwidth)]
-            sys.stderr.write('$ %s\n' % ' '.join(cmd))
-            check_call(cmd)
-
-        uplink_trace = trace_path
-        downlink_trace = uplink_trace
-    else:
-        trace_path = path.join(trace_dir, bandwidth)
-        # intentionally switch uplink and downlink traces due to sender first
-        uplink_trace = trace_path + '.down'
-        downlink_trace = trace_path + '.up'
-
-    return uplink_trace, downlink_trace
-
-
 
 def create_mininet_env(worker_num, worker_index):
 
@@ -74,7 +45,7 @@ def create_mininet_env(worker_num, worker_index):
         for i in xrange(tasks_per_work * worker_index, tasks_per_work * (worker_index+1)):
             tp_set.append(total_tp_set[i])
             env_set.append(total_env_set[i])
-            print('worker', worker_index, 'is Allocated tp& env: ',
+            print('worker', worker_index, 'is Allocated tp & env: ',
                   total_tp_set[i], total_env_set[i], '\n')
     else:  # last one
         for i in xrange(tasks_per_work * worker_index, total_env_len):

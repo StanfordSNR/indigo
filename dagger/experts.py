@@ -15,8 +15,8 @@
 
 import sys
 import socket
-from env.sender import Sender
-from helpers.utils import apply_op
+
+from policy import Policy
 
 
 def action_error(actions, idx, cwnd, target):
@@ -24,9 +24,8 @@ def action_error(actions, idx, cwnd, target):
     applied to the cwnd.
     The action is [op, val] located at actions[idx].
     """
-    op = actions[idx][0]
-    val = actions[idx][1]
-    return abs(apply_op(op, cwnd, val) - target)
+    op, val = actions[idx]
+    return abs(op(cwnd, val) - target)
 
 
 def get_best_action(actions, cwnd, target):
@@ -55,28 +54,12 @@ class NaiveDaggerExpert(object):
 
         # Gets the action that gives the resulting cwnd closest to the
         # expert target cwnd.
-        action = get_best_action(Sender.action_mapping, cwnd, target_cwnd)
+        action = get_best_action(Policy.action_mapping, cwnd, target_cwnd)
         return action
 
-
-class TrueDaggerExpert(object):
-    """ Ground truth expert policy """
-
-    def __init__(self, env):
-        assert hasattr(env, 'best_cwnd'), (
-            'Using true dagger expert but not given a best cwnd when creating '
-            'the environment in worker.py.')
-        self.best_cwnd = env.best_cwnd
-
-    def sample_action(self, cwnd):
-        # Gets the action that gives the resulting cwnd closest to the
-        # best cwnd.
-        action = get_best_action(Sender.action_mapping, cwnd, self.best_cwnd)
-        return action
-
-
-class Mininet_Expert(object):
-    """ Ground truth expert policy """
+class Expert_Client(object):
+    """ Get ground truth expert policy from expert server by socket.
+        This is client"""
 
     def __init__(self):
         self.socket = None
@@ -108,7 +91,7 @@ class Mininet_Expert(object):
             return -1
 
         self.best_cwnd = best_cwnd
-        action = get_best_action(Sender.action_mapping, cwnd, self.best_cwnd)
+        action = get_best_action(Policy.action_mapping, cwnd, self.best_cwnd)
 
         return action
 
