@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-# Copyright 2018 Huawei Technologies
+# Copyright 2018 Francis Y. Yan
+# Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,23 +16,27 @@
 #     limitations under the License.
 
 
-import socket
 import sys
+import socket
+import argparse
 
 
-def main(args):
-    bind_addr = (args[1], int(args[2]))
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('ip')
+    parser.add_argument('port', type=int)
+    args = parser.parse_args()
+
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(bind_addr)
+    s.bind((args.ip, args.port))
 
     while True:
         data, addr = s.recvfrom(1500)
         if not data:
-            print('ERROR: null msg from client.')
-            break
-        # print('receive {} from {}'.format(len(data), addr))
+            sys.exit('ERROR: received empty data from client. Peer gone?')
+
     s.close()
 
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()
