@@ -26,7 +26,7 @@ import tensorflow as tf
 from subprocess import check_call
 from os import path
 
-from dagger import DaggerLeader, DaggerWorker
+from dagger_train import DaggerLeader, DaggerWorker
 from env.environment_mininet import Environment_Mininet
 from helpers.utils import Config
 
@@ -45,14 +45,14 @@ def create_mininet_env(worker_num, worker_index):
         for i in xrange(tasks_per_work * worker_index, tasks_per_work * (worker_index+1)):
             tp_set.append(total_tp_set[i])
             env_set.append(total_env_set[i])
-            print('worker', worker_index, 'is Allocated tp & env: ',
-                  total_tp_set[i], total_env_set[i], '\n')
+            sys.stderr.write('worker ', str(worker_index) + ' is Allocated tp & env: ' +
+                  str(total_tp_set[i]) +' '+ str(total_env_set[i]) + '\n')
     else:  # last one
         for i in xrange(tasks_per_work * worker_index, total_env_len):
             tp_set.append(total_tp_set[i])
             env_set.append(total_env_set[i])
-            print('worker', worker_index, 'is Allocated tp & env: ',
-                  total_tp_set[i], total_env_set[i], '\n')
+            sys.stderr.write('worker ', str(worker_index) + ' is Allocated tp & env: ' +
+                  str(total_tp_set[i]) +' '+ str(total_env_set[i]) + '\n')
 
     env = Environment_Mininet(tp_set, env_set, True)
     return env

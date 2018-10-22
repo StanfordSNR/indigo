@@ -75,83 +75,46 @@ class Environment_Mininet(object):
 
         self.port = get_open_port()
 
-        curr_env_name = Config.total_env_name_set_test[self.env_set_idx]
-        curr_tp_name = Config.total_tp_set[self.tfc_set_idx_1][self.tfc_set_idx_2]
-        log_file_postfix = '{}_tp_{}.log'.format(curr_env_name, curr_tp_name)
+        if not self.train:
+            curr_env_name = Config.total_env_name_set_test[self.env_set_idx]
+            curr_tp_name = Config.total_tp_set_test[self.tfc_set_idx_1][self.tfc_set_idx_2]
+            log_file_postfix = '{}_tp_{}.log'.format(curr_env_name, curr_tp_name)
 
-        # STEP 1: start expert server or perf server in train or test mode
-        # We must start up the server in new process to speed up
-        if self.train:
-            expert_server_path = path.join(
-                context.base_dir, 'dagger', 'expert_server.py')
-            # try 3 times at most to ensure expert server is started normally
-            for i in xrange(3):
-                self.expert_server_port = get_open_port()
-                cmd = ['python', expert_server_path, self.expert_server_port]
-                self.expert_server = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
-                if check_pid(self.expert_server.pid):
-                    sys.stderr.write('start expert server successfully\n')
-                    break
-                else:
-                    sys.stderr.write(
-                        'start expert server failed, try again...\n')
-                    return -1
 
-        else:
-            expert_server_path = path.join(
-                context.base_dir, 'dagger', 'perf_server.py')
-            # try 3 times at most to ensure perf server is started normally
-            for i in xrange(3):
-                self.expert_server_port = get_open_port()
-                cmd = ['python', expert_server_path, self.expert_server_port,
-                       self.env_set_idx, self.tfc_set_idx_1, self.tfc_set_idx_2]
-                self.expert_server = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
-                if check_pid(self.expert_server.pid):
-                    sys.stderr.write('start perf server successfully\n')
-                    break
-                else:
-                    sys.stderr.write(
-                        'start perf server failed, try again...\n')
-                    return -1
-
-        # let the expert client connect with the server
-        time.sleep(1)
-        for i in xrange(3):
-            ret = self.expert.connect_expert_server(self.expert_server_port)
-            if ret == 0:
-                break
-            time.sleep(0.5)
-
-        # STEP 2: start mininet emulator
-        sys.stderr.write('start mininet emulator\n')
+        # STEP 1: start mininet emulator
+        sys.stderr.write('\nStep #1: start mininet emulator: ' +
+                         ' '.join(self.env_set[self.env_set_idx][:4]) +'\n')
         emulator_path = path.join(context.base_dir, 'env', 'mininet_topo.py')
         cmd = ['python', emulator_path] + self.env_set[self.env_set_idx][:4]
-        self.emulator = Popen(cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        self.emulator = Popen(cmd, stdin=PIPE, stdout=DEVNULL, stderr=DEVNULL)
+        time.sleep(1.5)
 
+        # STEP 2: start traffic generator
         self.tfc = self.tfc_set[self.tfc_set_idx_1][self.tfc_set_idx_2]
 
         # tfc = -1 means that we use BBR as the background traffic with iperf;
         # otherwise start traffic generator
         if self.tfc == -1:
-            sys.stderr.write('start iperf tool server\n')
+            sys.stderr.write('Step #2: start iperf tool server\n')
             self.emulator.stdin.write('h2 iperf3 -s &\n')
             self.emulator.stdin.flush()
 
             self.emulator.stdin.write(
-                'h1 iperf3 -c 192.168.42.2 -C bbr -t 50 -M 1396&\n')
+                'h1 iperf3 -c 192.168.42.2 -C bbr -t 50 -M 1396 &\n')
             self.emulator.stdin.flush()
         else:
-            sys.stderr.write('start traffic generator\n')
+            sys.stderr.write('Step #2: start traffic generator, ')
             # tg-receiver:
             tg_receiver_path = path.join(
                 context.base_dir, 'traffic-generator', 'receiver.py')
             self.emulator.stdin.write(
                 'h2 python ' + tg_receiver_path + ' 192.168.42.2 6666 &\n')
             self.emulator.stdin.flush()
+            time.sleep(0.1)
 
             # tg-sender: parameters: ip port NIC tfc duration
             sys.stderr.write(
-                'Traffic shape index is {} \n'.format(self.tfc))
+                'traffic shape index is {} \n'.format(self.tfc))
             tg_sender_path = path.join(
                 context.base_dir, 'traffic-generator', 'sender.py')
             self.emulator.stdin.write(
@@ -160,19 +123,56 @@ class Environment_Mininet(object):
             self.emulator.stdin.flush()
 
         # STEP 3: start receiver
-        sys.stderr.write('Start receiver\n')
+        sys.stderr.write('Step #3: start receiver\n')
+        time.sleep(0.1)
         receiver_path = path.join(context.base_dir, 'dagger', 'receiver.py')
         if self.train:
             self.emulator.stdin.write(
                 'h3 python ' + receiver_path + ' ' + str(self.port) + ' & \n')
-        # else: TODO: add para log file in receiver
-        #    self.emulator.stdin.write(
-        #       'h3 python ' + receiver_path + ' ' + str(self.port) + ' -t ' +
-        #       log_file_postfix + ' & \n')
         self.emulator.stdin.flush()
 
-        # STEP 4: start sender
-        sys.stderr.write('Start sender\n')
+        # STEP 4: start expert server or perf server in train or test mode
+        if self.train:
+            expert_server_path = path.join(
+                context.base_dir, 'dagger', 'expert_server.py')
+            # try 3 times at most to ensure expert server is started normally
+            for i in xrange(3):
+                self.expert_server_port = get_open_port()
+                cmd = ['python', expert_server_path, str(self.expert_server_port)]
+                self.expert_server = Popen(cmd) # , stdout=DEVNULL, stderr=DEVNULL
+                if check_pid(self.expert_server.pid):
+                    sys.stderr.write('Step #4: start expert server (PID: {}), '.format(self.expert_server.pid))
+                    break
+                else:
+                    sys.stderr.write(
+                        'start expert server failed, try again...\n')
+                    return -1
+        else:
+            expert_server_path = path.join(
+                context.base_dir, 'dagger', 'perf_server.py')
+            # try 3 times at most to ensure perf server is started normally
+            for i in xrange(3):
+                self.expert_server_port = get_open_port()
+                cmd = ['python', expert_server_path, self.expert_server_port,
+                       self.env_set_idx, self.tfc_set_idx_1, self.tfc_set_idx_2]
+                self.expert_server = Popen(cmd, stdin=DEVNULL, stdout=DEVNULL, stderr=DEVNULL)
+                if check_pid(self.expert_server.pid):
+                    sys.stderr.write('Step #4: start perf server successfully\n')
+                    break
+                else:
+                    sys.stderr.write(
+                        '\nstart perf server failed, try again...\n')
+                    return -1
+        time.sleep(1)
+        for i in xrange(3):
+            ret = self.expert.connect_expert_server(self.expert_server_port)
+            if ret == 0:
+                sys.stderr.write('connect to expert server successfully\n')
+                break
+            time.sleep(0.5)
+
+        # STEP 5: start sender
+        sys.stderr.write('Step #5: start sender\n')
         # create a policy instance
         self.policy = Policy(self.train)
         self.policy.set_sample_action(self.sample_action)
@@ -186,7 +186,7 @@ class Environment_Mininet(object):
         #     # set log file name during test in sender and receiver
         #     self.sender.set_test_name(log_file_postfix)
 
-        # STEP 5: Update env and corresponding traffic shape in this episode
+        # STEP 6: Update env and corresponding traffic shape in this episode
         if self.tfc_set_idx_2 == len(self.tfc_set[self.tfc_set_idx_1]) - 1:
             # this env is done
             self.env_set_idx = self.env_set_idx + 1
@@ -212,6 +212,15 @@ class Environment_Mininet(object):
         return ret
 
     def cleanup(self):
+        if self.expert:
+            self.expert.cleanup()
+
+        if self.expert_server:
+            if self.train:
+                Popen('pkill -f expert_server', shell=True)
+            else:
+                Popen('pkill -f perf_server', shell=True)
+            self.expert_server = None
 
         if self.emulator:
             # stop tg-sender, tg-receiver, receiver
@@ -221,19 +230,8 @@ class Environment_Mininet(object):
             time.sleep(0.5)
             # stop emulator
             self.emulator.stdin.write('quit()\n')
-            self.emulator = None
             time.sleep(3)  # wait for the mininet to be closed completely
-
-        if self.expert_server:
-            if self.train:
-                Popen('pkill -f expert_server', shell=True)
-            else:
-                Popen('pkill -f perf_server', shell=True)
-            self.expert_server = None
-
-        if self.expert:
-            self.expert.cleanup()
-            self.expert = None
+            self.emulator = None
 
         if self.sender:
             self.sender.cleanup()

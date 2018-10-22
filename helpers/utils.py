@@ -54,6 +54,15 @@ def format_actions(action_list):
 
     return ret
 
+def min_x_max(min_value, x, max_value):
+    # return x if min_value < x < max_value
+    # else return min_value or max_value
+    if min_value < x < max_value:
+        return x
+    elif x >= max_value:
+        return max_value
+    else:
+        return min_value
 
 def timestamp_ms():
     return int(round(time.time() * 1000))

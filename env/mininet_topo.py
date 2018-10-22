@@ -68,8 +68,9 @@ def start_emulator(args):
     CLI(net)
 
     # stop and clean
-    net.stop()
     Popen('ip link delete veth1', shell=True)  # don't need to delete veth2
+    net.stop()
+
 
 
 def main():

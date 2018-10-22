@@ -19,12 +19,12 @@ import socket
 from policy import Policy
 
 
-def action_error(actions, idx, cwnd, target):
+def action_error(action, cwnd, target):
     """ Returns the absolute difference between the target and an action
     applied to the cwnd.
     The action is [op, val] located at actions[idx].
     """
-    op, val = actions[idx]
+    op, val = action
     return abs(op(cwnd, val) - target)
 
 
@@ -32,8 +32,8 @@ def get_best_action(actions, cwnd, target):
     """ Returns the best action by finding the action that leads to the
     closest resulting cwnd to target.
     """
-    return min(actions,
-               key=lambda idx: action_error(actions, idx, cwnd, target))
+    return actions.index(min(actions,
+               key=lambda action: action_error(action, cwnd, target)))
 
 
 class NaiveDaggerExpert(object):
@@ -64,9 +64,11 @@ class Expert_Client(object):
     def __init__(self):
         self.socket = None
 
+
     def cleanup(self):
         if self.socket:
             self.socket.close()
+            self.socket = None
 
     def connect_expert_server(self, port):
         self.address = ('0.0.0.0', port)
@@ -84,10 +86,11 @@ class Expert_Client(object):
 
         self.socket.send('Current best cwnd?')
         msg = self.socket.recv(512)
+
         try:
             best_cwnd = float(msg)
         except ValueError:
-            sys.stderr.write('Expert server returns invalid best cwnd\n')
+            sys.stderr.write('Expert server returns invalid best cwnd {} \n'.format(msg))
             return -1
 
         self.best_cwnd = best_cwnd

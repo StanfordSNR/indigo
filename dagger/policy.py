@@ -16,6 +16,7 @@
 
 import sys
 import collections
+import datetime
 
 from message import Message
 import context
@@ -42,7 +43,7 @@ class Policy(object):
     action_mapping = format_actions(action_list)
 
     def __init__(self, train):
-    # public:
+        # public:
         self.cwnd = 10.0
         self.bytes_sent = 0
         self.ack_recv_ts = 0
@@ -50,6 +51,9 @@ class Policy(object):
 
         # sender should stop or not
         self.stop_sender = False
+
+        # pacing or not
+        self.pacing = False
 
     # private:
         self.train = train
@@ -80,6 +84,11 @@ class Policy(object):
         self.delay_ewma = None
         self.send_rate_ewma = None
         self.delivery_rate_ewma = None
+
+        # pacing related
+        self.borrowed_pkt = 0.0
+        self.interval = 500.0  # us
+        self.pre_sent_ts = None
 
 # private
     def __update_state(self, ack):
@@ -214,3 +223,36 @@ class Policy(object):
 
     def set_sample_action(self, sample_action):
         self.sample_action = sample_action
+
+    def pacing_pkt_number(self, max_in_cwnd):
+        # pacing control
+
+        if not self.pacing or self.min_rtt == sys.maxint:
+            return max_in_cwnd
+
+        if self.pre_sent_ts == None:
+            self.pre_sent_ts = datetime.datetime.now()
+
+        now = datetime.datetime.now()
+        duration = (now - self.pre_sent_ts).microseconds
+        if duration >= self.interval:
+            pacing_rate = self.cwnd / self.min_rtt  # pkt/ms
+            n = duration / 1000.0 * pacing_rate
+
+            self.borrowed_pkt += n - int(n)
+            n = int(n)
+            if self.borrowed_pkt >= 1.0:
+                n += int(self.borrowed_pkt)
+                self.borrowed_pkt = self.borrowed_pkt - int(self.borrowed_pkt)
+            ret_num = min(max_in_cwnd, n)
+
+            self.pre_sent_ts = now
+        else:
+            ret_num = 0
+
+        return ret_num
+
+    def pacing_sent_failed(self, m):
+        if not self.pacing:
+            return
+        self.borrowed_pkt += m

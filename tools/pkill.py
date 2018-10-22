@@ -18,7 +18,9 @@
 
 import sys
 import signal
-from subprocess_wrappers import Popen
+
+import context
+from helpers.subprocess_wrappers import Popen
 
 
 def signal_handler(signum, frame):
@@ -37,6 +39,7 @@ def main():
 
     pkill_cmds.append('pkill -f expert_server')
     pkill_cmds.append('mn -c >/dev/null 2>&1')
+    pkill_cmds.append('ip link delete veth1 >/dev/null 2>&1')
 
     procs = []
 
