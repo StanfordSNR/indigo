@@ -15,15 +15,15 @@
 #     limitations under the License.
 
 
-import commands
 import os
 import socket
 import subprocess
 import sys
 import time
+import argparse
 
 
-class Function:
+class Function(object):
     def __init__(self, expression, domain, definition):
         self.func_Mbps = expression
         self.lower_s = float(domain[0])
@@ -703,7 +703,8 @@ def generate_traffic(addr, port, dev, shape, bound):
     bin_len = len(pacing_bin)
 
     pre_cmd_time = time.time()
-    subprocess.Popen('tc qdisc add dev {} root fq maxrate {}'.format(dev, pacing_bin[0]), shell=True)
+    subprocess.Popen('tc qdisc add dev {} root fq maxrate {}'.format(
+                     dev, pacing_bin[0]), shell=True)
     cmd_time = time.time() - pre_cmd_time
     sleep_time = func.definition_s - cmd_time
 
@@ -715,10 +716,12 @@ def generate_traffic(addr, port, dev, shape, bound):
                 sender.sendto(msg, bind_addr)
         else:         # parent process
             for i in xrange(bin_len):
-                subprocess.Popen('tc qdisc change dev {} root fq maxrate {}'.format(dev, pacing_bin[i]), shell=True)
+                subprocess.Popen(
+                    'tc qdisc change dev {} root fq maxrate {}'.format(
+                    dev, pacing_bin[i]), shell=True)
                 time.sleep(sleep_time)
 
-            commands.getstatusoutput('kill {}'.format(pid))
+            subprocess.call('kill {}'.format(pid), shell=True)
     except OSError:
         sys.exit(-1)
 
@@ -727,17 +730,21 @@ def generate_traffic(addr, port, dev, shape, bound):
     sender.close()
 
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('addr')
+    parser.add_argument('port', type=int)
+    parser.add_argument('dev')
+    parser.add_argument('shape', type=int)
+    parser.add_argument('bound', type=float)
+    args = parser.parse_args()
+
     # prepare env
-    addr = args[1]
-    port = int(args[2])
-    dev = args[3]
-    shape = int(args[4])
-    bound = float(args[5])
-    commands.getstatusoutput('tc qdisc del dev {} root'.format(dev))
+    subprocess.call('tc qdisc del dev {} root'.format(args.dev), shell=True)
+
     # start to generate
-    generate_traffic(addr, port, dev, shape, bound)
+    generate_traffic(args.addr, args.port, args.dev, args.shape, args.bound)
 
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()

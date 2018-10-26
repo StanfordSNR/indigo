@@ -33,7 +33,7 @@ def main():
     while True:
         data, addr = s.recvfrom(1500)
         if not data:
-            sys.exit('ERROR: received empty data from client. Peer gone?')
+            sys.exit('ERROR: received empty data from client. Peer is gone?')
 
     s.close()
 

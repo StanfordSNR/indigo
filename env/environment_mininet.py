@@ -80,10 +80,9 @@ class Environment_Mininet(object):
             curr_tp_name = Config.total_tp_set_test[self.tfc_set_idx_1][self.tfc_set_idx_2]
             log_file_postfix = '{}_tp_{}.log'.format(curr_env_name, curr_tp_name)
 
-
         # STEP 1: start mininet emulator
         sys.stderr.write('\nStep #1: start mininet emulator: ' +
-                         ' '.join(self.env_set[self.env_set_idx][:4]) +'\n')
+                         ' '.join(self.env_set[self.env_set_idx][:4]) + '\n')
         emulator_path = path.join(context.base_dir, 'env', 'mininet_topo.py')
         cmd = ['python', emulator_path] + self.env_set[self.env_set_idx][:4]
         self.emulator = Popen(cmd, stdin=PIPE, stdout=DEVNULL, stderr=DEVNULL)
@@ -128,7 +127,7 @@ class Environment_Mininet(object):
         receiver_path = path.join(context.base_dir, 'dagger', 'receiver.py')
         if self.train:
             self.emulator.stdin.write(
-                'h3 python ' + receiver_path + ' ' + str(self.port) + ' & \n')
+                'h3 python ' + receiver_path + ' ' + str(self.port) + ' &\n')
         self.emulator.stdin.flush()
 
         # STEP 4: start expert server or perf server in train or test mode
@@ -137,11 +136,13 @@ class Environment_Mininet(object):
                 context.base_dir, 'dagger', 'expert_server.py')
             # try 3 times at most to ensure expert server is started normally
             for i in xrange(3):
-                self.expert_server_port = get_open_port()
-                cmd = ['python', expert_server_path, str(self.expert_server_port)]
+                self.expert_server_port = str(get_open_port())
+                cmd = ['python', expert_server_path, self.expert_server_port]
                 self.expert_server = Popen(cmd) # , stdout=DEVNULL, stderr=DEVNULL
                 if check_pid(self.expert_server.pid):
-                    sys.stderr.write('Step #4: start expert server (PID: {}), '.format(self.expert_server.pid))
+                    sys.stderr.write(
+                        'Step #4: start expert server (PID: {}), '.format(
+                            self.expert_server.pid))
                     break
                 else:
                     sys.stderr.write(
@@ -152,10 +153,11 @@ class Environment_Mininet(object):
                 context.base_dir, 'dagger', 'perf_server.py')
             # try 3 times at most to ensure perf server is started normally
             for i in xrange(3):
-                self.expert_server_port = get_open_port()
+                self.expert_server_port = str(get_open_port())
                 cmd = ['python', expert_server_path, self.expert_server_port,
                        self.env_set_idx, self.tfc_set_idx_1, self.tfc_set_idx_2]
-                self.expert_server = Popen(cmd, stdin=DEVNULL, stdout=DEVNULL, stderr=DEVNULL)
+                self.expert_server = Popen(cmd, stdin=DEVNULL,
+                                           stdout=DEVNULL, stderr=DEVNULL)
                 if check_pid(self.expert_server.pid):
                     sys.stderr.write('Step #4: start perf server successfully\n')
                     break
@@ -181,7 +183,7 @@ class Environment_Mininet(object):
         self.sender.set_policy(self.policy)
 
         # TODO: if not self.train:
-        #     # set expet client to sender
+        #     # set expert client to sender
         #     self.sender.set_perf_client(self.expert)
         #     # set log file name during test in sender and receiver
         #     self.sender.set_test_name(log_file_postfix)
