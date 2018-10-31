@@ -26,8 +26,8 @@ from os import path
 from subprocess import check_call
 
 import context
-from dagger_train import DaggerLeader, DaggerWorker
-from env.environment_mininet import Environment_Mininet
+from dagger_class import DaggerLeader, DaggerWorker
+from env.mininet_env import MininetEnv
 from helpers.utils import Config
 
 
@@ -56,7 +56,7 @@ def create_mininet_env(worker_num, worker_index):
             sys.stderr.write('worker {} is allocated tp & env: {} {}\n'.format(
                 worker_index, total_tp_set[i], total_env_set[i]))
 
-    env = Environment_Mininet(tp_set, env_set, True)
+    env = EnvironmentMininet(tp_set, env_set, True)
     return env
 
 

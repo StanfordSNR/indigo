@@ -15,18 +15,19 @@
 #     limitations under the License.
 
 
-import argparse
-import ast
-import ConfigParser
 import os
-import context
+import ast
 import shutil
+import argparse
+import ConfigParser
 import tensorflow as tf
-from dagger.run_sender import Learner
-from dagger.experts import Perf_Client
-from env.environment_mininet import Environment_Mininet
-from env.sender import Sender
 from subprocess import call
+
+import context
+from dagger.run_sender import Learner
+from dagger.experts import PerfClient
+from env.mininet_env import MininetEnv
+from env.sender import Sender
 
 
 def get_mininet_env_param():
@@ -64,10 +65,10 @@ def main():
 
     model_path = args.model_path
 
-    pc = Perf_Client()
+    pc = PerfClient()
 
     total_tp_set, total_env_set = get_mininet_env_param()
-    env = Environment_Mininet(total_tp_set, total_env_set, False)
+    env = MininetEnv(total_tp_set, total_env_set, False)
     env.set_expert(pc)
 
     try:

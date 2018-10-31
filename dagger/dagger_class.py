@@ -26,7 +26,7 @@ from subprocess import check_output
 
 from policy import Policy
 from models import DaggerLSTM
-from experts import Expert_Client
+from experts import ExpertClient
 from helpers.utils import (make_sure_path_exists, one_hot, timestamp_ms,
                            softmax, Config)
 
@@ -389,7 +389,7 @@ class DaggerWorker(object):
         self.aug_state_dim = self.state_dim + self.action_cnt
         self.prev_action = self.action_cnt - 1
 
-        self.expert = Expert_Client()
+        self.expert = ExpertClient()
         env.set_expert(self.expert)
 
         # Must call env.set_sample_action() before env.rollout()

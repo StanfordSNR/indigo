@@ -26,7 +26,7 @@ from dagger.policy import Policy
 from helpers.utils import get_open_port, check_pid, Config, DEVNULL
 
 
-class Environment_Mininet(object):
+class MininetEnv(object):
     def __init__(self, tfc_set, env_set, train):
         # traffic shape index defined in traffic generator
         self.tfc = 1

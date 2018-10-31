@@ -57,7 +57,7 @@ class NaiveDaggerExpert(object):
         action = get_best_action(Policy.action_mapping, cwnd, target_cwnd)
         return action
 
-class Expert_Client(object):
+class ExpertClient(object):
     """ Get ground truth expert policy from expert server by socket.
         This is client"""
 
@@ -99,7 +99,7 @@ class Expert_Client(object):
         return action
 
 
-class Perf_Client(object):
+class PerfClient(object):
 
     def __init__(self):
         self.socket = None

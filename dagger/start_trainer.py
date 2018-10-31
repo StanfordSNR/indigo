@@ -27,7 +27,7 @@ from subprocess import Popen, call
 
 
 def run(args):
-    # run worker.py on ps and worker hosts
+    # run trainer.py on ps and worker hosts
     for job_name in ['ps', 'worker']:
         host_list = args[job_name + '_list']
         procs = args[job_name + '_procs']
@@ -35,7 +35,7 @@ def run(args):
         for i in xrange(len(host_list)):
             ssh_cmd = ['ssh', host_list[i]]
 
-            cmd = ['python', args['worker_src'],
+            cmd = ['python', args['trainer_src'],
                    '--ps-hosts', args['ps_hosts'],
                    '--worker-hosts', args['worker_hosts'],
                    '--job-name', job_name,
@@ -85,7 +85,7 @@ def construct_args(prog_args):
 
     # file paths
     args['indigo_dir'] = prog_args.indigo_dir
-    args['worker_src'] = path.join(args['indigo_dir'], 'dagger', 'worker.py')
+    args['trainer_src'] = path.join(args['indigo_dir'], 'dagger', 'trainer.py')
 
     # hostnames and processes
     args['ps_hosts'] = prog_args.ps_hosts
@@ -122,7 +122,7 @@ def main():
     prog_args = parser.parse_args()
     args = construct_args(prog_args)
 
-    # run worker.py on ps and worker hosts
+    # run trainer.py on ps and worker hosts
     try:
         run(args)
     except KeyboardInterrupt:

@@ -194,7 +194,7 @@ class Device_IFCONFIG():
         return rx_bytes
 
 
-class Expert_Mininet():
+class ExpertMininet():
     def __init__(self, dev_bottleneck, dev_traffics):
 
         self.dev_bottleneck = Device_QDISC(dev_bottleneck)
@@ -361,7 +361,7 @@ perf_process = Process(target=show_performance, args=(perf_queue, curr_env_name,
 cwnd = 0
 running = 0
 indigo_cwnd = 0.0
-exp = Expert_Mininet('s1-eth1', ['s1-eth2', 'veth2'])
+exp = ExpertMininet('s1-eth1', ['s1-eth2', 'veth2'])
 
 
 def thread_fun():
