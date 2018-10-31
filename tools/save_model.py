@@ -15,20 +15,23 @@
 #     limitations under the License.
 
 
-import threading
 import socket
-import time
 import argparse
 
-parser = argparse.ArgumentParser()
-parser.add_argument('ip', help='log mir')
-args = parser.parse_args()
-ip = str(args.ip)
 
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('ip', help='log mir')
+    args = parser.parse_args()
 
-address = (ip, 14514)
+    address = (args.ip, 14514)
 
-data = 'save model'
-s.sendto(data, address)
-s.close()
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    data = 'save model'
+    s.sendto(data, address)
+    s.close()
+
+
+if __name__ == '__main__':
+    main()

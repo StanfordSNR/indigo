@@ -21,45 +21,47 @@ import sys
 import yaml
 import argparse
 import threading
-import context
 import tensorflow as tf
-from subprocess import check_call
 from os import path
+from subprocess import check_call
 
+import context
 from dagger_train import DaggerLeader, DaggerWorker
 from env.environment_mininet import Environment_Mininet
 from helpers.utils import Config
 
-def create_mininet_env(worker_num, worker_index):
 
+def create_mininet_env(worker_num, worker_index):
     # get total env and tp set
     total_env_set = Config.total_env_set_train
     total_tp_set = Config.total_tp_set_train
     total_env_len = len(total_env_set)
     tasks_per_work = total_env_len / worker_num
 
-    # allocate the evn and tp for this worker
+    # allocate the env and tp for this worker
     env_set = []
     tp_set = []
-    if (worker_index < worker_num - 1):
-        for i in xrange(tasks_per_work * worker_index, tasks_per_work * (worker_index+1)):
+    if worker_index < worker_num - 1:
+        for i in xrange(tasks_per_work * worker_index,
+                        tasks_per_work * (worker_index + 1)):
             tp_set.append(total_tp_set[i])
             env_set.append(total_env_set[i])
-            sys.stderr.write('worker ', str(worker_index) + ' is Allocated tp & env: ' +
-                  str(total_tp_set[i]) +' '+ str(total_env_set[i]) + '\n')
+            sys.stderr.write('worker {} is allocated tp & env: {} {}\n'.format(
+                worker_index, total_tp_set[i], total_env_set[i]))
     else:  # last one
         for i in xrange(tasks_per_work * worker_index, total_env_len):
             tp_set.append(total_tp_set[i])
             env_set.append(total_env_set[i])
-            sys.stderr.write('worker ', str(worker_index) + ' is Allocated tp & env: ' +
-                  str(total_tp_set[i]) +' '+ str(total_env_set[i]) + '\n')
+
+            sys.stderr.write('worker {} is allocated tp & env: {} {}\n'.format(
+                worker_index, total_tp_set[i], total_env_set[i]))
 
     env = Environment_Mininet(tp_set, env_set, True)
     return env
 
 
 def run(args):
-    """ For each worker/parameter server, starts the appropriate job
+    """ For each worker/parameter server, start the appropriate job
     associated with the cluster and server.
     """
 
@@ -75,12 +77,9 @@ def run(args):
     server = tf.train.Server(cluster, job_name=job_name, task_index=task_index)
 
     if job_name == 'ps':
-        # Sets up the queue, shared variables, and global classifier.
         worker_tasks = set([idx for idx in xrange(num_workers)])
         leader = DaggerLeader(cluster, server, worker_tasks)
-        t = threading.Thread(target = leader.wait_to_save, args=(ps_hosts,))
-        t.setDaemon(True)
-        t.start()
+
         try:
             leader.run(debug=True)
         except KeyboardInterrupt:
@@ -89,15 +88,15 @@ def run(args):
             leader.cleanup()
 
     elif job_name == 'worker':
-        # Sets up the env, shared variables (sync, classifier, queue, etc)
         env = create_mininet_env(num_workers, task_index)
-        learner = DaggerWorker(cluster, server, task_index, env)
+        worker = DaggerWorker(cluster, server, task_index, env)
+
         try:
-            learner.run(debug=True)
+            worker.run(debug=True)
         except KeyboardInterrupt:
             pass
         finally:
-            learner.cleanup()
+            worker.cleanup()
 
 
 def main():
