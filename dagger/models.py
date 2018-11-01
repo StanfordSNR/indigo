@@ -26,8 +26,7 @@ class DaggerNetwork(object):
         actor_h1 = layers.relu(self.states, 8)
         actor_h2 = layers.relu(actor_h1, 8)
         self.action_scores = layers.linear(actor_h2, action_cnt)
-        self.action_probs = tf.nn.softmax(self.action_scores,
-                                          name='action_probs')
+        self.action_probs = tf.nn.softmax(self.action_scores)
 
         self.trainable_vars = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
@@ -35,14 +34,8 @@ class DaggerNetwork(object):
 
 class DaggerLSTM(object):
     def __init__(self, state_dim, action_cnt):
-        # dummy variable used to verify that sharing variables is working
-        self.cnt = tf.get_variable(
-            'cnt', [], tf.float32,
-            initializer=tf.constant_initializer(0.0))
-        self.add_one = self.cnt.assign_add(1.0)
-
         # self.input: [batch_size, max_time, state_dim]
-        self.input = tf.placeholder(tf.float32, [None, None, state_dim], name='input_node')
+        self.input = tf.placeholder(tf.float32, [None, None, state_dim])
 
         self.num_layers = 1
         self.lstm_dim = 32
@@ -51,9 +44,9 @@ class DaggerLSTM(object):
 
         self.state_in = []
         state_tuple_in = []
-        for tmp_i in xrange(self.num_layers):
-            c_in = tf.placeholder(tf.float32, [None, self.lstm_dim], name='state_c_{}'.format(tmp_i))
-            h_in = tf.placeholder(tf.float32, [None, self.lstm_dim], name='state_h_{}'.format(tmp_i))
+        for _ in xrange(self.num_layers):
+            c_in = tf.placeholder(tf.float32, [None, self.lstm_dim])
+            h_in = tf.placeholder(tf.float32, [None, self.lstm_dim])
             self.state_in.append((c_in, h_in))
             state_tuple_in.append(rnn.LSTMStateTuple(c_in, h_in))
 
@@ -65,17 +58,15 @@ class DaggerLSTM(object):
             stacked_lstm, self.input, initial_state=state_tuple_in)
 
         self.state_out = self.convert_state_out(state_tuple_out)
-        self.state_out_identity = tf.identity(self.state_out, name='state_out')
+        self.state_out_identity = tf.identity(self.state_out)
 
         # map output to scores
         self.action_scores = layers.linear(output, action_cnt)
-        self.action_probs = tf.nn.softmax(self.action_scores, name='output_node')
+        self.action_probs = tf.nn.softmax(self.action_scores)
 
+        # used to calculate regularization loss
         self.trainable_vars = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
-
-        # add self saver
-        self.saver = tf.train.Saver(tf.global_variables())
 
     def convert_state_out(self, state_tuple_out):
         state_out = []
