@@ -61,11 +61,16 @@ class DaggerLeader(object):
     def __create_tf_graph(self):
         # create shared variables on the PS server
         with tf.device(DaggerLeader.device):
+            # create a global model on the PS server
+            # DaggerLSTM requires a variable scope to collect trainable_vars
+            with tf.variable_scope('global'):
+                self.global_model = DaggerLSTM(state_dim=self.aug_state_dim,
+                                               action_cnt=self.action_cnt)
+
             # create a shared episode counter used for synchronization
             self.eps_cnt = tf.get_variable(
                 'eps_cnt', [], tf.int32,
                 initializer=tf.constant_initializer(0))
-            self.increment_eps_cnt = self.eps_cnt.assign_add(1)
 
             # create a shared queue to collect training data from workers
             self.train_q = tf.FIFOQueue(
@@ -73,8 +78,45 @@ class DaggerLeader(object):
                 dtypes=[tf.float32, tf.float32],
                 shared_name='train_q')  # shared_name is required for sharing
 
-            self.enqueue_train_q = self.train_q.enqueue([1.0, 2.0])
+        # op to increment eps_cnt
+        self.increment_eps_cnt = self.eps_cnt.assign_add(1)
 
+        # regularization loss
+        reg_loss = 0.0
+        for var in self.global_model.trainable_vars:
+            reg_loss += tf.nn.l2_loss(var)
+
+        # cross entropy loss = rho * soft_CE_loss + (1 - rho) * hard_CE_loss
+        self.hard_targets = tf.placeholder(tf.int32, [None, None])
+        self.soft_targets = tf.placeholder(tf.float32, [None, None, None])
+
+        hard_ce_loss = tf.reduce_mean(
+            tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=self.hard_targets,
+                logits=self.global_model.action_scores))
+
+        soft_ce_loss = tf.reduce_mean(
+            tf.nn.softmax_cross_entropy_with_logits(
+                labels=self.soft_targets,
+                logits=self.global_model.action_scores))
+
+        ce_loss = (1.0 - Config.rho) * hard_ce_loss + Config.rho * soft_ce_loss
+
+        # total loss = cross entropy loss + reg_lambda * regularization loss
+        self.total_loss = ce_loss + DaggerLeader.reg_lambda * reg_loss
+
+        # op to train / optimize
+        optimizer = tf.train.AdamOptimizer(DaggerLeader.learn_rate)
+        self.train_op = optimizer.minimize(self.total_loss)
+
+        # op to summary variables that can be displayed in Tensorboard
+        tf.summary.scalar('reg_loss', reg_loss)
+        tf.summary.scalar('hard_ce_loss', hard_ce_loss)
+        tf.summary.scalar('soft_ce_loss', soft_ce_loss)
+        tf.summary.scalar('total_loss', self.total_loss)
+        self.summary_op = tf.summary.merge_all()
+
+        # Tensorflow session
         self.sess = tf.Session(
             self.server.target,
             config=tf.ConfigProto(allow_soft_placement=True))

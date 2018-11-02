@@ -50,11 +50,15 @@ class DaggerWorker(object):
     def __create_tf_graph(self):
         # access shared variables on the PS server
         with tf.device(DaggerLeader.device):
+            # access the global model on the PS server
+            with tf.variable_scope('global'):
+                self.global_model = DaggerLSTM(state_dim=self.aug_state_dim,
+                                               action_cnt=self.action_cnt)
+
             # access the shared episode counter used for synchronization
             self.eps_cnt = tf.get_variable(
                 'eps_cnt', [], tf.int32,
                 initializer=tf.constant_initializer(0))
-            self.increment_eps_cnt = self.eps_cnt.assign_add(1)
 
             # access the shared queue to store training data
             self.train_q = tf.FIFOQueue(
@@ -62,8 +66,25 @@ class DaggerWorker(object):
                 dtypes=[tf.float32, tf.float32],
                 shared_name='train_q')  # shared_name is required for sharing
 
-            self.enqueue_train_q = self.train_q.enqueue([1.0, 2.0])
+        # create local variables on this worker
+        this_device = '/job:worker/task:{}'.format(self.task_idx)
+        with tf.device(this_device):
+            # create a local model on this worker
+            # DaggerLSTM requires a variable scope to collect trainable_vars
+            with tf.variable_scope('local'):
+                self.local_model = DaggerLSTM(state_dim=self.aug_state_dim,
+                                              action_cnt=self.action_cnt)
 
+        # op to enqueue training data to train_q
+        self.enqueue_train_q = self.train_q.enqueue([1.0, 2.0])
+
+        # op to synchronize the local model with the global model
+        local_vars = self.local_model.trainable_vars
+        global_vars = self.global_model.trainable_vars
+        self.sync_op = tf.group(*[v1.assign(v2)
+                                  for v1, v2 in zip(local_vars, global_vars)])
+
+        # Tensorflow session
         self.sess = tf.Session(
             self.server.target,
             config=tf.ConfigProto(allow_soft_placement=True))
