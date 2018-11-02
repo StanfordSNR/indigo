@@ -175,8 +175,8 @@ class LSTM_Executer(object):
             pi.state_in: self.lstm_state,
         }
 
-        ops_to_run = [pi.action_probs, pi.state_out, pi.state_out_identity]
-        action_probs, self.lstm_state, soi = self.sess.run(ops_to_run, feed_dict)
+        ops_to_run = [pi.action_probs, pi.state_out]
+        action_probs, self.lstm_state = self.sess.run(ops_to_run, feed_dict)
 
         # Choose an action to take
         action = np.argmax(action_probs[0][0])

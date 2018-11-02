@@ -40,7 +40,7 @@ class DaggerLSTM(object):
         self.num_layers = 1
         self.lstm_dim = 32
         stacked_lstm = rnn.MultiRNNCell([rnn.BasicLSTMCell(self.lstm_dim)
-                                        for _ in xrange(self.num_layers)])
+                                         for _ in xrange(self.num_layers)])
 
         self.state_in = []
         state_tuple_in = []
@@ -58,7 +58,6 @@ class DaggerLSTM(object):
             stacked_lstm, self.input, initial_state=state_tuple_in)
 
         self.state_out = self.convert_state_out(state_tuple_out)
-        self.state_out_identity = tf.identity(self.state_out)
 
         # map output to scores
         self.action_scores = layers.linear(output, action_cnt)
