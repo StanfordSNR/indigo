@@ -41,6 +41,13 @@ class DaggerWorker(object):
         # augmented state space: state and previous action (one-hot vector)
         self.aug_state_dim = self.state_dim + self.action_cnt
 
+        # expert policy
+        self.expert = ExpertClient()
+        env.set_expert(self.expert)
+
+        # must call env.set_sample_action() before env.rollout()
+        env.set_sample_action(self.sample_action)
+
         self.curr_eps = 0  # current episode, synchronized with the leader
 
         # create Tensorflow dataflow graph
@@ -81,7 +88,10 @@ class DaggerWorker(object):
         # op to enqueue training data
         self.state_data = tf.placeholder(
             tf.float32, shape=(None, self.aug_state_dim))
-        self.action_data = tf.placeholder(tf.float32, shape=(None))
+
+        # [curr_cwnd, expert_cwnd, expert_action]
+        self.action_data = tf.placeholder(tf.float32, shape=(None, 3))
+
         self.enqueue_train_q = self.train_q.enqueue(
             [self.state_data, self.action_data])
 
@@ -123,7 +133,39 @@ class DaggerWorker(object):
 
 # public
     def sample_action(self, state):
-        pass
+        # query expert action
+        cwnd = state[self.state_dim - 1] * Policy.max_cwnd
+        expert_action = self.expert.sample_action(cwnd)
+        if expert_action == -1:
+            return -1
+        expert_cwnd = self.expert.best_cwnd
+
+        # construct augmented state
+        norm_state = state
+        one_hot_action = one_hot(self.prev_action, self.action_cnt)
+        aug_state = norm_state + one_hot_action
+
+        # fill in state_buf, action_buf
+        self.state_buf.append(aug_state)
+        self.action_buf.append([cwnd, expert_cwnd, expert_action])
+
+        # always use the expert action on the first episode to get our bearings
+        if self.curr_eps == 1:
+            self.prev_action = expert_action
+            return expert_action
+
+        # feed aug_state into local model and update current LSTM state
+        feed_dict = {
+            self.local_model.input: [[aug_state]],
+            self.local_model.state_in: self.lstm_state,
+        }
+        ops = [self.local_model.action_probs, self.local_model.state_out]
+        action_probs, self.lstm_state = self.sess.run(ops, feed_dict)
+
+        # choose an action to take
+        action = np.argmax(action_probs[0][0])
+        self.prev_action = action
+        return action
 
     def run(self):
         while self.curr_eps < DaggerLeader.max_eps:
@@ -143,4 +185,4 @@ class DaggerWorker(object):
                 self.action_data: self.action_buf})
 
     def cleanup(self):
-        pass
+        self.env.cleanup()
