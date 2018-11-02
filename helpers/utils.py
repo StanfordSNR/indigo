@@ -245,10 +245,3 @@ class Config(object):
                 ast.literal_eval(cfg.get('global', tp_set_param)))
         total_env_set_test.append(
                 ast.literal_eval(cfg.get('global', env_param)))
-
-
-class Status(object):
-    EP_DONE = 0
-    WORKER_DONE = 1
-    WORKER_START = 2
-    PS_DONE = 3

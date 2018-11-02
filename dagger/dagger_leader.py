@@ -34,8 +34,9 @@ class DaggerLeader(object):
     # explicitly use CPU as Tensorflow is buggy when sharing variables on GPU
     device = '/job:ps/task:0/CPU:0'
 
-    max_eps = 5  # max episodes
-    train_q_capacity = 2  # max capacity of train_q
+    max_eps = 1000  # max episodes
+    train_q_capacity = Config.total_tp_num_train  # max capacity of train_q
+    default_batch_size = 32
 
     learn_rate = 0.001
     reg_lambda = 1e-4
@@ -77,6 +78,10 @@ class DaggerLeader(object):
                 capacity=DaggerLeader.train_q_capacity,
                 dtypes=[tf.float32, tf.float32],
                 shared_name='train_q')  # shared_name is required for sharing
+
+        # default initial state of LSTM
+        self.default_init_state = self.global_model.zero_init_state(
+            DaggerLeader.default_batch_size)
 
         # op to increment eps_cnt
         self.increment_eps_cnt = self.eps_cnt.assign_add(1)
@@ -122,6 +127,9 @@ class DaggerLeader(object):
             config=tf.ConfigProto(allow_soft_placement=True))
         self.sess.run(tf.global_variables_initializer())
 
+    def __save_model(self):
+        pass  # TODO
+
     def __wait_for_workers(self):
         while True:
             train_q_size = self.sess.run(self.train_q.size())
@@ -131,30 +139,65 @@ class DaggerLeader(object):
             else:
                 time.sleep(0.5)
 
-    def __train(self):
-        sys.stderr.write('[Leader, Eps {}] train started\n'
-                         .format(self.curr_eps))
+    def __get_soft_target(self, curr_cwnd, best_cwnd):
+        pass  # TODO
 
+    def __dequeue_train_q(self):
         while self.sess.run(self.train_q.size()) > 0:
             data = self.sess.run(self.train_q.dequeue())
+            aug_state = data[0]
+            curr_cwnd, best_cwnd, best_action = data[1]
 
-        sys.stderr.write('[Leader, Eps {}] train ended\n'
-                         .format(self.curr_eps))
+            self.aggregated_states.append(aug_state)
+            self.aggregated_actions.append(best_action)
+            self.aggregated_soft_targets.append(
+                self.__get_soft_target(curr_cwnd, best_cwnd)
+
+    def __train(self):
+        batch_size = min(len(self.aggregated_states), self.default_batch_size)
+        num_batches = len(self.aggregated_states) / batch_size
+
+        if batch_size != self.default_batch_size:
+            self.init_state = self.global_model.zero_init_state(batch_size)
+        else:
+            self.init_state = self.default_init_state
+
+        for curr_epoch in xrange(100):
+            for batch_num in xrange(num_batches):
+                start = batch_num * batch_size
+                end = start + batch_size
+
+                batch_states = self.aggregated_states[start:end]
+                batch_soft_targets = self.aggregated_soft_targets[start:end]
+                batch_actions = self.aggregated_actions[start:end]
+
+                loss = self.sess.run(self.train_op, feed_dict={
+                    self.global_model.input: batch_states,
+                    self.soft_targets: batch_soft_targets,
+                    self.hard_targets: batch_actions,
+                    self.global_model.state_in: self.init_state
+                })
 
 # public
     def run(self):
         while self.curr_eps < DaggerLeader.max_eps:
             self.curr_eps += 1
-
             # increment self.eps_cnt to signal workers to start
             self.sess.run(self.increment_eps_cnt)
 
             # wait until collecting data from all workers
             self.__wait_for_workers()
 
-            # train with collected data
+            # dequeue collected data from train_q
+            self.__dequeue_train_q()
+
+            # train
             self.__train()
+
+            # save model every 'checkpoint_eps' episodes
+            if self.curr_eps % self.checkpoint_eps == 0:
+                self.__save_model(self.curr_eps)
 
 
     def cleanup(self):
-        pass
+        self.__save_model()
