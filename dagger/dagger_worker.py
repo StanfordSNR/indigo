@@ -75,8 +75,15 @@ class DaggerWorker(object):
                 self.local_model = DaggerLSTM(state_dim=self.aug_state_dim,
                                               action_cnt=self.action_cnt)
 
-        # op to enqueue training data to train_q
-        self.enqueue_train_q = self.train_q.enqueue([1.0, 2.0])
+        # initial state of LSTM
+        self.init_state = self.local_model.zero_init_state(1)
+
+        # op to enqueue training data
+        self.state_data = tf.placeholder(
+            tf.float32, shape=(None, self.aug_state_dim))
+        self.action_data = tf.placeholder(tf.float32, shape=(None))
+        self.enqueue_train_q = self.train_q.enqueue(
+            [self.state_data, self.action_data])
 
         # op to synchronize the local model with the global model
         local_vars = self.local_model.trainable_vars
@@ -95,28 +102,45 @@ class DaggerWorker(object):
             leader_eps_cnt = self.sess.run(self.eps_cnt)
 
             if leader_eps_cnt == self.curr_eps + 1:
-                self.curr_eps = leader_eps_cnt
                 return
             else:
                 time.sleep(0.5)
 
-    def __work(self):
-        sys.stderr.write('[Worker {}, Eps {}] work started\n'
+    def __rollout(self):
+        sys.stderr.write('[Worker {}, Eps {}] rollout started\n'
                          .format(self.task_idx, self.curr_eps))
-        time.sleep(random.randint(1, 5))
-        self.sess.run(self.enqueue_train_q)
-        sys.stderr.write('[Worker {}, Eps {}] work ended\n'
+
+        self.state_buf = []
+        self.action_buf = []
+        self.prev_action = self.action_cnt - 1
+        self.lstm_state = self.init_state
+
+        self.env.reset()
+        self.env.rollout()  # will populate self.state_buf and self.action_buf
+
+        sys.stderr.write('[Worker {}, Eps {}] rollout ended\n'
                          .format(self.task_idx, self.curr_eps))
 
 # public
+    def sample_action(self, state):
+        pass
+
     def run(self):
         while self.curr_eps < DaggerLeader.max_eps:
-            # increment curr_eps only if the leader has incremented it
+            # start a new episode only if the leader increments eps_cnt
             self.__wait_for_leader()
+            self.curr_eps += 1
 
-            # collect training data
-            self.__work()
+            # reset local model to the global model
+            self.sess.run(self.sync_op)
 
+            # populate training data into self.state_buf and self.action_buf
+            self.__rollout()
+
+            # enqueue training data into the training queue
+            self.sess.run(self.enqueue_train_q, feed_dict={
+                self.state_data: self.state_buf,
+                self.action_data: self.action_buf})
 
     def cleanup(self):
         pass
