@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # Copyright 2018 Francis Y. Yan, Jestin Ma
-# Copyright 2018 Huawei Technologies
+# Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import socket
 import argparse
 
 from message import Message
-
+from policy import Policy
 
 class Receiver(object):
     def __init__(self, port=0):
@@ -33,15 +33,23 @@ class Receiver(object):
         sys.stderr.write('[receiver] listening on port %s\n' %
                          self.sock.getsockname()[1])
 
+        self.delay_ack = True
+        self.max_delay_ack_num = 2
+
 # public
     def cleanup(self):
         self.sock.close()
 
     def run(self):
+        delay_ack_count = 0
         while True:
             msg_str, addr = self.sock.recvfrom(1500)
-            self.sock.sendto(Message.transform_into_ack(msg_str), addr)
-
+            if Policy.delay_ack:
+                delay_ack_count += 1
+                if (delay_ack_count % Policy.delay_ack_count == 0):
+                    self.sock.sendto(Message.transform_into_ack(msg_str), addr)
+            else:
+                self.sock.sendto(Message.transform_into_ack(msg_str), addr)
 
 def main():
     parser = argparse.ArgumentParser()

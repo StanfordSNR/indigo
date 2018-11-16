@@ -42,6 +42,9 @@ class Policy(object):
     action_cnt = len(action_list)
     action_mapping = format_actions(action_list)
 
+    delay_ack = True
+    delay_ack_count = 2 
+
     def __init__(self, train):
         # public:
         self.cwnd = 10.0
@@ -53,7 +56,7 @@ class Policy(object):
         self.stop_sender = False
 
         # pacing or not
-        self.pacing = False
+        self.pacing = True
 
     # private:
         self.train = train
@@ -163,6 +166,8 @@ class Policy(object):
         self.stop_sender = True
 
     def __step_ended(self):
+        if self.stop_sender:
+            return
         # normalization
         rtt_norm = self.rtt_ewma / Policy.max_rtt
         delay_norm = self.delay_ewma / Policy.max_delay
@@ -202,7 +207,10 @@ class Policy(object):
 # public:
     def ack_received(self, ack):
         self.ack_recv_ts = timestamp_ms()
-        self.bytes_acked += Message.total_size
+        if Policy.delay_ack:
+            self.bytes_acked += Message.total_size * Policy.delay_ack_count
+        else:
+            self.bytes_acked += Message.total_size
 
         self.__update_state(ack)
 
@@ -215,17 +223,18 @@ class Policy(object):
             self.step_start_ts = curr_ts
             self.__step_ended()
 
-    def data_sent(self, data):
+    def data_sent(self):
         self.bytes_sent += Message.total_size
 
     def timeout_ms(self):
-        return -1
+        return 10
 
     def set_sample_action(self, sample_action):
         self.sample_action = sample_action
 
     def pacing_pkt_number(self, max_in_cwnd):
         # pacing control
+        max_in_cwnd = int(max_in_cwnd)
 
         if not self.pacing or self.min_rtt == sys.maxint:
             return max_in_cwnd
@@ -251,8 +260,3 @@ class Policy(object):
             ret_num = 0
 
         return ret_num
-
-    def pacing_sent_failed(self, m):
-        if not self.pacing:
-            return
-        self.borrowed_pkt += m

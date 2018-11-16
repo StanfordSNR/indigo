@@ -117,9 +117,6 @@ class DaggerWorker(object):
                 time.sleep(0.5)
 
     def __rollout(self):
-        sys.stderr.write('[Worker {}, Eps {}] rollout started\n'
-                         .format(self.task_idx, self.curr_eps))
-
         self.state_buf = []
         self.action_buf = []
         self.prev_action = self.action_cnt - 1
@@ -128,16 +125,22 @@ class DaggerWorker(object):
         self.env.reset()
         self.env.rollout()  # will populate self.state_buf and self.action_buf
 
-        sys.stderr.write('[Worker {}, Eps {}] rollout ended\n'
-                         .format(self.task_idx, self.curr_eps))
+    def __enqueue_data(self):
+        # enqueue training data into the training queue
+        self.sess.run(self.enqueue_train_q, feed_dict={
+            self.state_data: self.state_buf,
+            self.action_data: self.action_buf})
 
+        queue_size = self.sess.run(self.train_q.size())
+        sys.stderr.write(
+            '[Worker {}, Eps {}]: finished queueing data. '
+            'queue size now {}\n'.format
+            (self.task_idx, self.curr_eps, queue_size))
 # public
     def sample_action(self, state):
         # query expert action
         cwnd = state[self.state_dim - 1] * Policy.max_cwnd
         expert_action = self.expert.sample_action(cwnd)
-        if expert_action == -1:
-            return -1
         expert_cwnd = self.expert.best_cwnd
 
         # construct augmented state
@@ -176,13 +179,16 @@ class DaggerWorker(object):
             # reset local model to the global model
             self.sess.run(self.sync_op)
 
-            # populate training data into self.state_buf and self.action_buf
-            self.__rollout()
+            sys.stderr.write('[Worker {}, Eps {}] rollout started'
+                         .format(self.task_idx, self.curr_eps))
 
-            # enqueue training data into the training queue
-            self.sess.run(self.enqueue_train_q, feed_dict={
-                self.state_data: self.state_buf,
-                self.action_data: self.action_buf})
+            while (not self.env.all_tasks_done()):
+                # populate training data into self.state_buf and self.action_buf
+                self.__rollout()
+                self.__enqueue_data()
+                
+            sys.stderr.write('[Worker {}, Eps {}] rollout ended\n'
+                         .format(self.task_idx, self.curr_eps))
 
     def cleanup(self):
         self.env.cleanup()

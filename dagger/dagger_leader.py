@@ -22,6 +22,7 @@ import numpy as np
 import tensorflow as tf
 from subprocess import check_output
 from os import path
+import random
 
 import context
 from policy import Policy
@@ -34,7 +35,7 @@ class DaggerLeader(object):
     # explicitly use CPU as Tensorflow is buggy when sharing variables on GPU
     device = '/job:ps/task:0/CPU:0'
 
-    max_eps = 1000  # max episodes
+    max_eps = 5000  # max episodes
     train_q_capacity = Config.total_tp_num_train  # max capacity of train_q
     default_batch_size = 32
 
@@ -43,9 +44,9 @@ class DaggerLeader(object):
     checkpoint_eps = 10  # save a checkpoint every 10 episodes
 
     def __init__(self, cluster, server, worker_tasks):
-        self.cluster = cluster
+        self.cluster = cluster #unused
         self.server = server
-        self.worker_tasks = worker_tasks
+        self.worker_tasks = worker_tasks #unused
 
         # original state space and action space
         self.state_dim = Policy.state_dim
@@ -53,7 +54,20 @@ class DaggerLeader(object):
         # augmented state space: state and previous action (one-hot vector)
         self.aug_state_dim = self.state_dim + self.action_cnt
 
+        # batched data buffers
+        self.aggregated_states = []
+        self.aggregated_actions = []
+        self.aggregated_soft_targets = []
+
         self.curr_eps = 0  # current episode, should equal self.eps_cnt
+        self.summary_step = 0
+
+        self.shuffle_cwnd = Config.total_tp_num_train * 32
+
+        # logger
+        self.logdir = path.join(context.base_dir, 'dagger', 'logs', 
+                      datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
+        make_sure_path_exists(self.logdir)
 
         # create Tensorflow dataflow graph
         self.__create_tf_graph()
@@ -90,6 +104,7 @@ class DaggerLeader(object):
         reg_loss = 0.0
         for var in self.global_model.trainable_vars:
             reg_loss += tf.nn.l2_loss(var)
+        reg_loss *= DaggerLeader.reg_lambda
 
         # cross entropy loss = rho * soft_CE_loss + (1 - rho) * hard_CE_loss
         self.hard_targets = tf.placeholder(tf.int32, [None, None])
@@ -108,7 +123,7 @@ class DaggerLeader(object):
         ce_loss = (1.0 - Config.rho) * hard_ce_loss + Config.rho * soft_ce_loss
 
         # total loss = cross entropy loss + reg_lambda * regularization loss
-        self.total_loss = ce_loss + DaggerLeader.reg_lambda * reg_loss
+        self.total_loss = ce_loss + reg_loss
 
         # op to train / optimize
         optimizer = tf.train.AdamOptimizer(DaggerLeader.learn_rate)
@@ -120,6 +135,7 @@ class DaggerLeader(object):
         tf.summary.scalar('soft_ce_loss', soft_ce_loss)
         tf.summary.scalar('total_loss', self.total_loss)
         self.summary_op = tf.summary.merge_all()
+        self.summary_writer = tf.summary.FileWriter(self.logdir)
 
         # Tensorflow session
         self.sess = tf.Session(
@@ -127,8 +143,18 @@ class DaggerLeader(object):
             config=tf.ConfigProto(allow_soft_placement=True))
         self.sess.run(tf.global_variables_initializer())
 
-    def __save_model(self):
-        pass  # TODO
+    def __save_model(self, checkpoint=None):
+        if checkpoint is None:
+            model_path = path.join(self.logdir, 'model')
+        else:
+            model_path = path.join(
+                self.logdir, 'checkpoint-{}'.format(checkpoint))
+
+        # save parameters to parameter server
+        saver = tf.train.Saver(self.global_model.trainable_vars)
+        saver.save(self.sess, model_path)
+        sys.stderr.write(
+            '\nModel saved to param. server at {}\n'.format(model_path))
 
     def __wait_for_workers(self):
         while True:
@@ -139,44 +165,92 @@ class DaggerLeader(object):
             else:
                 time.sleep(0.5)
 
-    def __get_soft_target(self, curr_cwnd, best_cwnd):
-        pass  # TODO
+    def __get_soft_target(self, curr_cwnds, best_cwnds):
+        soft_targets = np.zeros([len(curr_cwnds), self.action_cnt], np.float32)
+        for i in range(len(curr_cwnds)):
+            curr_cwnd = curr_cwnds[i]
+            best_cwnd = best_cwnds[i]
+
+            # calculate the distance between
+            # best_cwnd and (current_cwnd op action)
+            soft_cwnds = []
+            for op, val in Policy.action_mapping:
+                soft_cwnds.append(max(float(Policy.min_cwnd), 
+                                  min(float(Policy.max_cwnd), 
+                                  op(curr_cwnd, val))))
+            action_distance = -np.abs(np.array(soft_cwnds) - best_cwnd)
+
+            # transform to Gaussian distribution
+            if np.std(action_distance) == 0.0:
+                normalized_distance = action_distance
+            else:
+                normalized_distance = (
+                    (action_distance - np.mean(action_distance)) /
+                    np.std(action_distance))
+            soft_targets[i] = softmax(normalized_distance)
+        return soft_targets
 
     def __dequeue_train_q(self):
         while self.sess.run(self.train_q.size()) > 0:
             data = self.sess.run(self.train_q.dequeue())
+            if len(data[0]) != Policy.steps_per_episode or len(data[1]) != Policy.steps_per_episode:
+                sys.stderr.write("invalid data structure in train queue, state size {}, action size {}\n".format(len(data[0]),len(data[1])))
+                continue
             aug_state = data[0]
-            curr_cwnd, best_cwnd, best_action = data[1]
+            curr_cwnd, best_cwnd, best_action = np.array(data[1]).T
 
             self.aggregated_states.append(aug_state)
             self.aggregated_actions.append(best_action)
             self.aggregated_soft_targets.append(
-                self.__get_soft_target(curr_cwnd, best_cwnd)
+                self.__get_soft_target(curr_cwnd, best_cwnd))
 
     def __train(self):
-        batch_size = min(len(self.aggregated_states), self.default_batch_size)
-        num_batches = len(self.aggregated_states) / batch_size
 
+        # data shuffle
+        aggregated_data = zip(self.aggregated_states[-1*self.shuffle_cwnd:],
+                              self.aggregated_actions[-1*self.shuffle_cwnd:],
+                              self.aggregated_soft_targets[-1*self.shuffle_cwnd:])
+        random.shuffle(aggregated_data)
+        shuffled_states, shuffled_actions, shuffled_soft_targets = zip(*aggregated_data)
+        
+        batch_size = min(len(shuffled_states), self.default_batch_size)
+        num_batches = len(shuffled_states) / batch_size
+
+        # set len of init state equal to batch_size 
         if batch_size != self.default_batch_size:
             self.init_state = self.global_model.zero_init_state(batch_size)
         else:
             self.init_state = self.default_init_state
 
         for curr_epoch in xrange(100):
+            mean_loss = 0.0
+            max_loss = 0.0
+            start_ts = timestamp_ms()
             for batch_num in xrange(num_batches):
                 start = batch_num * batch_size
                 end = start + batch_size
 
-                batch_states = self.aggregated_states[start:end]
-                batch_soft_targets = self.aggregated_soft_targets[start:end]
-                batch_actions = self.aggregated_actions[start:end]
+                batch_states = shuffled_states[start:end]
+                batch_soft_targets = shuffled_soft_targets[start:end]
+                batch_actions = shuffled_actions[start:end]
 
-                loss = self.sess.run(self.train_op, feed_dict={
+                ops_to_run = [self.train_op,self.total_loss,self.summary_op]
+                train_ret, loss, summary = self.sess.run(ops_to_run, feed_dict={
                     self.global_model.input: batch_states,
                     self.soft_targets: batch_soft_targets,
                     self.hard_targets: batch_actions,
-                    self.global_model.state_in: self.init_state
-                })
+                    self.global_model.state_in: self.init_state})
+
+                mean_loss += loss
+                max_loss = max(loss, max_loss)
+
+                self.summary_writer.add_summary(summary, self.summary_step)
+                self.summary_step += 1
+            
+            elapsed = (timestamp_ms() - start_ts) / 1000.0
+            mean_loss /= num_batches
+            sys.stderr.write('--- epoch %d: max loss %.4f, mean loss %.4f, time cost %.4f\n' %
+                             (curr_epoch, max_loss, mean_loss, elapsed))
 
 # public
     def run(self):
@@ -185,7 +259,7 @@ class DaggerLeader(object):
             # increment self.eps_cnt to signal workers to start
             self.sess.run(self.increment_eps_cnt)
 
-            # wait until collecting data from all workers
+            # wait until having collected data from all workers
             self.__wait_for_workers()
 
             # dequeue collected data from train_q
@@ -197,7 +271,6 @@ class DaggerLeader(object):
             # save model every 'checkpoint_eps' episodes
             if self.curr_eps % self.checkpoint_eps == 0:
                 self.__save_model(self.curr_eps)
-
 
     def cleanup(self):
         self.__save_model()

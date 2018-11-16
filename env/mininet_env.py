@@ -93,33 +93,33 @@ class MininetEnv(object):
 
         # tfc = -1 means that we use BBR as the background traffic with iperf;
         # otherwise start traffic generator
-        if self.tfc == -1:
-            sys.stderr.write('Step #2: start iperf tool server\n')
-            self.emulator.stdin.write('h2 iperf3 -s &\n')
-            self.emulator.stdin.flush()
+        # if self.tfc == -1:
+        #     sys.stderr.write('Step #2: start iperf tool server\n')
+        #     self.emulator.stdin.write('h2 iperf3 -s &\n')
+        #     self.emulator.stdin.flush()
 
-            self.emulator.stdin.write(
-                'h1 iperf3 -c 192.168.42.2 -C bbr -t 50 -M 1396 &\n')
-            self.emulator.stdin.flush()
-        else:
-            sys.stderr.write('Step #2: start traffic generator, ')
-            # tg-receiver:
-            tg_receiver_path = path.join(
-                context.base_dir, 'traffic-generator', 'receiver.py')
-            self.emulator.stdin.write(
-                'h2 python ' + tg_receiver_path + ' 192.168.42.2 6666 &\n')
-            self.emulator.stdin.flush()
-            time.sleep(0.1)
+        #     self.emulator.stdin.write(
+        #         'h1 iperf3 -c 192.168.42.2 -C bbr -t 50 -M 1396 &\n')
+        #     self.emulator.stdin.flush()
+        # else:
+        #     sys.stderr.write('Step #2: start traffic generator, ')
+        #     # tg-receiver:
+        #     tg_receiver_path = path.join(
+        #         context.base_dir, 'traffic-generator', 'receiver.py')
+        #     self.emulator.stdin.write(
+        #         'h2 python ' + tg_receiver_path + ' 192.168.42.2 6666 &\n')
+        #     self.emulator.stdin.flush()
+        #     time.sleep(0.1)
 
-            # tg-sender: parameters: ip port NIC tfc duration
-            sys.stderr.write(
-                'traffic shape index is {} \n'.format(self.tfc))
-            tg_sender_path = path.join(
-                context.base_dir, 'traffic-generator', 'sender.py')
-            self.emulator.stdin.write(
-                'h1 python ' + tg_sender_path +
-                ' 192.168.42.2 6666 h1-eth0 {} 0 &\n'.format(self.tfc))
-            self.emulator.stdin.flush()
+        #     # tg-sender: parameters: ip port NIC tfc duration
+        #     sys.stderr.write(
+        #         'traffic shape index is {} \n'.format(self.tfc))
+        #     tg_sender_path = path.join(
+        #         context.base_dir, 'traffic-generator', 'sender.py')
+        #     self.emulator.stdin.write(
+        #         'h1 python ' + tg_sender_path +
+        #         ' 192.168.42.2 6666 h1-eth0 {} 0 &\n'.format(self.tfc))
+        #     self.emulator.stdin.flush()
 
         # STEP 3: start receiver
         sys.stderr.write('Step #3: start receiver\n')
@@ -136,8 +136,8 @@ class MininetEnv(object):
                 context.base_dir, 'dagger', 'expert_server.py')
             # try 3 times at most to ensure expert server is started normally
             for i in xrange(3):
-                self.expert_server_port = str(get_open_port())
-                cmd = ['python', expert_server_path, self.expert_server_port]
+                self.expert_server_port = get_open_port()
+                cmd = ['python', expert_server_path, str(self.expert_server_port)]
                 self.expert_server = Popen(cmd) # , stdout=DEVNULL, stderr=DEVNULL
                 if check_pid(self.expert_server.pid):
                     sys.stderr.write(
@@ -153,8 +153,8 @@ class MininetEnv(object):
                 context.base_dir, 'dagger', 'perf_server.py')
             # try 3 times at most to ensure perf server is started normally
             for i in xrange(3):
-                self.expert_server_port = str(get_open_port())
-                cmd = ['python', expert_server_path, self.expert_server_port,
+                self.expert_server_port = get_open_port()
+                cmd = ['python', expert_server_path, str(self.expert_server_port),
                        self.env_set_idx, self.tfc_set_idx_1, self.tfc_set_idx_2]
                 self.expert_server = Popen(cmd, stdin=DEVNULL,
                                            stdout=DEVNULL, stderr=DEVNULL)

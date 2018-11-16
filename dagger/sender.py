@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 # Copyright 2018 Francis Y. Yan
+# Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +24,7 @@ from os import path
 import numpy as np
 import tensorflow as tf
 from models import DaggerLSTM
+from multiprocessing import Process, Pipe
 
 from policy import Policy
 from message import Message
@@ -50,9 +52,13 @@ class Sender(object):
         # congestion control policy
         self.policy = None
 
+        # dedicate process for sending pkt 
+        self.send_queue_out, self.send_queue_in  = Pipe(False)
+        self.send_process = Process(target=self.__send_process_func)
+
 # private
     def __window_is_open(self):
-        return self.seq_num - self.next_ack < self.policy.cwnd
+        return self.seq_num - self.next_ack < int(self.policy.cwnd)
 
     def __send(self):
         msg = Message(self.seq_num, timestamp_ms(), self.policy.bytes_sent,
@@ -66,22 +72,46 @@ class Sender(object):
         self.seq_num += 1
 
         # tell policy that a datagram was sent
-        self.policy.data_sent(msg)
+        self.policy.data_sent()
 
         return 0
 
+    def __msend(self, num):
+        if num == 0:
+            return
+        data_array = []
+        for i in xrange(num):
+            data = (self.seq_num, timestamp_ms(), self.policy.bytes_sent, self.policy.ack_recv_ts, self.policy.bytes_acked)
+            data_array.append(data)
+            self.seq_num += 1
+            self.policy.data_sent()
+        self.send_queue_in.send(data_array)
+
+    def __send_process_func(self):
+        while True:
+            data_array = self.send_queue_out.recv()
+            for seq_num, send_ts, bytes_sent, ack_recv_ts, bytes_acked in data_array:
+                msg = Message(seq_num, send_ts, bytes_sent, ack_recv_ts, bytes_acked).to_data()
+                ret = -1
+                while ret == -1:
+                    try:
+                        ret = self.sock.sendto(msg, self.peer_addr)
+                    except socket.error:
+                        ret = -1
+                        pass
+
     def __pacing_send(self):
         c = self.policy.pacing_pkt_number(self.policy.cwnd - (self.seq_num - self.next_ack))
-        num = 0
-        while num < c:
-            if self.__send() == 0:
-                num = num + 1
-            else:
-                break
-        self.policy.pacing_sent_failed(c - num)
+        self.__msend(c)
 
     def __recv(self):
-        msg_str, addr = self.sock.recvfrom(1500)
+        try:
+            msg_str, addr = self.sock.recvfrom(1500)
+        except socket.error:
+            return -1
+        if len(msg_str) < Message.header_size:
+            return -1
+        
         ack = Message.parse(msg_str)
 
         # update next ACK's sequence number to expect
@@ -90,10 +120,15 @@ class Sender(object):
         # tell policy that an ack was received
         self.policy.ack_received(ack)
 
+        return 0
+
 
 # public
     def cleanup(self):
         self.sock.close()
+        self.send_queue_out.close()
+        self.send_queue_in.close()
+        self.send_process.terminate()
 
     def set_policy(self, policy):
         self.policy = policy
@@ -102,7 +137,9 @@ class Sender(object):
         if not self.policy:
             sys.exit('sender\'s policy has not been set')
 
+        self.send_process.start()
         while not self.policy.stop_sender:
+
             if self.__window_is_open():
                 self.poller.modify(self.sock, ALL_FLAGS)
             else:
@@ -117,7 +154,8 @@ class Sender(object):
                     sys.exit('[sender] error returned from poller')
 
                 if flag & READ_FLAGS:
-                    self.__recv()
+                    while self.__recv() == 0:
+                        pass
 
                 if flag & WRITE_FLAGS:
                     if self.__window_is_open():
@@ -125,9 +163,7 @@ class Sender(object):
                             self.__pacing_send()
                         else:
                             num = int(self.policy.cwnd) - (self.seq_num - self.next_ack)
-                            for i in xrange(num):
-                                if self.__send() == -1:
-                                    break
+                            self.__msend(num)
 
 class LSTM_Executer(object):
     # load model and make inference for standlone run

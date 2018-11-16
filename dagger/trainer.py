@@ -21,7 +21,8 @@ import argparse
 import tensorflow as tf
 
 import context
-from dagger_class import DaggerLeader, DaggerWorker
+from dagger_leader import DaggerLeader
+from dagger_worker import DaggerWorker
 from env.mininet_env import MininetEnv
 from helpers.utils import Config
 
@@ -88,7 +89,7 @@ def main():
         leader = DaggerLeader(cluster, server, worker_tasks)
 
         try:
-            leader.run(debug=True)
+            leader.run()
         except KeyboardInterrupt:
             pass
         finally:
@@ -99,7 +100,7 @@ def main():
         worker = DaggerWorker(cluster, server, task_index, env)
 
         try:
-            worker.run(debug=True)
+            worker.run()
         except KeyboardInterrupt:
             pass
         finally:

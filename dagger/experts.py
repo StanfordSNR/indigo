@@ -91,7 +91,8 @@ class ExpertClient(object):
             best_cwnd = float(msg)
         except ValueError:
             sys.stderr.write('Expert server returns invalid best cwnd {} \n'.format(msg))
-            return -1
+            self.best_cwnd = cwnd
+            return Policy.action_cnt / 2
 
         self.best_cwnd = best_cwnd
         action = get_best_action(Policy.action_mapping, cwnd, self.best_cwnd)
