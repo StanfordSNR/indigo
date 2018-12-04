@@ -14,20 +14,18 @@
 #     limitations under the License.
 
 
+import datetime
+import random
 import sys
 import time
-import datetime
-import socket
-import numpy as np
-import tensorflow as tf
-from subprocess import check_output
 from os import path
-import random
 
 import context
-from policy import Policy
+import numpy as np
+import tensorflow as tf
+from helpers.utils import Config, make_sure_path_exists, softmax, timestamp_ms
 from models import DaggerLSTM
-from helpers.utils import make_sure_path_exists, timestamp_ms, softmax, Config
+from policy import Policy
 
 
 class DaggerLeader(object):
@@ -36,7 +34,7 @@ class DaggerLeader(object):
     device = '/job:ps/task:0/CPU:0'
 
     max_eps = 5000  # max episodes
-    train_q_capacity = Config.total_tp_num_train  # max capacity of train_q
+    train_q_capacity = Config.total_tpg_num_train  # max capacity of train_q
     default_batch_size = 32
 
     learn_rate = 0.001
@@ -44,9 +42,9 @@ class DaggerLeader(object):
     checkpoint_eps = 10  # save a checkpoint every 10 episodes
 
     def __init__(self, cluster, server, worker_tasks):
-        self.cluster = cluster #unused
+        self.cluster = cluster  # unused
         self.server = server
-        self.worker_tasks = worker_tasks #unused
+        self.worker_tasks = worker_tasks  # unused
 
         # original state space and action space
         self.state_dim = Policy.state_dim
@@ -62,11 +60,11 @@ class DaggerLeader(object):
         self.curr_eps = 0  # current episode, should equal self.eps_cnt
         self.summary_step = 0
 
-        self.shuffle_cwnd = Config.total_tp_num_train * 32
+        self.shuffle_cwnd = Config.total_tpg_num_train * 32
 
         # logger
-        self.logdir = path.join(context.base_dir, 'dagger', 'logs', 
-                      datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
+        self.logdir = path.join(context.base_dir, 'dagger', 'logs',
+                                datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
         make_sure_path_exists(self.logdir)
 
         # create Tensorflow dataflow graph
@@ -175,8 +173,8 @@ class DaggerLeader(object):
             # best_cwnd and (current_cwnd op action)
             soft_cwnds = []
             for op, val in Policy.action_mapping:
-                soft_cwnds.append(max(float(Policy.min_cwnd), 
-                                  min(float(Policy.max_cwnd), 
+                soft_cwnds.append(max(float(Policy.min_cwnd),
+                                  min(float(Policy.max_cwnd),
                                   op(curr_cwnd, val))))
             action_distance = -np.abs(np.array(soft_cwnds) - best_cwnd)
 
@@ -194,7 +192,8 @@ class DaggerLeader(object):
         while self.sess.run(self.train_q.size()) > 0:
             data = self.sess.run(self.train_q.dequeue())
             if len(data[0]) != Policy.steps_per_episode or len(data[1]) != Policy.steps_per_episode:
-                sys.stderr.write("invalid data structure in train queue, state size {}, action size {}\n".format(len(data[0]),len(data[1])))
+                sys.stderr.write('invalid data structure in train queue, state size {}, action size {}\n'
+                                 .format(len(data[0]), len(data[1])))
                 continue
             aug_state = data[0]
             curr_cwnd, best_cwnd, best_action = np.array(data[1]).T
@@ -212,11 +211,11 @@ class DaggerLeader(object):
                               self.aggregated_soft_targets[-1*self.shuffle_cwnd:])
         random.shuffle(aggregated_data)
         shuffled_states, shuffled_actions, shuffled_soft_targets = zip(*aggregated_data)
-        
+
         batch_size = min(len(shuffled_states), self.default_batch_size)
         num_batches = len(shuffled_states) / batch_size
 
-        # set len of init state equal to batch_size 
+        # set len of init state equal to batch_size
         if batch_size != self.default_batch_size:
             self.init_state = self.global_model.zero_init_state(batch_size)
         else:
@@ -234,7 +233,7 @@ class DaggerLeader(object):
                 batch_soft_targets = shuffled_soft_targets[start:end]
                 batch_actions = shuffled_actions[start:end]
 
-                ops_to_run = [self.train_op,self.total_loss,self.summary_op]
+                ops_to_run = [self.train_op, self.total_loss, self.summary_op]
                 train_ret, loss, summary = self.sess.run(ops_to_run, feed_dict={
                     self.global_model.input: batch_states,
                     self.soft_targets: batch_soft_targets,
@@ -246,7 +245,7 @@ class DaggerLeader(object):
 
                 self.summary_writer.add_summary(summary, self.summary_step)
                 self.summary_step += 1
-            
+
             elapsed = (timestamp_ms() - start_ts) / 1000.0
             mean_loss /= num_batches
             sys.stderr.write('--- epoch %d: max loss %.4f, mean loss %.4f, time cost %.4f\n' %

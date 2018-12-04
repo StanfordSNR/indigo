@@ -14,15 +14,16 @@
 #     limitations under the License.
 
 
-import context
 import datetime
 import socket
 import subprocess
 import sys
 import threading
+
+import context
 from helpers.utils import min_x_max
 from message import Message
-from oracle import OracleCollection
+from oracle import AggressiveBDP
 from policy import Policy
 
 
@@ -116,8 +117,8 @@ class DeviceQdisc():
 
             available_bw = self.BW_CAPACITY - 8.0*(_sent_bytes - self.sent_bytes)/delta_time
             queueing_factor = 1.0 * _backlog_pkts_queueing / self.MAX_QUEUE_SIZE
-            congestion_loss_pkts = (((_sent_bytes-self.sent_bytes)/Message.total_size+(_dropped_pkt-self.dropped_pkt))
-                                    - 100.0*(_sent_bytes-self.sent_bytes)/Message.total_size/(100.0-self.LOSS_RATE))
+            congestion_loss_pkts = int((1.0*(_sent_bytes-self.sent_bytes)/Message.total_size+(_dropped_pkt-self.dropped_pkt))
+                                       - 100.0*(_sent_bytes-self.sent_bytes)/Message.total_size/(100.0-self.LOSS_RATE))
             random_loss_pkts = _dropped_pkt - self.dropped_pkt - congestion_loss_pkts
             # print time, available_bw, queueing_factor, random_loss_pkts, congestion_loss_pkts
         else:
@@ -180,6 +181,7 @@ class ExpertServer():
         self.dev_bottleneck = DeviceQdisc(dev_bottleneck)
         self.dev_traffic_generator = DeviceIfconfig(dev_traffic_generator)
         self.flag = 1
+        self.oracle = None
 
     def init_configure(self):
         try:
@@ -188,10 +190,14 @@ class ExpertServer():
         except subprocess.CalledProcessError:
             sys.stderr.write('get emulator coniguration error, mininet does not start')
             return
-        net_config = self.dev_bottleneck.BW_CAPACITY, self.dev_bottleneck.MIN_RTT, self.dev_bottleneck.MAX_QUEUE_SIZE
-        self.get_oracle = OracleCollection(net_config)
+        self.net_config = self.dev_bottleneck.BW_CAPACITY, self.dev_bottleneck.MIN_RTT, self.dev_bottleneck.MAX_QUEUE_SIZE
+        # set policy of oracle
+        self.set_oracle(AggressiveBDP(self.net_config))
 
-    def calculate_oracle(self):
+    def set_oracle(self, oralce):
+        self.oracle = oralce
+
+    def get_oracle(self):
         flag = self.flag
         if self.flag == 1:
             self.flag = 0
@@ -213,7 +219,7 @@ class ExpertServer():
         random_loss_bn = min_x_max(0, random_loss_bn, self.dev_bottleneck.MAX_QUEUE_SIZE)
 
         net_info = available_bw_bn, throughput_tg, queueing_factor_bn, random_loss_bn, congestion_loss_bn, queue_size_bn
-        best_cwnd = self.get_oracle.aggressive_bdp(net_info)
+        best_cwnd = self.oracle.get_oracle(net_info)
 
         return max(Policy.min_cwnd, best_cwnd)
 
@@ -224,7 +230,7 @@ def thread_fun():
         pass
     expert.init_configure()
     while True:
-        cwnd = expert.calculate_oracle()
+        cwnd = expert.get_oracle()
 
 
 if __name__ == '__main__':

@@ -16,11 +16,11 @@
 #     limitations under the License.
 
 
-import sys
 import argparse
-import tensorflow as tf
+import sys
 
 import context
+import tensorflow as tf
 from dagger_leader import DaggerLeader
 from dagger_worker import DaggerWorker
 from env.mininet_env import MininetEnv
@@ -30,42 +30,40 @@ from helpers.utils import Config
 def create_mininet_env(worker_cnt, worker_index):
     # settings of emulated networks (env) and background traffic patterns (tp)
     total_env_set = Config.total_env_set_train
-    total_tp_set = Config.total_tp_set_train
+    total_tpg_set = Config.total_tpg_set_train
     total_env_len = len(total_env_set)
     tasks_per_worker = total_env_len / worker_cnt
 
     # allocate env and tp to this worker
-    env_set = []
-    tp_set = []
+    this_env_set = []
+    this_tpg_set = []
 
     if worker_index < worker_cnt - 1:
         for i in xrange(tasks_per_worker * worker_index,
                         tasks_per_worker * (worker_index + 1)):
-            tp_set.append(total_tp_set[i])
-            env_set.append(total_env_set[i])
+            this_env_set.append(total_env_set[i])
+            this_tpg_set.append(total_tpg_set[i])
 
-            sys.stderr.write('worker {} is allocated with tp {} and env {}\n'
-                .format(worker_index, total_tp_set[i], total_env_set[i]))
+            sys.stderr.write('worker {} is allocated with env {} and tpg {}\n'
+                             .format(worker_index, total_env_set[i], total_tpg_set[i]))
     else:  # last worker
         for i in xrange(tasks_per_worker * worker_index, total_env_len):
-            tp_set.append(total_tp_set[i])
-            env_set.append(total_env_set[i])
+            this_env_set.append(total_env_set[i])
+            this_tpg_set.append(total_tpg_set[i])
 
-            sys.stderr.write('worker {} is allocated with tp {} and env {}\n'
-                .format(worker_index, total_tp_set[i], total_env_set[i]))
+            sys.stderr.write('worker {} is allocated with env {} and tpg {}\n'
+                             .format(worker_index, total_env_set[i], total_tpg_set[i]))
 
-    env = MininetEnv(tp_set, env_set, True)
+    env = MininetEnv(this_env_set, this_tpg_set, True)
     return env
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--ps-hosts', metavar='[HOSTNAME:PORT, ...]', required=True,
-        help='comma-separated list of hostname:port of parameter servers')
-    parser.add_argument(
-        '--worker-hosts', metavar='[HOSTNAME:PORT, ...]', required=True,
-        help='comma-separated list of hostname:port of workers')
+    parser.add_argument('--ps-hosts', metavar='[HOSTNAME:PORT, ...]', required=True,
+                        help='comma-separated list of hostname:port of parameter servers')
+    parser.add_argument('--worker-hosts', metavar='[HOSTNAME:PORT, ...]', required=True,
+                        help='comma-separated list of hostname:port of workers')
     parser.add_argument('--job-name', choices=['ps', 'worker'],
                         required=True, help='ps or worker')
     parser.add_argument('--task-index', metavar='N', type=int, required=True,
@@ -94,7 +92,6 @@ def main():
             pass
         finally:
             leader.cleanup()
-
     elif job_name == 'worker':
         env = create_mininet_env(num_workers, task_index)
         worker = DaggerWorker(cluster, server, task_index, env)

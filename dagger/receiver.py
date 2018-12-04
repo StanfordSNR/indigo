@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 # Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
@@ -16,9 +14,9 @@
 #     limitations under the License.
 
 
-import sys
-import socket
 import argparse
+import socket
+import sys
 
 from message import Message
 from policy import Policy

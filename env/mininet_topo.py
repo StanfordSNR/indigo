@@ -1,7 +1,5 @@
-#!/usr/bin/env python
-
 # Copyright 2018 Francis Y. Yan
-# Copyright 2018 Huawei Technologies
+# Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,21 +14,20 @@
 #     limitations under the License.
 
 
-import sys
-from subprocess import Popen
 import argparse
-
-from mininet.topo import Topo
-from mininet.net import Mininet
-from mininet.log import setLogLevel
+from subprocess import Popen
 from mininet.cli import CLI
 from mininet.link import TCLink
+from mininet.log import setLogLevel
+from mininet.net import Mininet
+from mininet.topo import Topo
 
 
 class CreateEmulatorTopo(Topo):
     ''' Topology:
-    h1 (traffic generator sender) --- s1 --- s2 --- s3 --- h2 (traffic generator receiver)"
-                    (sender) --- veth1 |             | veth2 ---- h3 (receiver)
+    h1 (tg_sender) ------------+                            +--- h2 (tg_receiver)
+                               |---- s1 ==== s2 ---- s3 ----|
+    host (sender) --- veth1 ---+     bottleneck             +--- veth2 --- h3 (receiver)
     '''
     def build(self, args):
         switch1 = self.addSwitch('s1')
@@ -70,7 +67,6 @@ def start_emulator(args):
     # stop and clean
     Popen('ip link delete veth1', shell=True)  # don't need to delete veth2
     net.stop()
-
 
 
 def main():

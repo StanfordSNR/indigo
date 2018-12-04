@@ -16,16 +16,15 @@
 
 import sys
 import time
-import random
-import numpy as np
-import tensorflow as tf
 
 import context
-from policy import Policy
-from models import DaggerLSTM
-from experts import ExpertClient
+import numpy as np
+import tensorflow as tf
 from dagger_leader import DaggerLeader
-from helpers.utils import make_sure_path_exists, one_hot, Config
+from experts import ExpertClient
+from helpers.utils import one_hot
+from models import DaggerLSTM
+from policy import Policy
 
 
 class DaggerWorker(object):
@@ -98,8 +97,7 @@ class DaggerWorker(object):
         # op to synchronize the local model with the global model
         local_vars = self.local_model.trainable_vars
         global_vars = self.global_model.trainable_vars
-        self.sync_op = tf.group(*[v1.assign(v2)
-                                  for v1, v2 in zip(local_vars, global_vars)])
+        self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(local_vars, global_vars)])
 
         # Tensorflow session
         self.sess = tf.Session(
@@ -110,6 +108,7 @@ class DaggerWorker(object):
     def __wait_for_leader(self):
         while True:
             leader_eps_cnt = self.sess.run(self.eps_cnt)
+            print '------->{}'.format(leader_eps_cnt)
 
             if leader_eps_cnt == self.curr_eps + 1:
                 return
@@ -126,6 +125,12 @@ class DaggerWorker(object):
         self.env.rollout()  # will populate self.state_buf and self.action_buf
 
     def __enqueue_data(self):
+        # handle the case of no valid data
+        if len(self.state_buf) == 0 or len(self.action_buf) == 0:
+            # feed tensor with fake data
+            self.state_buf = [[0.] * self.aug_state_dim]
+            self.action_buf = [[0.] * 3]
+
         # enqueue training data into the training queue
         self.sess.run(self.enqueue_train_q, feed_dict={
             self.state_data: self.state_buf,
@@ -136,6 +141,7 @@ class DaggerWorker(object):
             '[Worker {}, Eps {}]: finished queueing data. '
             'queue size now {}\n'.format
             (self.task_idx, self.curr_eps, queue_size))
+
 # public
     def sample_action(self, state):
         # query expert action
@@ -180,15 +186,15 @@ class DaggerWorker(object):
             self.sess.run(self.sync_op)
 
             sys.stderr.write('[Worker {}, Eps {}] rollout started'
-                         .format(self.task_idx, self.curr_eps))
+                             .format(self.task_idx, self.curr_eps))
 
-            while (not self.env.all_tasks_done()):
+            while (not self.env.is_all_tasks_done()):
                 # populate training data into self.state_buf and self.action_buf
                 self.__rollout()
                 self.__enqueue_data()
-                
+
             sys.stderr.write('[Worker {}, Eps {}] rollout ended\n'
-                         .format(self.task_idx, self.curr_eps))
+                             .format(self.task_idx, self.curr_eps))
 
     def cleanup(self):
         self.env.cleanup()

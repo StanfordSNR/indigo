@@ -1,4 +1,3 @@
-# Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,19 +12,22 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-from message import Message
 from helpers.utils import Config
+from message import Message
 
 
-class OracleCollection():
-    """ implementation collection of oracles to guide the traininng """
-
+class Oracle():
     def __init__(self, net_config):
         self.LINK_CAPACITY, self.MIN_RTT, self.MAX_QUEUE_SIZE = net_config
 
-    def std_bdp(self, net_info):
-        # method: best_cwnd = available_bw * min_rtt
+    def get_oracle(self, net_info):
+        pass
 
+
+class StandardBDP(Oracle):
+    """ best_cwnd = available_bw * min_rtt """
+
+    def get_oracle(self, net_info):
         available_bw_bn, throughput_tg, queueing_factor_bn, random_loss_bn, congestion_loss_bn, queue_size_bn = net_info
 
         best_send_rate = self.LINK_CAPACITY - throughput_tg  # Mbps
@@ -37,9 +39,11 @@ class OracleCollection():
 
         return std_bdp
 
-    def aggressive_bdp(self, net_info):
-        # method: best_cwnd = best_cwnd + q * left_queue_size #  0 <= q <= 1, q is the aggressive factor
 
+class AggressiveBDP(Oracle):
+    """ best_cwnd = available_bw * min_rtt + q * left_queue_size, q is the aggressive factor and 0 <= q <= 1 """
+
+    def get_oracle(self, net_info):
         available_bw_bn, throughput_tg, queueing_factor_bn, random_loss_bn, congestion_loss_bn, queue_size_bn = net_info
         q = Config.fri
 

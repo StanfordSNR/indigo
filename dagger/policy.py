@@ -14,13 +14,12 @@
 #     limitations under the License.
 
 
-import sys
-import collections
 import datetime
+import sys
 
-from message import Message
 import context
-from helpers.utils import timestamp_ms, update_ewma, format_actions, Config
+from helpers.utils import Config, format_actions, timestamp_ms, update_ewma
+from message import Message
 
 
 class Policy(object):
@@ -41,9 +40,10 @@ class Policy(object):
     action_list = ["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"]
     action_cnt = len(action_list)
     action_mapping = format_actions(action_list)
+    action_frequency = 4.0  # sample action times per rtt
 
     delay_ack = True
-    delay_ack_count = 2 
+    delay_ack_count = 2
 
     def __init__(self, train):
         # public:
@@ -195,12 +195,12 @@ class Policy(object):
                 self.__episode_ended()
 
     def __is_step_ended(self, duration):
-        # cwnd is updated every RTT in start phase, and RTT/4 afterwards
+        # cwnd is updated every RTT in start phase, and min_rtt/action_frequency afterwards
         if self.start_phase_cnt < self.start_phase_max:
-            threshold = max(self.min_rtt, self.min_step_len)
+            threshold = max(self.min_rtt, Policy.min_step_len)
             self.start_phase_cnt += 1
         else:
-            threshold = max(self.min_rtt / 4.0, self.min_step_len)
+            threshold = max(self.min_rtt / Policy.action_frequency, Policy.min_step_len)
 
         return duration >= threshold
 
@@ -239,7 +239,7 @@ class Policy(object):
         if not self.pacing or self.min_rtt == sys.maxint:
             return max_in_cwnd
 
-        if self.pre_sent_ts == None:
+        if self.pre_sent_ts is None:
             self.pre_sent_ts = datetime.datetime.now()
 
         now = datetime.datetime.now()

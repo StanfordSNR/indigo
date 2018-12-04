@@ -16,10 +16,10 @@
 #     limitations under the License.
 
 
-import sys
 import argparse
-import numpy as np
+
 import context
+import numpy as np
 from env.sender import Sender
 
 

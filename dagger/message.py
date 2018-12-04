@@ -59,8 +59,8 @@ class Message(object):
     # serialize the header to network byte order
     def header_to_string(self):
         return struct.pack(Message.header_fmt,
-                self.seq_num, self.send_ts, self.bytes_sent,
-                self.ack_recv_ts, self.bytes_acked)
+                           self.seq_num, self.send_ts, self.bytes_sent,
+                           self.ack_recv_ts, self.bytes_acked)
 
     # serialize to a data message
     def to_data(self):

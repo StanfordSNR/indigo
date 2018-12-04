@@ -88,7 +88,7 @@ class DaggerLeader(object):
 
         # Each element is [[aug_state]], [[action]]
         self.train_q = tf.FIFOQueue(
-            Config.total_tp_num_train, [tf.float32, tf.float32],
+            Config.total_tpg_num_train, [tf.float32, tf.float32],
             shared_name='training_feed')
 
         # Keys: worker indices, values: Tensorflow messaging queues
@@ -426,7 +426,7 @@ class DaggerWorker(object):
 
         # Build shared queues for training data and synchronization
         self.train_q = tf.FIFOQueue(
-            Config.total_tp_num_train, [tf.float32, tf.float32],
+            Config.total_tpg_num_train, [tf.float32, tf.float32],
             shared_name='training_feed')
         self.sync_q = tf.FIFOQueue(
             3, [tf.int16], shared_name=('sync_q_%d' % self.task_idx))

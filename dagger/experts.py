@@ -33,7 +33,7 @@ def get_best_action(actions, cwnd, target):
     closest resulting cwnd to target.
     """
     return actions.index(min(actions,
-               key=lambda action: action_error(action, cwnd, target)))
+                             key=lambda action: action_error(action, cwnd, target)))
 
 
 class NaiveDaggerExpert(object):
@@ -57,13 +57,13 @@ class NaiveDaggerExpert(object):
         action = get_best_action(Policy.action_mapping, cwnd, target_cwnd)
         return action
 
+
 class ExpertClient(object):
     """ Get ground truth expert policy from expert server by socket.
         This is client"""
 
     def __init__(self):
         self.socket = None
-
 
     def cleanup(self):
         if self.socket:

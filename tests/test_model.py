@@ -67,8 +67,8 @@ def main():
 
     pc = PerfClient()
 
-    total_tp_set, total_env_set = get_mininet_env_param()
-    env = MininetEnv(total_tp_set, total_env_set, False)
+    total_tpg_set, total_env_set = get_mininet_env_param()
+    env = MininetEnv(total_env_set, total_tpg_set, False)
     env.set_expert(pc)
 
     try:
@@ -84,7 +84,7 @@ def main():
 
             tf.reset_default_graph()
 
-            if env.all_tasks_done():
+            if env.is_all_tasks_done():
                 break
     except KeyboardInterrupt:
         pass

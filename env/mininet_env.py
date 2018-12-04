@@ -13,27 +13,26 @@
 #     limitations under the License.
 
 
-import os
 import sys
-import signal
 import time
 from os import path
-from subprocess import Popen, PIPE
+from subprocess import PIPE, Popen
 
 import context
-from dagger.sender import Sender
+from dagger.message import Message
 from dagger.policy import Policy
-from helpers.utils import get_open_port, check_pid, Config, DEVNULL
+from dagger.sender import Sender
+from helpers.utils import DEVNULL, check_pid, get_open_port
+# from helpers.utils import Config, convert_to_seconds
 
 
 class MininetEnv(object):
-    def __init__(self, tfc_set, env_set, train):
-        # traffic shape index defined in traffic generator
-        self.tfc = 1
-        self.tfc_set = tfc_set
-        self.tfc_set_len = len(self.tfc_set)
-        self.tfc_set_idx_1 = 0
-        self.tfc_set_idx_2 = 0
+    def __init__(self, env_set, tpg_set, train):
+        # traffic pattern group is defined in config.ini and parsed by helper.utils
+        self.tpg_set = tpg_set
+        self.tpg_set_len = len(self.tpg_set)
+        self.tpg_set_idx_env = 0
+        self.tpg_set_idx_gen = 0
 
         self.env_set = env_set
         self.env_set_len = len(self.env_set)
@@ -62,7 +61,7 @@ class MininetEnv(object):
 
         self.sample_action = sample_action
 
-    def all_tasks_done(self):
+    def is_all_tasks_done(self):
         ret = self.done
         if ret:
             self.done = False
@@ -75,51 +74,57 @@ class MininetEnv(object):
 
         self.port = get_open_port()
 
-        if not self.train:
-            curr_env_name = Config.total_env_name_set_test[self.env_set_idx]
-            curr_tp_name = Config.total_tp_set_test[self.tfc_set_idx_1][self.tfc_set_idx_2]
-            log_file_postfix = '{}_tp_{}.log'.format(curr_env_name, curr_tp_name)
+        # TODO: enable test
+        # if not self.train:
+        #     curr_env_name = Config.total_env_name_set_test[self.env_set_idx]
+        #     curr_tpg_name = Config.total_tpg_set_test[self.tpg_set_idx_env][self.tpg_set_idx_gen]
+        #     log_file_postfix = '{}_tp_{}.log'.format(curr_env_name, curr_tpg_name)
 
         # STEP 1: start mininet emulator
-        sys.stderr.write('\nStep #1: start mininet emulator: ' +
-                         ' '.join(self.env_set[self.env_set_idx][:4]) + '\n')
+        sys.stderr.write('\nStep #1: start mininet emulator: {}\n'
+                         .format(' '.join(self.env_set[self.env_set_idx])))
         emulator_path = path.join(context.base_dir, 'env', 'mininet_topo.py')
-        cmd = ['python', emulator_path] + self.env_set[self.env_set_idx][:4]
+        cmd = ['python', emulator_path] + self.env_set[self.env_set_idx]
         self.emulator = Popen(cmd, stdin=PIPE, stdout=DEVNULL, stderr=DEVNULL)
         time.sleep(1.5)
 
         # STEP 2: start traffic generator
-        self.tfc = self.tfc_set[self.tfc_set_idx_1][self.tfc_set_idx_2]
+        generator = self.tpg_set[self.tpg_set_idx_env][self.tpg_set_idx_gen]
 
-        # tfc = -1 means that we use BBR as the background traffic with iperf;
-        # otherwise start traffic generator
-        # if self.tfc == -1:
-        #     sys.stderr.write('Step #2: start iperf tool server\n')
-        #     self.emulator.stdin.write('h2 iperf3 -s &\n')
-        #     self.emulator.stdin.flush()
+        # use BBR/Cubic/... as the background traffic with iperf/iperf3
+        if type(generator) is str and generator.startswith('iperf'):
+            sys.stderr.write('Step #2: start iperf as traffic generator\n')
+            tool, method = generator.split('.')
+            param = 'Z' if tool == 'iperf' else 'C'
+            self.emulator.stdin.write('h2 {} -s &\n'.format(tool))
+            self.emulator.stdin.flush()
+            time.sleep(0.1)
+            self.emulator.stdin.write(
+                'h1 {} -c 192.168.42.2 -{} {} -M {} &\n'.format(tool, param, method, Message.total_size))
+            self.emulator.stdin.flush()
+        else:
+            sys.stderr.write('Step #2: start traffic generator\n')
+            # tg-receiver:
+            tg_receiver_path = path.join(
+                context.base_dir, 'traffic-generator', 'receiver.py')
+            self.emulator.stdin.write(
+                'h2 python ' + tg_receiver_path + ' 192.168.42.2 6666 &\n')
+            self.emulator.stdin.flush()
+            time.sleep(0.1)
 
-        #     self.emulator.stdin.write(
-        #         'h1 iperf3 -c 192.168.42.2 -C bbr -t 50 -M 1396 &\n')
-        #     self.emulator.stdin.flush()
-        # else:
-        #     sys.stderr.write('Step #2: start traffic generator, ')
-        #     # tg-receiver:
-        #     tg_receiver_path = path.join(
-        #         context.base_dir, 'traffic-generator', 'receiver.py')
-        #     self.emulator.stdin.write(
-        #         'h2 python ' + tg_receiver_path + ' 192.168.42.2 6666 &\n')
-        #     self.emulator.stdin.flush()
-        #     time.sleep(0.1)
-
-        #     # tg-sender: parameters: ip port NIC tfc duration
-        #     sys.stderr.write(
-        #         'traffic shape index is {} \n'.format(self.tfc))
-        #     tg_sender_path = path.join(
-        #         context.base_dir, 'traffic-generator', 'sender.py')
-        #     self.emulator.stdin.write(
-        #         'h1 python ' + tg_sender_path +
-        #         ' 192.168.42.2 6666 h1-eth0 {} 0 &\n'.format(self.tfc))
-        #     self.emulator.stdin.flush()
+            # tg-sender: parameters: ip port NIC -s [sketch] -c cycle -l lifetime
+            sketch, cycle = generator
+            # one_way_delay = convert_to_seconds(self.env_set[self.env_set_idx][1])
+            # lifetime = Policy.steps_per_episode * one_way_delay * 2 / Policy.action_frequency * 1.5
+            lifetime = 1000  # 0 stands for run forever
+            tg_sender_path = path.join(
+                context.base_dir, 'traffic-generator', 'sender.py')
+            print ('h1 python {} 192.168.42.2 6666 h1-eth0 -s "{}" -c {} -l {} &\n'
+                   .format(tg_sender_path, sketch, cycle, lifetime))
+            self.emulator.stdin.write('h1 python {} 192.168.42.2 6666 h1-eth0 -s "{}" -c {} -l {} &\n'
+                                      .format(tg_sender_path, sketch, cycle, lifetime))
+            self.emulator.stdin.flush()
+            time.sleep(0.1)
 
         # STEP 3: start receiver
         sys.stderr.write('Step #3: start receiver\n')
@@ -138,7 +143,7 @@ class MininetEnv(object):
             for i in xrange(3):
                 self.expert_server_port = get_open_port()
                 cmd = ['python', expert_server_path, str(self.expert_server_port)]
-                self.expert_server = Popen(cmd) # , stdout=DEVNULL, stderr=DEVNULL
+                self.expert_server = Popen(cmd)  # , stdout=DEVNULL, stderr=DEVNULL
                 if check_pid(self.expert_server.pid):
                     sys.stderr.write(
                         'Step #4: start expert server (PID: {}), '.format(
@@ -155,7 +160,7 @@ class MininetEnv(object):
             for i in xrange(3):
                 self.expert_server_port = get_open_port()
                 cmd = ['python', expert_server_path, str(self.expert_server_port),
-                       self.env_set_idx, self.tfc_set_idx_1, self.tfc_set_idx_2]
+                       self.env_set_idx, self.tpg_set_idx_env, self.tpg_set_idx_gen]
                 self.expert_server = Popen(cmd, stdin=DEVNULL,
                                            stdout=DEVNULL, stderr=DEVNULL)
                 if check_pid(self.expert_server.pid):
@@ -182,27 +187,28 @@ class MininetEnv(object):
         self.sender = Sender('192.168.42.222', self.port)
         self.sender.set_policy(self.policy)
 
-        # TODO: if not self.train:
+        # TODO: enable test
+        # if not self.train:
         #     # set expert client to sender
         #     self.sender.set_perf_client(self.expert)
         #     # set log file name during test in sender and receiver
         #     self.sender.set_test_name(log_file_postfix)
 
         # STEP 6: Update env and corresponding traffic shape in this episode
-        if self.tfc_set_idx_2 == len(self.tfc_set[self.tfc_set_idx_1]) - 1:
+        if self.tpg_set_idx_gen == len(self.tpg_set[self.tpg_set_idx_env]) - 1:
             # this env is done
             self.env_set_idx = self.env_set_idx + 1
-            self.tfc_set_idx_1 = self.tfc_set_idx_1 + 1
-            self.tfc_set_idx_2 = 0
+            self.tpg_set_idx_env = self.tpg_set_idx_env + 1
+            self.tpg_set_idx_gen = 0
             # all env and traffic shape are done
             if self.env_set_idx == self.env_set_len:
                 self.done = True
                 self.env_set_idx = 0
-                self.tfc_set_idx_1 = 0
-                self.tfc_set_idx_2 = 0
+                self.tpg_set_idx_env = 0
+                self.tpg_set_idx_gen = 0
         else:
             # get next traffic shape for this env
-            self.tfc_set_idx_2 = self.tfc_set_idx_2 + 1
+            self.tpg_set_idx_gen = self.tpg_set_idx_gen + 1
 
         sys.stderr.write('env reset done\n')
 

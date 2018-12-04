@@ -1,7 +1,5 @@
-#!/usr/bin/env python
-
 # Copyright 2018 Francis Y. Yan, Jestin Ma
-# Copyright 2018 Huawei Technologies
+# Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,14 +14,14 @@
 #     limitations under the License.
 
 
-import os
-import sys
-import time
-import signal
 import argparse
-import context
+import os
+import signal
+import sys
 from os import path
-from subprocess import Popen, call
+from subprocess import Popen
+
+import context
 
 
 def run(args):
@@ -59,9 +57,7 @@ def cleanup(args):
         except OSError as e:
             sys.stderr.write('%s\n' % e)
 
-    host_set = set(args['ps_list'] + args['worker_list'])
     pkill_script = path.join(args['indigo_dir'], 'tools', 'pkill.py')
-
 
     for host in set(args['worker_list']):
         kill_cmd = ['ssh', host, 'python', pkill_script, args['indigo_dir']]
@@ -74,7 +70,6 @@ def cleanup(args):
         sys.stderr.write('$ %s\n' % ' '.join(kill_cmd))
         proc = Popen(kill_cmd)
         proc.communicate()
-
 
     sys.stderr.write('\nAll cleaned up.\n')
 
@@ -109,12 +104,10 @@ def construct_args(prog_args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--ps-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
-        help='comma-separated list of hostname:port of parameter servers')
-    parser.add_argument(
-        '--worker-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
-        help='comma-separated list of hostname:port of workers')
+    parser.add_argument('--ps-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
+                        help='comma-separated list of hostname:port of parameter servers')
+    parser.add_argument('--worker-hosts', required=True, metavar='[HOSTNAME:PORT, ...]',
+                        help='comma-separated list of hostname:port of workers')
     parser.add_argument('--user', required=True, metavar='NAME',
                         help='username used in ssh connection')
     parser.add_argument('--indigo-dir', required=True, metavar='base_dir',

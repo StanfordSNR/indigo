@@ -49,11 +49,16 @@ class Sender(object):
         self.seq_num = 0
         self.next_ack = 0
 
+        # check sender health
+        self.health_check_ms = None
+        self.pre_checked_seq_num = 0
+        self.pre_checked_next_ack = 0
+
         # congestion control policy
         self.policy = None
 
-        # dedicate process for sending pkt 
-        self.send_queue_out, self.send_queue_in  = Pipe(False)
+        # dedicate process for sending pkt
+        self.send_queue_out, self.send_queue_in = Pipe(False)
         self.send_process = Process(target=self.__send_process_func)
 
 # private
@@ -104,6 +109,22 @@ class Sender(object):
         c = self.policy.pacing_pkt_number(self.policy.cwnd - (self.seq_num - self.next_ack))
         self.__msend(c)
 
+    def __check_sender_health(self):
+        if self.health_check_ms is None:
+            self.health_check_ms = timestamp_ms()
+
+        if timestamp_ms() - self.health_check_ms > 10000:  # cool down for 10s
+            self.health_check_ms = timestamp_ms()
+
+            if self.pre_checked_seq_num == self.seq_num or self.pre_checked_next_ack == self.next_ack:
+                self.pre_checked_seq_num = self.seq_num
+                self.pre_checked_next_ack = self.next_ack
+                return False
+
+            self.pre_checked_seq_num = self.seq_num
+            self.pre_checked_next_ack = self.next_ack
+        return True
+
     def __recv(self):
         try:
             msg_str, addr = self.sock.recvfrom(1500)
@@ -111,7 +132,7 @@ class Sender(object):
             return -1
         if len(msg_str) < Message.header_size:
             return -1
-        
+
         ack = Message.parse(msg_str)
 
         # update next ACK's sequence number to expect
@@ -139,6 +160,8 @@ class Sender(object):
 
         self.send_process.start()
         while not self.policy.stop_sender:
+            if not self.__check_sender_health():
+                return -1
 
             if self.__window_is_open():
                 self.poller.modify(self.sock, ALL_FLAGS)
@@ -147,7 +170,7 @@ class Sender(object):
 
             events = self.poller.poll(self.policy.timeout_ms())
             if not events:  # timed out; send one datagram to get rolling
-                self.__send()
+                self.__msend(1)
 
             for fd, flag in events:
                 if flag & ERR_FLAGS:
@@ -165,7 +188,8 @@ class Sender(object):
                             num = int(self.policy.cwnd) - (self.seq_num - self.next_ack)
                             self.__msend(num)
 
-class LSTM_Executer(object):
+
+class LSTMExecuter(object):
     # load model and make inference for standlone run
     def __init__(self, state_dim, action_cnt, restore_vars):
         self.aug_state_dim = state_dim + action_cnt
@@ -224,6 +248,7 @@ class LSTM_Executer(object):
         # action = np.argmax(np.random.multinomial(1, temp_probs - 1e-5))
         return action
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('ip')
@@ -235,11 +260,12 @@ def main():
     try:
         # dummy policy
         policy = Policy(False)
-        policy.set_sample_action(lambda state : 2)
+        policy.set_sample_action(lambda state: 2)
 
-        # lstm = LSTM_Executer(state_dim=Policy.state_dim,
-        #                   action_cnt=Policy.action_cnt,
-        #                   restore_vars=args.model)
+        # normal policy
+        # lstm = LSTMExecuter(state_dim=Policy.state_dim,
+        #                     action_cnt=Policy.action_cnt,
+        #                     restore_vars=args.model)
         # policy.set_sample_action(lstm.sample_action)
 
         sender = Sender(args.ip, args.port)

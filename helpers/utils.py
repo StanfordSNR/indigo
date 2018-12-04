@@ -14,18 +14,19 @@
 #     limitations under the License.
 
 
-import os
-from os import path
-import time
+import ast
+import ConfigParser
 import errno
+import operator
+import os
 import select
 import socket
-import operator
-import numpy as np
-import ConfigParser
-import ast
+import sys
+import time
+from os import path
 
 import context
+import numpy as np
 
 READ_FLAGS = select.POLLIN | select.POLLPRI
 WRITE_FLAGS = select.POLLOUT
@@ -54,6 +55,7 @@ def format_actions(action_list):
 
     return ret
 
+
 def min_x_max(min_value, x, max_value):
     # return x if min_value < x < max_value
     # else return min_value or max_value
@@ -63,6 +65,7 @@ def min_x_max(min_value, x, max_value):
         return max_value
     else:
         return min_value
+
 
 def timestamp_ms():
     return int(round(time.time() * 1000))
@@ -200,48 +203,95 @@ def ssh_cmd(host):
             '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=5', host]
 
 
+def convert_to_seconds(time_str):
+    """ parse time end with different units and format to seconds """
+
+    if time_str.endswith('ms'):
+        return float(time_str[:-2]) / 1000.0
+    elif time_str.endswith('s'):
+        return float(time_str[:-1])
+    else:  # default unit: seconds
+        return float(time_str)
+
+
+def parse_trace_file():
+    # TODO
+    pass
+
+
 class Config(object):
     cfg = ConfigParser.ConfigParser()
     cfg_path = path.join(context.base_dir, 'config.ini')
     cfg.read(cfg_path)
 
+    # model input state index
+    state_idx = int(cfg.get('global', 'state_idx'))
     # model input dim number
     state_dim = int(cfg.get('global', 'state_dim'))
 
-    # model input state index
-    state_idx = int(cfg.get('global', 'state'))
-
     # friendliness for CC expert algorithm
     fri = float(cfg.get('global', 'fri'))
-
     # weight for hard_target and soft_target
     rho = float(cfg.get('global', 'rho'))
 
     # env (mininet) parameter set and traffic pattern for train mode
-    total_tp_set_train = []
     total_env_set_train = []
-    total_env_name_set_train = []
-    total_tp_num_train = 0
-    train_env = cfg.options('train_env')
-    for opt in train_env:
-        env_param, tp_set_param = ast.literal_eval(cfg.get('train_env', opt))
-        total_env_name_set_train.append(env_param)
-        total_tp_set_train.append(
-                ast.literal_eval(cfg.get('global', tp_set_param)))
-        total_env_set_train.append(
-                ast.literal_eval(cfg.get('global', env_param)))
-    for tp in total_tp_set_train:
-        total_tp_num_train += len(tp)
+    total_tpg_set_train = []
+    total_tpg_num_train = 0
+    try:
+        train_env = cfg.options('train')
+        for opt in train_env:
+            env_name, tpg_name = ast.literal_eval(cfg.get('train', opt))
+
+            env_param = ast.literal_eval(cfg.get('env', env_name))
+            tpg_param = ast.literal_eval(cfg.get('generator', tpg_name))
+            for idx, gen_name in enumerate(tpg_param):
+                try:
+                    gen_param = ast.literal_eval(cfg.get('generator', gen_name))
+                    sketch_name, cycle_str = gen_param
+                    sketch_param = ast.literal_eval(cfg.get('generator', sketch_name))
+                    cycle_param = convert_to_seconds(cycle_str)
+                    tpg_param[idx] = [sketch_param, cycle_param]
+                except ValueError:
+                    gen_param = cfg.get('generator', gen_name)
+                    if type(gen_param) is str and gen_param.endswith('trace'):
+                        tpg_param[idx] = parse_trace_file(gen_param)
+                    else:
+                        tpg_param[idx] = gen_param
+
+            total_env_set_train.append(env_param)
+            total_tpg_set_train.append(tpg_param)
+
+        for tp in total_tpg_set_train:
+            total_tpg_num_train += len(tp)
+    except SyntaxError:
+        sys.exit('config error while parsing train/env/generator')
 
     # env (mininet) parameter set and traffic pattern for test mode
-    total_tp_set_test = []
     total_env_set_test = []
-    total_env_name_set_test = []
-    test_env = cfg.options('test_env')
-    for opt in test_env:
-        env_param, tp_set_param = ast.literal_eval(cfg.get('test_env', opt))
-        total_env_name_set_test.append(env_param)
-        total_tp_set_test.append(
-                ast.literal_eval(cfg.get('global', tp_set_param)))
-        total_env_set_test.append(
-                ast.literal_eval(cfg.get('global', env_param)))
+    total_tpg_set_test = []
+    try:
+        test_env = cfg.options('test')
+        for opt in test_env:
+            env_name, tpg_name = ast.literal_eval(cfg.get('test', opt))
+
+            env_param = ast.literal_eval(cfg.get('env', env_name))
+            tpg_param = ast.literal_eval(cfg.get('generator', tpg_name))
+            for idx, gen_name in enumerate(tpg_param):
+                try:
+                    gen_param = ast.literal_eval(cfg.get('generator', gen_name))
+                    sketch_name, cycle_str = gen_param
+                    sketch_param = ast.literal_eval(cfg.get('generator', sketch_name))
+                    cycle_param = convert_to_seconds(cycle_str)
+                    tpg_param[idx] = [sketch_param, cycle_param]
+                except ValueError:
+                    gen_param = cfg.get('generator', gen_name)
+                    if type(gen_param) is str and gen_param.endswith('trace'):
+                        tpg_param[idx] = parse_trace_file(gen_param)
+                    else:
+                        tpg_param[idx] = gen_param
+
+            total_env_set_test.append(env_param)
+            total_tpg_set_test.append(tpg_param)
+    except SyntaxError:
+        sys.exit('config error while parsing test/env/generator')
