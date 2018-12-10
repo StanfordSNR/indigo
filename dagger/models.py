@@ -18,6 +18,8 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import layers, rnn
 
+import context
+from helpers.utils import Config
 
 class DaggerNetwork(object):
     def __init__(self, state_dim, action_cnt):
@@ -37,8 +39,8 @@ class DaggerLSTM(object):
         # self.input: [batch_size, max_time, state_dim]
         self.input = tf.placeholder(tf.float32, [None, None, state_dim])
 
-        self.num_layers = 1
-        self.lstm_dim = 32
+        self.num_layers = Config.lstm_layer
+        self.lstm_dim = Config.lstm_dim
         stacked_lstm = rnn.MultiRNNCell([rnn.BasicLSTMCell(self.lstm_dim)
                                          for _ in xrange(self.num_layers)])
 

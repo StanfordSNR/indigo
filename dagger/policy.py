@@ -16,6 +16,7 @@
 
 import datetime
 import sys
+import collections
 
 import context
 from helpers.utils import Config, format_actions, timestamp_ms, update_ewma
@@ -36,7 +37,7 @@ class Policy(object):
 
     # state = [rtt_norm, delay_norm, send_rate_norm, delivery_rate_norm,
     #          loss_rate_norm, cwnd_norm]
-    state_dim = Config.state_dim
+    state_dim = Config.state_dim * Config.state_history
     action_list = ["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"]
     action_cnt = len(action_list)
     action_mapping = format_actions(action_list)
@@ -87,6 +88,7 @@ class Policy(object):
         self.delay_ewma = None
         self.send_rate_ewma = None
         self.delivery_rate_ewma = None
+        self.history_state = collections.deque()
 
         # pacing related
         self.borrowed_pkt = 0.0
@@ -179,9 +181,20 @@ class Policy(object):
         # state -> action
         state = [rtt_norm, delay_norm, send_rate_norm, delivery_rate_norm,
                  loss_rate_norm, cwnd_norm]
+
+        if len(self.history_state) == 0:
+            for i in xrange(Config.state_history):
+                self.history_state.append(state)
+        elif len(self.history_state) == Config.state_history:
+            self.history_state.popleft()
+            self.history_state.append(state)
+        h_state = []
+        for s in self.history_state:
+            h_state = h_state + s
+
         if self.sample_action is None:
             sys.exit('sample_action on policy has not been set')
-        action = self.sample_action(state)
+        action = self.sample_action(h_state)
 
         self.__take_action(action)
 

@@ -57,6 +57,10 @@ class Sender(object):
         # congestion control policy
         self.policy = None
 
+        # sender's max run time
+        self.run_time = None
+        self.start_time = None
+
         # dedicate process for sending pkt
         self.send_queue_out, self.send_queue_in = Pipe(False)
         self.send_process = Process(target=self.__send_process_func)
@@ -143,6 +147,14 @@ class Sender(object):
 
         return 0
 
+    def __run_timeout(self):
+        if (self.run_time == None or self.policy.train):
+            return False
+            
+        if timestamp_ms() - self.start_time > self.run_time:
+            return True
+        else:
+            return False
 
 # public
     def cleanup(self):
@@ -154,20 +166,24 @@ class Sender(object):
     def set_policy(self, policy):
         self.policy = policy
 
+    def set_run_time(self,time):
+        self.run_time = time # ms
+
     def run(self):
         if not self.policy:
             sys.exit('sender\'s policy has not been set')
 
+        self.start_time = timestamp_ms()
         self.send_process.start()
-        while not self.policy.stop_sender:
+        while not self.policy.stop_sender and not self.__run_timeout():
             if not self.__check_sender_health():
+                sys.stderr.write('No send or recv packets for 10 senconds. Exited.\n')
                 return -1
 
             if self.__window_is_open():
                 self.poller.modify(self.sock, ALL_FLAGS)
             else:
                 self.poller.modify(self.sock, READ_ERR_FLAGS)
-
             events = self.poller.poll(self.policy.timeout_ms())
             if not events:  # timed out; send one datagram to get rolling
                 self.__msend(1)
@@ -259,14 +275,15 @@ def main():
     sender = None
     try:
         # dummy policy
-        policy = Policy(False)
-        policy.set_sample_action(lambda state: 2)
+        #policy = Policy(False)
+        #policy.set_sample_action(lambda state: 2)
 
         # normal policy
-        # lstm = LSTMExecuter(state_dim=Policy.state_dim,
-        #                     action_cnt=Policy.action_cnt,
-        #                     restore_vars=args.model)
-        # policy.set_sample_action(lstm.sample_action)
+        policy = Policy(False)
+        lstm = LSTMExecuter(state_dim=Policy.state_dim,
+                             action_cnt=Policy.action_cnt,
+                             restore_vars=args.model)
+        policy.set_sample_action(lstm.sample_action)
 
         sender = Sender(args.ip, args.port)
         sender.set_policy(policy)

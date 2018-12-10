@@ -12,11 +12,13 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-from helpers.utils import Config
 from message import Message
+import context
+from helpers.utils import Config
 
+from collections import deque
 
-class Oracle():
+class Oracle(object):
     def __init__(self, net_config):
         self.LINK_CAPACITY, self.MIN_RTT, self.MAX_QUEUE_SIZE = net_config
 
@@ -57,3 +59,33 @@ class AggressiveBDP(Oracle):
         aggressive_bdp = std_bdp + (self.MAX_QUEUE_SIZE * q - self.MAX_QUEUE_SIZE * queueing_factor_bn)
 
         return aggressive_bdp
+
+class MoreAggressiveBDP(Oracle):
+
+    def __init__(self, net_config):
+        super(MoreAggressiveBDP, self).__init__(net_config)
+        self.bdp_q = deque()
+
+    # method: max(cwnd(t),cwnd(t-1),...,cwnd(t-N)),
+    # cwnd(t) = available_bdp_cwnd + q * left_queue_size #  0 <= q <= 1, q is the aggressive factor
+    def get_oracle(self, net_info):
+        available_bw_bn, throughput_tg, queueing_factor_bn, random_loss_bn, congestion_loss_bn, queue_size_bn = net_info
+        q = Config.fri
+
+        best_send_rate = self.LINK_CAPACITY - throughput_tg  # Mbps
+        if best_send_rate < 0:
+            best_send_rate = 0
+
+        # Mbps * ms = 10^6 b/s * 10^(-3) s = b
+        std_bdp = 1000 * best_send_rate * self.MIN_RTT / 8.0 / Message.total_size
+
+        aggressive_bdp = std_bdp + (self.MAX_QUEUE_SIZE * q - self.MAX_QUEUE_SIZE * queueing_factor_bn)
+
+        if len(self.bdp_q) == 0:
+            for i in xrange(Config.state_history):
+                self.bdp_q.append(aggressive_bdp)
+        elif len(self.bdp_q) == Config.state_history:
+            self.bdp_q.popleft()
+            self.bdp_q.append(aggressive_bdp)
+
+        return max(self.bdp_q)

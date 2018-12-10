@@ -224,15 +224,28 @@ class Config(object):
     cfg_path = path.join(context.base_dir, 'config.ini')
     cfg.read(cfg_path)
 
+    # lstm model
+    lstm_layer = int(cfg.get('global', 'lstm_layer'))
+    lstm_dim = int(cfg.get('global', 'lstm_dim'))
+
     # model input state index
     state_idx = int(cfg.get('global', 'state_idx'))
     # model input dim number
     state_dim = int(cfg.get('global', 'state_dim'))
+    state_history = int(cfg.get('global', 'state_history'))
 
     # friendliness for CC expert algorithm
     fri = float(cfg.get('global', 'fri'))
     # weight for hard_target and soft_target
     rho = float(cfg.get('global', 'rho'))
+
+    # whether launch perf server and client to get measurement data
+    measurement_s = cfg.get('global', 'measurement')
+    if measurement_s == 'True':
+        measurement = True
+    else:
+        measurement = False
+    run_time = int(cfg.get('global', 'run_time'))
 
     # env (mininet) parameter set and traffic pattern for train mode
     total_env_set_train = []

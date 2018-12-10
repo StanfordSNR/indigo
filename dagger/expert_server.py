@@ -23,7 +23,7 @@ import threading
 import context
 from helpers.utils import min_x_max
 from message import Message
-from oracle import AggressiveBDP
+from oracle import AggressiveBDP, MoreAggressiveBDP
 from policy import Policy
 
 
@@ -141,8 +141,12 @@ class DeviceIfconfig():
 
     def __init__(self, dev_name):
         self.dev_name = dev_name
+
         self.rx_packets = 0
-        self.record_time = datetime.datetime.now()
+        self.tx_packets = 0
+
+        self.rx_record_time = datetime.datetime.now()
+        self.tx_record_time = datetime.datetime.now()
 
     def get_rx_rate(self, flag):
         _record_time = datetime.datetime.now()
@@ -158,7 +162,7 @@ class DeviceIfconfig():
         _rx_packets = int(target_line.split(':')[1].split(' ')[0])
 
         if self.rx_packets != 0:
-            delta_time = (_record_time-self.record_time).microseconds
+            delta_time = (_record_time-self.rx_record_time).microseconds
             if not delta_time:
                 return 0
 
@@ -169,10 +173,38 @@ class DeviceIfconfig():
 
         if flag == 1:
             self.rx_packets = _rx_packets
-            self.record_time = _record_time
+            self.rx_record_time = _record_time
 
         return rx_rate
 
+    def get_tx_rate(self, flag):
+        _record_time = datetime.datetime.now()
+        try:
+            out_bytes = subprocess.check_output(['ifconfig', self.dev_name])
+        except subprocess.CalledProcessError as e:
+            out_bytes = e.output
+            raise e
+
+        out_text = out_bytes.decode('utf-8')
+        out_slice = out_text.split('\n')
+        target_line = ''.join([x for x in out_slice if x.find('TX packets') != -1])
+        _tx_packets = int(target_line.split(':')[1].split(' ')[0])
+
+        if self.tx_packets != 0:
+            delta_time = (_record_time-self.tx_record_time).microseconds
+            if not delta_time:
+                return 0
+
+            tx_rate = 8.0*(_tx_packets-self.tx_packets)*Message.total_size / delta_time
+        else:
+            tx_rate = 0
+            self.tx_packets = _tx_packets
+
+        if flag == 1:
+            self.tx_packets = _tx_packets
+            self.tx_record_time = _record_time
+
+        return tx_rate
 
 class ExpertServer():
     """ server for expert, call oracle to get best cwnd """
@@ -192,7 +224,7 @@ class ExpertServer():
             return
         self.net_config = self.dev_bottleneck.BW_CAPACITY, self.dev_bottleneck.MIN_RTT, self.dev_bottleneck.MAX_QUEUE_SIZE
         # set policy of oracle
-        self.set_oracle(AggressiveBDP(self.net_config))
+        self.set_oracle(MoreAggressiveBDP(self.net_config))
 
     def set_oracle(self, oralce):
         self.oracle = oralce
@@ -208,7 +240,7 @@ class ExpertServer():
             sys.stderr.write('mininet does not start')
             return
         try:
-            throughput_tg = self.dev_traffic_generator.get_rx_rate(flag)
+            throughput_tg = self.dev_traffic_generator.get_tx_rate(flag)
         except subprocess.CalledProcessError:
             sys.stderr.write('ifconfig error')
             return
@@ -242,7 +274,8 @@ if __name__ == '__main__':
 
     print 'expert server is listenning'
 
-    expert = ExpertServer('s1-eth1', 's1-eth2')
+    #expert = ExpertServer('s1-eth1', 's1-eth2')
+    expert = ExpertServer('s1-eth1', 's3-eth2')
     cwnd = 0
     running = 0
 

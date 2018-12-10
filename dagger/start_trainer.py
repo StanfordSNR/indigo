@@ -57,7 +57,7 @@ def cleanup(args):
         except OSError as e:
             sys.stderr.write('%s\n' % e)
 
-    pkill_script = path.join(args['indigo_dir'], 'tools', 'pkill.py')
+    pkill_script = path.join(args['indigo_dir'], 'helpers', 'pkill.py')
 
     for host in set(args['worker_list']):
         kill_cmd = ['ssh', host, 'python', pkill_script, args['indigo_dir']]

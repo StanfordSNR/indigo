@@ -221,7 +221,7 @@ class DaggerLeader(object):
         else:
             self.init_state = self.default_init_state
 
-        for curr_epoch in xrange(100):
+        for curr_epoch in xrange(50):
             mean_loss = 0.0
             max_loss = 0.0
             start_ts = timestamp_ms()

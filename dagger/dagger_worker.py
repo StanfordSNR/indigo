@@ -21,7 +21,7 @@ import context
 import numpy as np
 import tensorflow as tf
 from dagger_leader import DaggerLeader
-from experts import ExpertClient
+from expert_client import ExpertClient
 from helpers.utils import one_hot
 from models import DaggerLSTM
 from policy import Policy
@@ -42,7 +42,7 @@ class DaggerWorker(object):
 
         # expert policy
         self.expert = ExpertClient()
-        env.set_expert(self.expert)
+        env.set_expert_client(self.expert)
 
         # must call env.set_sample_action() before env.rollout()
         env.set_sample_action(self.sample_action)
@@ -108,8 +108,6 @@ class DaggerWorker(object):
     def __wait_for_leader(self):
         while True:
             leader_eps_cnt = self.sess.run(self.eps_cnt)
-            print '------->{}'.format(leader_eps_cnt)
-
             if leader_eps_cnt == self.curr_eps + 1:
                 return
             else:
@@ -121,8 +119,8 @@ class DaggerWorker(object):
         self.prev_action = self.action_cnt - 1
         self.lstm_state = self.init_state
 
-        self.env.reset()
-        self.env.rollout()  # will populate self.state_buf and self.action_buf
+        if self.env.reset() != -1:
+            self.env.rollout()  # will populate self.state_buf and self.action_buf
 
     def __enqueue_data(self):
         # handle the case of no valid data
