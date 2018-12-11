@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
