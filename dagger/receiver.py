@@ -15,13 +15,13 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-
 import argparse
 import socket
 import sys
 
 from message import Message
 from policy import Policy
+
 
 class Receiver(object):
     def __init__(self, port=0):
@@ -44,12 +44,16 @@ class Receiver(object):
         delay_ack_count = 0
         while True:
             msg_str, addr = self.sock.recvfrom(1500)
+            if msg_str == 'Hello':
+                self.sock.sendto('Hello', addr)
+                continue
             if Policy.delay_ack:
                 delay_ack_count += 1
                 if (delay_ack_count % Policy.delay_ack_count == 0):
                     self.sock.sendto(Message.transform_into_ack(msg_str), addr)
             else:
                 self.sock.sendto(Message.transform_into_ack(msg_str), addr)
+
 
 def main():
     parser = argparse.ArgumentParser()

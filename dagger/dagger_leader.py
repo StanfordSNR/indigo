@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Yiyang Shao, Wei Wang (Huawei Technologies)
 #
@@ -13,8 +15,8 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-
 import datetime
+import math
 import random
 import sys
 import time
@@ -23,7 +25,7 @@ from os import path
 import context
 import numpy as np
 import tensorflow as tf
-from helpers.utils import Config, make_sure_path_exists, softmax, timestamp_ms
+from helpers.utils import Config, make_sure_path_exists, min_x_max, softmax, timestamp_ms
 from models import DaggerLSTM
 from policy import Policy
 
@@ -31,11 +33,12 @@ from policy import Policy
 class DaggerLeader(object):
     # only one instance of DaggerLeader can be instantiated
     # explicitly use CPU as Tensorflow is buggy when sharing variables on GPU
-    device = '/job:ps/task:0/CPU:0'
+    device_sync = '/job:ps/task:0/CPU:0'
+    device_train = '/job:ps/task:0/{}:0'.format(Config.device)
 
     max_eps = 5000  # max episodes
     train_q_capacity = Config.total_tpg_num_train  # max capacity of train_q
-    default_batch_size = 32
+    default_batch_size = Config.batch_size
 
     learn_rate = 0.001
     reg_lambda = 1e-4
@@ -48,6 +51,7 @@ class DaggerLeader(object):
 
         # original state space and action space
         self.state_dim = Policy.state_dim
+        self.label_dim = Policy.label_dim
         self.action_cnt = Policy.action_cnt
         # augmented state space: state and previous action (one-hot vector)
         self.aug_state_dim = self.state_dim + self.action_cnt
@@ -60,7 +64,7 @@ class DaggerLeader(object):
         self.curr_eps = 0  # current episode, should equal self.eps_cnt
         self.summary_step = 0
 
-        self.shuffle_cwnd = Config.total_tpg_num_train * 32
+        self.shuffle_cwnd = Config.total_tpg_num_train * Config.shuffle_window
 
         # logger
         self.logdir = path.join(context.base_dir, 'dagger', 'logs',
@@ -72,8 +76,13 @@ class DaggerLeader(object):
 
 # private
     def __create_tf_graph(self):
+        # create trainable variables on the PS server
+        with tf.device(DaggerLeader.device_train):
+            with tf.variable_scope('local'):
+                self.local_model = DaggerLSTM(state_dim=self.aug_state_dim,
+                                              action_cnt=self.action_cnt)
         # create shared variables on the PS server
-        with tf.device(DaggerLeader.device):
+        with tf.device(DaggerLeader.device_sync):
             # create a global model on the PS server
             # DaggerLSTM requires a variable scope to collect trainable_vars
             with tf.variable_scope('global'):
@@ -89,10 +98,12 @@ class DaggerLeader(object):
             self.train_q = tf.FIFOQueue(
                 capacity=DaggerLeader.train_q_capacity,
                 dtypes=[tf.float32, tf.float32],
+                shapes=[[Policy.steps_per_episode, self.aug_state_dim],
+                        [Policy.steps_per_episode, self.label_dim]],
                 shared_name='train_q')  # shared_name is required for sharing
 
         # default initial state of LSTM
-        self.default_init_state = self.global_model.zero_init_state(
+        self.default_init_state = self.local_model.zero_init_state(
             DaggerLeader.default_batch_size)
 
         # op to increment eps_cnt
@@ -100,7 +111,7 @@ class DaggerLeader(object):
 
         # regularization loss
         reg_loss = 0.0
-        for var in self.global_model.trainable_vars:
+        for var in self.local_model.trainable_vars:
             reg_loss += tf.nn.l2_loss(var)
         reg_loss *= DaggerLeader.reg_lambda
 
@@ -111,12 +122,12 @@ class DaggerLeader(object):
         hard_ce_loss = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
                 labels=self.hard_targets,
-                logits=self.global_model.action_scores))
+                logits=self.local_model.action_scores))
 
         soft_ce_loss = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(
                 labels=self.soft_targets,
-                logits=self.global_model.action_scores))
+                logits=self.local_model.action_scores))
 
         ce_loss = (1.0 - Config.rho) * hard_ce_loss + Config.rho * soft_ce_loss
 
@@ -126,6 +137,11 @@ class DaggerLeader(object):
         # op to train / optimize
         optimizer = tf.train.AdamOptimizer(DaggerLeader.learn_rate)
         self.train_op = optimizer.minimize(self.total_loss)
+
+        # op to synchronize the global model with the local model
+        local_vars = self.local_model.trainable_vars
+        global_vars = self.global_model.trainable_vars
+        self.sync_op = tf.group(*[v1.assign(v2) for v1, v2 in zip(global_vars, local_vars)])
 
         # op to summary variables that can be displayed in Tensorboard
         tf.summary.scalar('reg_loss', reg_loss)
@@ -149,19 +165,23 @@ class DaggerLeader(object):
                 self.logdir, 'checkpoint-{}'.format(checkpoint))
 
         # save parameters to parameter server
-        saver = tf.train.Saver(self.global_model.trainable_vars)
+        saver = tf.train.Saver(self.local_model.trainable_vars)
         saver.save(self.sess, model_path)
-        sys.stderr.write(
-            '\nModel saved to param. server at {}\n'.format(model_path))
+        sys.stdout.write(
+            'model saved to param server at {}\n'.format(model_path))
 
     def __wait_for_workers(self):
+        estimated_time = (DaggerLeader.train_q_capacity * Policy.steps_per_episode
+                          * Policy.min_step_len / 1000.0 / len(self.worker_tasks))
+        time.sleep(estimated_time)
+
         while True:
             train_q_size = self.sess.run(self.train_q.size())
 
             if train_q_size == DaggerLeader.train_q_capacity:
                 return
             else:
-                time.sleep(0.5)
+                time.sleep(10)
 
     def __get_soft_target(self, curr_cwnds, best_cwnds):
         soft_targets = np.zeros([len(curr_cwnds), self.action_cnt], np.float32)
@@ -173,9 +193,7 @@ class DaggerLeader(object):
             # best_cwnd and (current_cwnd op action)
             soft_cwnds = []
             for op, val in Policy.action_mapping:
-                soft_cwnds.append(max(float(Policy.min_cwnd),
-                                  min(float(Policy.max_cwnd),
-                                  op(curr_cwnd, val))))
+                soft_cwnds.append(min_x_max(Policy.min_cwnd, op(curr_cwnd, val), Policy.max_cwnd))
             action_distance = -np.abs(np.array(soft_cwnds) - best_cwnd)
 
             # transform to Gaussian distribution
@@ -189,22 +207,22 @@ class DaggerLeader(object):
         return soft_targets
 
     def __dequeue_train_q(self):
-        while self.sess.run(self.train_q.size()) > 0:
-            data = self.sess.run(self.train_q.dequeue())
-            if len(data[0]) != Policy.steps_per_episode or len(data[1]) != Policy.steps_per_episode:
-                sys.stderr.write('invalid data structure in train queue, state size {}, action size {}\n'
-                                 .format(len(data[0]), len(data[1])))
-                continue
-            aug_state = data[0]
-            curr_cwnd, best_cwnd, best_action = np.array(data[1]).T
+        aug_states, aug_labels = self.sess.run(self.train_q.dequeue_many(DaggerLeader.train_q_capacity))
+        for i in xrange(DaggerLeader.train_q_capacity):
+            states = aug_states[i]
+            labels = aug_labels[i]
 
-            self.aggregated_states.append(aug_state)
+            if math.isinf(states[0][0]):
+                continue
+
+            curr_cwnd, best_cwnd, best_action = np.array(labels).T
+
+            self.aggregated_states.append(states)
             self.aggregated_actions.append(best_action)
             self.aggregated_soft_targets.append(
                 self.__get_soft_target(curr_cwnd, best_cwnd))
 
     def __train(self):
-
         # data shuffle
         aggregated_data = zip(self.aggregated_states[-1*self.shuffle_cwnd:],
                               self.aggregated_actions[-1*self.shuffle_cwnd:],
@@ -217,7 +235,7 @@ class DaggerLeader(object):
 
         # set len of init state equal to batch_size
         if batch_size != self.default_batch_size:
-            self.init_state = self.global_model.zero_init_state(batch_size)
+            self.init_state = self.local_model.zero_init_state(batch_size)
         else:
             self.init_state = self.default_init_state
 
@@ -235,10 +253,10 @@ class DaggerLeader(object):
 
                 ops_to_run = [self.train_op, self.total_loss, self.summary_op]
                 train_ret, loss, summary = self.sess.run(ops_to_run, feed_dict={
-                    self.global_model.input: batch_states,
+                    self.local_model.input: batch_states,
                     self.soft_targets: batch_soft_targets,
                     self.hard_targets: batch_actions,
-                    self.global_model.state_in: self.init_state})
+                    self.local_model.state_in: self.init_state})
 
                 mean_loss += loss
                 max_loss = max(loss, max_loss)
@@ -248,24 +266,43 @@ class DaggerLeader(object):
 
             elapsed = (timestamp_ms() - start_ts) / 1000.0
             mean_loss /= num_batches
-            sys.stderr.write('--- epoch %d: max loss %.4f, mean loss %.4f, time cost %.4f\n' %
+            sys.stdout.write('--- epoch %d: max loss %.4f, mean loss %.4f, time cost %.4f\n' %
                              (curr_epoch, max_loss, mean_loss, elapsed))
+            sys.stdout.flush()
 
 # public
     def run(self):
         while self.curr_eps < DaggerLeader.max_eps:
             self.curr_eps += 1
+
+            # wait for gRPC established and sync
+            while len(self.sess.run(tf.report_uninitialized_variables())) > 0:
+                time.sleep(1.0)
+
             # increment self.eps_cnt to signal workers to start
             self.sess.run(self.increment_eps_cnt)
 
+            sys.stdout.write('[Leader {}, Eps {}]: start waiting for worker\n'
+                             .format(self.server.server_def.task_index, self.curr_eps))
+            sys.stdout.flush()
             # wait until having collected data from all workers
             self.__wait_for_workers()
 
             # dequeue collected data from train_q
             self.__dequeue_train_q()
 
+            sys.stdout.write('[Leader {}, Eps {}]: start to train\n'
+                             .format(self.server.server_def.task_index, self.curr_eps))
+            sys.stdout.flush()
             # train
             self.__train()
+
+            # copy model para from local model to global model
+            self.sess.run(self.sync_op)
+
+            sys.stdout.write('[Leader {}, Eps {}]: finished training\n\n'
+                             .format(self.server.server_def.task_index, self.curr_eps))
+            sys.stdout.flush()
 
             # save model every 'checkpoint_eps' episodes
             if self.curr_eps % self.checkpoint_eps == 0:

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
@@ -226,25 +228,35 @@ class Config(object):
 
     # lstm model
     lstm_layer = int(cfg.get('global', 'lstm_layer'))
-    lstm_dim = int(cfg.get('global', 'lstm_dim'))
+    lstm_units = int(cfg.get('global', 'lstm_units'))
+
+    # device for train
+    device = cfg.get('global', 'device')
+    batch_size = int(cfg.get('global', 'batch_size'))
 
     # model input state index
     state_idx = int(cfg.get('global', 'state_idx'))
     # model input dim number
     state_dim = int(cfg.get('global', 'state_dim'))
-    state_history = int(cfg.get('global', 'state_history'))
+    state_his = int(cfg.get('global', 'state_his'))
+
+    # oracle decision boundary
+    oracle_his = int(cfg.get('global', 'oracle_his'))
+
+    # action frequency
+    action_frequency = float(cfg.get('global', 'action_frequency'))
 
     # friendliness for CC expert algorithm
     fri = float(cfg.get('global', 'fri'))
     # weight for hard_target and soft_target
     rho = float(cfg.get('global', 'rho'))
+    # shuffle window size
+    shuffle_window = int(cfg.get('global', 'shuffle_window'))
 
-    # whether launch perf server and client to get measurement data
-    measurement_s = cfg.get('global', 'measurement')
-    if measurement_s == 'True':
-        measurement = True
-    else:
-        measurement = False
+    # whether launch perf server and client in test mode
+    perf = ast.literal_eval(cfg.get('global', 'measurement'))
+
+    # sender run_time in test mode
     run_time = int(cfg.get('global', 'run_time'))
 
     # env (mininet) parameter set and traffic pattern for train mode
@@ -258,6 +270,7 @@ class Config(object):
 
             env_param = ast.literal_eval(cfg.get('env', env_name))
             tpg_param = ast.literal_eval(cfg.get('generator', tpg_name))
+
             for idx, gen_name in enumerate(tpg_param):
                 try:
                     gen_param = ast.literal_eval(cfg.get('generator', gen_name))

@@ -15,11 +15,11 @@
 #     limitations under the License.
 
 
-import sys
 import argparse
+import sys
 from os import path
-from subprocess_wrappers import check_call, Popen
-from helpers import ssh_cmd
+
+from subprocess_wrappers import Popen, check_call
 
 
 def setup_local(args):

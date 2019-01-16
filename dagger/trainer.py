@@ -15,11 +15,10 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-
 import argparse
 import sys
 
-import context
+import context  # noqa # pylint: disable=unused-import
 import tensorflow as tf
 from dagger_leader import DaggerLeader
 from dagger_worker import DaggerWorker

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
@@ -13,17 +15,16 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-
 import datetime
 import socket
 import subprocess
 import sys
 import threading
 
-import context
+import context  # noqa # pylint: disable=unused-import
 from helpers.utils import min_x_max
 from message import Message
-from oracle import AggressiveBDP, MoreAggressiveBDP
+from oracle import AggressiveBDP, MoreAggressiveBDP  # noqa # pylint: disable=unused-import
 from policy import Policy
 
 
@@ -83,8 +84,8 @@ class DeviceQdisc():
 
         # transfer mininet queue size to switch queue size since origin includes the delay of netem
         self.MAX_QUEUE_SIZE = self.MAX_QUEUE_SIZE - self.BW_CAPACITY*(self.MIN_RTT/2)*1000/Message.total_size/8
-        print 'Emulator Configuration: max queue size(pkt), loss rate(%), min RTT(ms), bandwidth capacity(Mbps)'
-        print self.MAX_QUEUE_SIZE, self.LOSS_RATE, self.MIN_RTT, self.BW_CAPACITY
+        # print('Emulator Configuration: max queue size(pkt), loss rate(%), min RTT(ms), bandwidth capacity(Mbps)')
+        # print(self.MAX_QUEUE_SIZE, self.LOSS_RATE, self.MIN_RTT, self.BW_CAPACITY)
 
     def get_curr_state(self, flag):
         _record_time = datetime.datetime.now()
@@ -206,6 +207,7 @@ class DeviceIfconfig():
 
         return tx_rate
 
+
 class ExpertServer():
     """ server for expert, call oracle to get best cwnd """
 
@@ -240,7 +242,8 @@ class ExpertServer():
             sys.stderr.write('mininet does not start')
             return
         try:
-            throughput_tg = self.dev_traffic_generator.get_tx_rate(flag)
+            throughput_tg = self.dev_traffic_generator.get_rx_rate(flag)  # for s1-eth2
+            # throughput_tg = self.dev_traffic_generator.get_tx_rate(flag)  # for s3-eth2
         except subprocess.CalledProcessError:
             sys.stderr.write('ifconfig error')
             return
@@ -272,10 +275,10 @@ if __name__ == '__main__':
     s.bind(address)
     s.listen(5)
 
-    print 'expert server is listenning'
+    sys.stderr.write('expert server is listening\n')
 
-    #expert = ExpertServer('s1-eth1', 's1-eth2')
-    expert = ExpertServer('s1-eth1', 's3-eth2')
+    expert = ExpertServer('s1-eth1', 's1-eth2')
+    # expert = ExpertServer('s1-eth1', 's3-eth2')
     cwnd = 0
     running = 0
 
@@ -287,7 +290,7 @@ if __name__ == '__main__':
 
     while True:
         if cal_thread.isAlive() is not True:
-            print 'start new thread'
+            sys.stderr.write('start new thread\n')
             cal_thread = threading.Thread(target=thread_fun)
             cal_thread.start()
         ra = ss.recv(1024)

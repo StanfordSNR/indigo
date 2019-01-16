@@ -24,7 +24,7 @@ import subprocess
 import sys
 import time
 
-import context
+import context  # noqa # pylint: disable=unused-import
 import matplotlib.pyplot as plt
 import numpy as np
 from dagger.message import Message
@@ -57,8 +57,8 @@ class Function(object):
             self.value_bins.append(v_bps)
 
     def validate_points(self, points):
-        if points[0] != points[-1]:
-            sys.exit('The first point must be same with the last point')
+        # if points[0] != points[-1]:
+        #     sys.exit('The first point must be same with the last point')
 
         if len(points) < 2:
             sys.exit('The number of points defining a function must be >= 2')

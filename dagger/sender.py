@@ -15,22 +15,22 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-
-import sys
+import argparse
 import select
 import socket
-import argparse
+import sys
+from collections import deque
+from multiprocessing import Pipe, Process
 from os import path
+
+import context
 import numpy as np
 import tensorflow as tf
-from models import DaggerLSTM
-from multiprocessing import Process, Pipe
-
-from policy import Policy
+from helpers.utils import (ALL_FLAGS, ERR_FLAGS, READ_ERR_FLAGS, READ_FLAGS,
+                           WRITE_FLAGS, one_hot, timestamp_ms)
 from message import Message
-import context
-from helpers.utils import (READ_FLAGS, WRITE_FLAGS, ERR_FLAGS,
-                           READ_ERR_FLAGS, ALL_FLAGS, timestamp_ms, one_hot)
+from models import DaggerLSTM
+from policy import Policy
 
 
 class Sender(object):
@@ -69,6 +69,19 @@ class Sender(object):
     def __window_is_open(self):
         return self.seq_num - self.next_ack < int(self.policy.cwnd)
 
+    def simple_handshake(self):
+        self.sock.setblocking(1)
+        self.sock.settimeout(0.5)
+        msg = ''
+        while msg != 'Hello':
+            self.sock.sendto('Hello', self.peer_addr)
+            try:
+                msg, addr = self.sock.recvfrom(1500)
+            except socket.timeout:
+                continue
+
+        self.sock.setblocking(0)
+
     def __send(self):
         msg = Message(self.seq_num, timestamp_ms(), self.policy.bytes_sent,
                       self.policy.ack_recv_ts, self.policy.bytes_acked)
@@ -88,26 +101,37 @@ class Sender(object):
     def __msend(self, num):
         if num == 0:
             return
-        data_array = []
+        msg_array = []
+        ts = timestamp_ms()
+        msg_template = Message(self.seq_num, ts, self.policy.bytes_sent, self.policy.ack_recv_ts, self.policy.bytes_acked)
         for i in xrange(num):
-            data = (self.seq_num, timestamp_ms(), self.policy.bytes_sent, self.policy.ack_recv_ts, self.policy.bytes_acked)
-            data_array.append(data)
+            msg_array.append(msg_template.header_to_string())
+
             self.seq_num += 1
             self.policy.data_sent()
-        self.send_queue_in.send(data_array)
+
+            msg_template.seq_num = self.seq_num
+            msg_template.data_sent = self.policy.bytes_sent
+        self.send_queue_in.send(msg_array)
 
     def __send_process_func(self):
+        _sending_queue = deque()
         while True:
-            data_array = self.send_queue_out.recv()
-            for seq_num, send_ts, bytes_sent, ack_recv_ts, bytes_acked in data_array:
-                msg = Message(seq_num, send_ts, bytes_sent, ack_recv_ts, bytes_acked).to_data()
-                ret = -1
-                while ret == -1:
-                    try:
-                        ret = self.sock.sendto(msg, self.peer_addr)
-                    except socket.error:
-                        ret = -1
-                        pass
+            if self.send_queue_out.poll(0):
+                msg_array = self.send_queue_out.recv()
+                _sending_queue.extend(msg_array)
+            pre_ts = timestamp_ms()
+            while _sending_queue and timestamp_ms() - pre_ts < 10:  # timeout = 10ms
+                msg_header = _sending_queue.popleft()
+                msg = msg_header + Message.dummy_payload
+                try:
+                    ret = self.sock.sendto(msg, self.peer_addr)
+                    if ret == -1:
+                        _sending_queue.appendleft(msg_header)
+                        break
+                except socket.error:
+                    _sending_queue.appendleft(msg_header)
+                    break
 
     def __pacing_send(self):
         c = self.policy.pacing_pkt_number(self.policy.cwnd - (self.seq_num - self.next_ack))
@@ -148,9 +172,9 @@ class Sender(object):
         return 0
 
     def __run_timeout(self):
-        if (self.run_time == None or self.policy.train):
+        if (self.run_time is None or self.policy.train):
             return False
-            
+
         if timestamp_ms() - self.start_time > self.run_time:
             return True
         else:
@@ -166,8 +190,8 @@ class Sender(object):
     def set_policy(self, policy):
         self.policy = policy
 
-    def set_run_time(self,time):
-        self.run_time = time # ms
+    def set_run_time(self, time):
+        self.run_time = time  # ms
 
     def run(self):
         if not self.policy:
@@ -175,6 +199,8 @@ class Sender(object):
 
         self.start_time = timestamp_ms()
         self.send_process.start()
+        self.simple_handshake()
+
         while not self.policy.stop_sender and not self.__run_timeout():
             if not self.__check_sender_health():
                 sys.stderr.write('No send or recv packets for 10 senconds. Exited.\n')
@@ -193,8 +219,7 @@ class Sender(object):
                     sys.exit('[sender] error returned from poller')
 
                 if flag & READ_FLAGS:
-                    while self.__recv() == 0:
-                        pass
+                    self.__recv()
 
                 if flag & WRITE_FLAGS:
                     if self.__window_is_open():
@@ -212,7 +237,7 @@ class LSTMExecuter(object):
         self.action_cnt = action_cnt
         self.prev_action = action_cnt - 1
 
-        with tf.variable_scope('global'):
+        with tf.variable_scope('local'):
             self.model = DaggerLSTM(
                 state_dim=self.aug_state_dim, action_cnt=action_cnt)
 
@@ -275,14 +300,14 @@ def main():
     sender = None
     try:
         # dummy policy
-        #policy = Policy(False)
-        #policy.set_sample_action(lambda state: 2)
+        # policy = Policy(False)
+        # policy.set_sample_action(lambda state: 2)
 
         # normal policy
         policy = Policy(False)
         lstm = LSTMExecuter(state_dim=Policy.state_dim,
-                             action_cnt=Policy.action_cnt,
-                             restore_vars=args.model)
+                            action_cnt=Policy.action_cnt,
+                            restore_vars=args.model)
         policy.set_sample_action(lstm.sample_action)
 
         sender = Sender(args.ip, args.port)

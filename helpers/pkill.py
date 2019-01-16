@@ -19,7 +19,7 @@
 import sys
 import signal
 
-import context
+import context  # noqa # pylint: disable=unused-import
 from helpers.subprocess_wrappers import Popen
 
 

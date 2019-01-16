@@ -15,7 +15,6 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-
 import argparse
 import os
 import signal
@@ -23,7 +22,7 @@ import sys
 from os import path
 from subprocess import Popen
 
-import context
+import context  # noqa # pylint: disable=unused-import
 
 
 def run(args):

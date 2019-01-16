@@ -14,37 +14,45 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-
-import os
 import argparse
-
-import tensorflow as tf
 from subprocess import call
 
-import context
-from dagger.sender import LSTMExecuter, Sender
+import context  # noqa # pylint: disable=unused-import
+import numpy as np  # noqa # pylint: disable=unused-import
+import tensorflow as tf
+from dagger.perf_client import PerfClient
 from dagger.policy import Policy
+from dagger.sender import LSTMExecuter
 from env.mininet_env import MininetEnv
 from helpers.utils import Config
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('model_path', action='store')
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
-    
-    env = MininetEnv(Config.total_env_set_test, Config.total_tpg_set_test, False)
 
+    env = MininetEnv(Config.total_env_set_test, Config.total_tpg_set_test, False)
+    env.set_perf_client(PerfClient())
     try:
         while not env.is_all_tasks_done():
-            
+
             lstm = LSTMExecuter(state_dim=Policy.state_dim,
-                             action_cnt=Policy.action_cnt,
-                             restore_vars=args.model_path)
+                                action_cnt=Policy.action_cnt,
+                                restore_vars=args.model_path)
             env.set_sample_action(lstm.sample_action)
 
             if env.reset() != -1:
                 env.rollout()
+            env.cleanup()
+
+            # if env.sender.policy.perf_client:
+            #     print 'Avg RTT: {}, 95th RTT: {}'.format(
+            #         np.mean(env.sender.policy.perf_client.rtts),
+            #         np.percentile(env.sender.policy.perf_client.rtts, 95))
+            #     print 'Sent {} packts'.format(env.sender.seq_num)
+            #     env.sender.policy.perf_client.rtts = []
 
             tf.reset_default_graph()
     except KeyboardInterrupt:

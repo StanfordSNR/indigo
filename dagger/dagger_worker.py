@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Yiyang Shao, Wei Wang (Huawei Technologies)
 #
@@ -13,11 +15,11 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-
 import sys
 import time
+from collections import Iterable
 
-import context
+import context  # noqa # pylint: disable=unused-import
 import numpy as np
 import tensorflow as tf
 from dagger_leader import DaggerLeader
@@ -36,6 +38,7 @@ class DaggerWorker(object):
 
         # original state space and action space
         self.state_dim = Policy.state_dim
+        self.label_dim = Policy.label_dim
         self.action_cnt = Policy.action_cnt
         # augmented state space: state and previous action (one-hot vector)
         self.aug_state_dim = self.state_dim + self.action_cnt
@@ -55,12 +58,11 @@ class DaggerWorker(object):
 # private
     def __create_tf_graph(self):
         # access shared variables on the PS server
-        with tf.device(DaggerLeader.device):
+        with tf.device(DaggerLeader.device_sync):
             # access the global model on the PS server
             with tf.variable_scope('global'):
                 self.global_model = DaggerLSTM(state_dim=self.aug_state_dim,
                                                action_cnt=self.action_cnt)
-
             # access the shared episode counter used for synchronization
             self.eps_cnt = tf.get_variable(
                 'eps_cnt', [], tf.int32,
@@ -70,6 +72,8 @@ class DaggerWorker(object):
             self.train_q = tf.FIFOQueue(
                 capacity=DaggerLeader.train_q_capacity,
                 dtypes=[tf.float32, tf.float32],
+                shapes=[[Policy.steps_per_episode, self.aug_state_dim],
+                        [Policy.steps_per_episode, self.label_dim]],
                 shared_name='train_q')  # shared_name is required for sharing
 
         # create local variables on this worker
@@ -84,15 +88,10 @@ class DaggerWorker(object):
         # initial state of LSTM
         self.init_state = self.local_model.zero_init_state(1)
 
+        self.state_data = tf.placeholder(tf.float32, shape=(None, self.aug_state_dim))
+        self.action_data = tf.placeholder(tf.float32, shape=(None, self.label_dim))
         # op to enqueue training data
-        self.state_data = tf.placeholder(
-            tf.float32, shape=(None, self.aug_state_dim))
-
-        # [curr_cwnd, expert_cwnd, expert_action]
-        self.action_data = tf.placeholder(tf.float32, shape=(None, 3))
-
-        self.enqueue_train_q = self.train_q.enqueue(
-            [self.state_data, self.action_data])
+        self.enqueue_train_q = self.train_q.enqueue([self.state_data, self.action_data])
 
         # op to synchronize the local model with the global model
         local_vars = self.local_model.trainable_vars
@@ -119,26 +118,39 @@ class DaggerWorker(object):
         self.prev_action = self.action_cnt - 1
         self.lstm_state = self.init_state
 
+        mininet = self.env.env_set[self.env.env_set_idx]
+        generator = self.env.tpg_set[self.env.tpg_set_idx_env][self.env.tpg_set_idx_gen]
+        generator = generator if type(generator) is str else generator[0]
+        sys.stdout.write('[Worker {}, Eps {}]: mininet({:0>2d}/{:0>2d}): {}\n'
+                         .format(self.task_idx, self.curr_eps, self.env.env_set_idx+1, len(self.env.env_set), mininet))
+        sys.stdout.write('[Worker {}, Eps {}]: traffic({:0>2d}/{:0>2d}): {}\n'
+                         .format(self.task_idx, self.curr_eps,
+                                 self.__get_flatten_len(self.env.tpg_set[:self.env.tpg_set_idx_env], 2)+self.env.tpg_set_idx_gen+1,
+                                 self.__get_flatten_len(self.env.tpg_set, 2), generator))
+        sys.stdout.flush()
+
         if self.env.reset() != -1:
             self.env.rollout()  # will populate self.state_buf and self.action_buf
 
+        self.env.cleanup()
+
     def __enqueue_data(self):
         # handle the case of no valid data
-        if len(self.state_buf) == 0 or len(self.action_buf) == 0:
+        if len(self.state_buf) != Policy.steps_per_episode or len(self.action_buf) != Policy.steps_per_episode:
             # feed tensor with fake data
-            self.state_buf = [[0.] * self.aug_state_dim]
-            self.action_buf = [[0.] * 3]
+            self.state_buf = [[float('-inf')] * self.aug_state_dim] * Policy.steps_per_episode
+            self.action_buf = [[float('-inf')] * self.label_dim] * Policy.steps_per_episode
 
         # enqueue training data into the training queue
         self.sess.run(self.enqueue_train_q, feed_dict={
             self.state_data: self.state_buf,
             self.action_data: self.action_buf})
 
-        queue_size = self.sess.run(self.train_q.size())
-        sys.stderr.write(
-            '[Worker {}, Eps {}]: finished queueing data. '
-            'queue size now {}\n'.format
-            (self.task_idx, self.curr_eps, queue_size))
+        # queue_size = self.sess.run(self.train_q.size())
+        # sys.stdout.write(
+        #     '[Worker {}, Eps {}]: finished queueing data, '
+        #     'current queue size is {}\n'.format
+        #     (self.task_idx, self.curr_eps, queue_size))
 
 # public
     def sample_action(self, state):
@@ -174,16 +186,59 @@ class DaggerWorker(object):
         self.prev_action = action
         return action
 
+    def recursive_flatten(self, iterator):
+        ret = []
+
+        for item in iterator:
+            if isinstance(item, Iterable):
+                ret.extend(self.recursive_flatten(item))
+            else:
+                ret.append(item)
+
+        return ret
+
+    def __get_flatten_len(self, target, axis):
+        flatten_len = 0
+
+        if not isinstance(target, Iterable):
+            return 1
+        else:
+            if axis == 1:
+                return len(target)
+            else:
+                for item in target:
+                    flatten_len += self.__get_flatten_len(item, axis-1)
+
+        return flatten_len
+
+    def confirm_sync(self):
+        local_vars = self.local_model.trainable_vars
+        global_vars = self.global_model.trainable_vars
+
+        check_op = tf.tuple([tf.equal(v1, v2) for v1, v2 in zip(local_vars, global_vars)])
+
+        ret = self.recursive_flatten(self.sess.run(check_op))
+
+        if not reduce(lambda x, y: x and y, ret):
+            sys.stdout.write('[Worker {}, Eps {}]: synchronization success\n'
+                             .format(self.task_idx, self.curr_eps))
+        else:
+            sys.stdout.write('[Worker {}, Eps {}]: synchronization failed\n'
+                             .format(self.task_idx, self.curr_eps))
+
     def run(self):
         while self.curr_eps < DaggerLeader.max_eps:
             # start a new episode only if the leader increments eps_cnt
             self.__wait_for_leader()
             self.curr_eps += 1
 
+            if self.curr_eps > 1:
+                self.confirm_sync()
+
             # reset local model to the global model
             self.sess.run(self.sync_op)
 
-            sys.stderr.write('[Worker {}, Eps {}] rollout started'
+            sys.stdout.write('[Worker {}, Eps {}]: rollout started\n'
                              .format(self.task_idx, self.curr_eps))
 
             while (not self.env.is_all_tasks_done()):
@@ -191,8 +246,9 @@ class DaggerWorker(object):
                 self.__rollout()
                 self.__enqueue_data()
 
-            sys.stderr.write('[Worker {}, Eps {}] rollout ended\n'
+            sys.stdout.write('[Worker {}, Eps {}]: rollout ended\n'
                              .format(self.task_idx, self.curr_eps))
+            sys.stdout.flush()
 
     def cleanup(self):
         self.env.cleanup()

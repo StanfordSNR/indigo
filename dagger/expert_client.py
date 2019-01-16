@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
@@ -13,8 +15,8 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-import sys
 import socket
+import sys
 
 from policy import Policy
 
@@ -98,26 +100,3 @@ class ExpertClient(object):
         action = get_best_action(Policy.action_mapping, cwnd, self.best_cwnd)
 
         return action
-
-
-class PerfClient(object):
-
-    def __init__(self):
-        self.socket = None
-
-    def cleanup(self):
-        if self.socket:
-            self.socket.close()
-
-    def connect_perf_server(self, port):
-        self.address = ('0.0.0.0', port)
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            self.socket.connect(self.address)
-        except socket.error:
-            sys.stderr.write('connect to perf server error\n')
-            return -1
-        return 0
-
-    def upload_cwnd(self, cwnd):
-        self.socket.send(str(cwnd))

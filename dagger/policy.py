@@ -14,17 +14,17 @@
 #     limitations under the License.
 
 
+import collections
 import datetime
 import sys
-import collections
 
-import context
+import context  # noqa # pylint: disable=unused-import
 from helpers.utils import Config, format_actions, timestamp_ms, update_ewma
 from message import Message
 
 
 class Policy(object):
-    min_cwnd = 10.0
+    min_cwnd = 2.0
     max_cwnd = 25000.0
 
     max_rtt = 300.0  # ms
@@ -37,11 +37,12 @@ class Policy(object):
 
     # state = [rtt_norm, delay_norm, send_rate_norm, delivery_rate_norm,
     #          loss_rate_norm, cwnd_norm]
-    state_dim = Config.state_dim * Config.state_history
-    action_list = ["/2.0", "-10.0", "+0.0", "+10.0", "*2.0"]
+    state_dim = Config.state_dim * Config.state_his
+    label_dim = 3  # len([cwnd, expert_cwnd, expert_action])
+    action_list = ["/2.0", "/1.05", "+0.0", "*1.05", "*2.0"]
     action_cnt = len(action_list)
     action_mapping = format_actions(action_list)
-    action_frequency = 4.0  # sample action times per rtt
+    action_frequency = Config.action_frequency
 
     delay_ack = True
     delay_ack_count = 2
@@ -71,6 +72,7 @@ class Policy(object):
 
         # state related (persistent across steps)
         self.min_rtt = sys.maxint
+        self.max_rtt = 0
         self.min_delay_ewma = float('inf')
         self.max_delay_ewma = 0.0
         self.min_send_rate_ewma = float('inf')
@@ -95,11 +97,19 @@ class Policy(object):
         self.interval = 500.0  # us
         self.pre_sent_ts = None
 
+        # measurement client n in test mode
+        self.perf_client = None
+
+        # rtt re-update
+        self.rtt_reupdate_interval = 50  # RTT_ewma
+        self.rtt_reupdate_start_ts = None
+
 # private
     def __update_state(self, ack):
         # update RTT and queuing delay (in ms)
         rtt = max(1, self.ack_recv_ts - ack.send_ts)
         self.min_rtt = min(self.min_rtt, rtt)
+        self.max_rtt = max(self.max_rtt, rtt)
         self.rtt_ewma = update_ewma(self.rtt_ewma, rtt)
 
         queuing_delay = rtt - self.min_rtt
@@ -172,20 +182,26 @@ class Policy(object):
             return
         # normalization
         rtt_norm = self.rtt_ewma / Policy.max_rtt
-        delay_norm = self.delay_ewma / Policy.max_delay
+        delay_norm = self.delay_ewma / Policy.max_rtt
+        max_rtt_norm = self.max_rtt / Policy.max_rtt
+        min_rtt_norm = self.min_rtt / Policy.max_rtt
         send_rate_norm = self.send_rate_ewma / Policy.max_send_rate
         delivery_rate_norm = self.delivery_rate_ewma / Policy.max_delivery_rate
         cwnd_norm = self.cwnd / Policy.max_cwnd
         loss_rate_norm = self.__cal_loss_rate()  # loss is already in [0, 1]
 
         # state -> action
-        state = [rtt_norm, delay_norm, send_rate_norm, delivery_rate_norm,
-                 loss_rate_norm, cwnd_norm]
+        state_array = [[rtt_norm, delay_norm, send_rate_norm, delivery_rate_norm,
+                        loss_rate_norm, cwnd_norm],
+                       [rtt_norm, delay_norm, max_rtt_norm, min_rtt_norm, send_rate_norm, delivery_rate_norm,
+                        loss_rate_norm, cwnd_norm]]
+        state = state_array[Config.state_idx]
 
+        # print state,self.min_rtt,self.max_rtt
         if len(self.history_state) == 0:
-            for i in xrange(Config.state_history):
+            for _ in xrange(Config.state_his):
                 self.history_state.append(state)
-        elif len(self.history_state) == Config.state_history:
+        elif len(self.history_state) == Config.state_his:
             self.history_state.popleft()
             self.history_state.append(state)
         h_state = []
@@ -208,14 +224,28 @@ class Policy(object):
                 self.__episode_ended()
 
     def __is_step_ended(self, duration):
-        # cwnd is updated every RTT in start phase, and min_rtt/action_frequency afterwards
-        if self.start_phase_cnt < self.start_phase_max:
-            threshold = max(self.min_rtt, Policy.min_step_len)
-            self.start_phase_cnt += 1
+        if self.train:
+            return duration >= Policy.min_step_len
         else:
-            threshold = max(self.min_rtt / Policy.action_frequency, Policy.min_step_len)
+            # cwnd is updated every RTT in start phase, and min_rtt/action_frequency afterwards
+            if self.start_phase_cnt < self.start_phase_max:
+                threshold = max(self.min_rtt, Policy.min_step_len)
+                self.start_phase_cnt += 1
+            else:
+                threshold = max(self.min_rtt / Policy.action_frequency, Policy.min_step_len)
 
-        return duration >= threshold
+            return duration >= threshold
+
+    def __re_update_rtt(self, curr_ts):
+        if self.rtt_reupdate_start_ts is None:
+            self.rtt_reupdate_start_ts = curr_ts
+            return
+
+        if curr_ts - self.rtt_reupdate_start_ts > self.rtt_reupdate_interval * self.min_rtt:
+            print curr_ts - self.rtt_reupdate_start_ts, 'Min RTT:', self.min_rtt, 'Max RTT:', self.max_rtt
+            self.rtt_reupdate_start_ts = curr_ts
+            self.min_rtt = sys.maxint
+            self.max_rtt = 0
 
 # public:
     def ack_received(self, ack):
@@ -233,8 +263,13 @@ class Policy(object):
 
         # check if the current step has ended
         if self.__is_step_ended(curr_ts - self.step_start_ts):
+            # if self.perf_client:
+            #     self.perf_client.collect_perf_data(self)
+
             self.step_start_ts = curr_ts
             self.__step_ended()
+
+        # self.__re_update_rtt(curr_ts)
 
     def data_sent(self):
         self.bytes_sent += Message.total_size
@@ -244,6 +279,9 @@ class Policy(object):
 
     def set_sample_action(self, sample_action):
         self.sample_action = sample_action
+
+    def set_perf_client(self, perf_client):
+        self.perf_client = perf_client
 
     def pacing_pkt_number(self, max_in_cwnd):
         # pacing control

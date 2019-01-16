@@ -1,10 +1,15 @@
+#!/usr/bin/env python
+
 import sys
 import socket
+
 
 class PerfClient(object):
 
     def __init__(self):
         self.socket = None
+
+        self.rtts = []
 
     def cleanup(self):
         if self.socket:
@@ -20,5 +25,10 @@ class PerfClient(object):
             return -1
         return 0
 
-    def upload_cwnd(self, cwnd):
-        self.socket.send(str(cwnd))
+    def collect_perf_data(self, policy):
+
+        # collect data from policy
+        self.rtts.append(policy.rtt_ewma)
+
+        # send perf data to perf client
+        # self.socket.send(perf_data)

@@ -14,21 +14,21 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-
 import ast
 import ConfigParser
 import datetime
 import logging
-import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
 import os
-import context
 import socket
 import subprocess
 import sys
 import threading
 from multiprocessing import Process, Queue
+
+import context
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 from env.sender import Sender
 
 matplotlib.rcParams["axes.unicode_minus"] = False
@@ -385,7 +385,7 @@ if __name__ == '__main__':
     s.bind(address)
     s.listen(5)
 
-    sys.stderr.write('expert server is listenning')
+    sys.stderr.write('perf server is listenning')
 
     # thread.start_new_thread(thread_fun, (1,))
     cal_thread = threading.Thread(target=thread_fun)

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2018 Francis Y. Yan, Jestin Ma
 # Copyright 2018 Huawei Technologies
 #
@@ -13,13 +15,12 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-
+import context  # noqa # pylint: disable=unused-import
 import numpy as np
 import tensorflow as tf
+from helpers.utils import Config
 from tensorflow.contrib import layers, rnn
 
-import context
-from helpers.utils import Config
 
 class DaggerNetwork(object):
     def __init__(self, state_dim, action_cnt):
@@ -39,16 +40,16 @@ class DaggerLSTM(object):
         # self.input: [batch_size, max_time, state_dim]
         self.input = tf.placeholder(tf.float32, [None, None, state_dim])
 
-        self.num_layers = Config.lstm_layer
-        self.lstm_dim = Config.lstm_dim
-        stacked_lstm = rnn.MultiRNNCell([rnn.BasicLSTMCell(self.lstm_dim)
-                                         for _ in xrange(self.num_layers)])
+        self.layer_num = Config.lstm_layer
+        self.units_num = Config.lstm_units
+        stacked_lstm = rnn.MultiRNNCell([rnn.BasicLSTMCell(self.units_num)
+                                         for _ in xrange(self.layer_num)])
 
         self.state_in = []
         state_tuple_in = []
-        for _ in xrange(self.num_layers):
-            c_in = tf.placeholder(tf.float32, [None, self.lstm_dim])
-            h_in = tf.placeholder(tf.float32, [None, self.lstm_dim])
+        for _ in xrange(self.layer_num):
+            c_in = tf.placeholder(tf.float32, [None, self.units_num])
+            h_in = tf.placeholder(tf.float32, [None, self.units_num])
             self.state_in.append((c_in, h_in))
             state_tuple_in.append(rnn.LSTMStateTuple(c_in, h_in))
 
@@ -78,9 +79,9 @@ class DaggerLSTM(object):
 
     def zero_init_state(self, batch_size):
         init_state = []
-        for _ in xrange(self.num_layers):
-            c_init = np.zeros([batch_size, self.lstm_dim], np.float32)
-            h_init = np.zeros([batch_size, self.lstm_dim], np.float32)
+        for _ in xrange(self.layer_num):
+            c_init = np.zeros([batch_size, self.units_num], np.float32)
+            h_init = np.zeros([batch_size, self.units_num], np.float32)
             init_state.append((c_init, h_init))
 
         return init_state

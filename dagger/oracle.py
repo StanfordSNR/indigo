@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2018 Wei Wang, Yiyang Shao (Huawei Technologies)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,11 +14,12 @@
 #     See the License for the specific language governing permissions and
 #     limitations under the License.
 
-from message import Message
-import context
-from helpers.utils import Config
-
 from collections import deque
+
+import context  # noqa # pylint: disable=unused-import
+from helpers.utils import Config
+from message import Message
+
 
 class Oracle(object):
     def __init__(self, net_config):
@@ -60,6 +63,7 @@ class AggressiveBDP(Oracle):
 
         return aggressive_bdp
 
+
 class MoreAggressiveBDP(Oracle):
 
     def __init__(self, net_config):
@@ -82,9 +86,10 @@ class MoreAggressiveBDP(Oracle):
         aggressive_bdp = std_bdp + (self.MAX_QUEUE_SIZE * q - self.MAX_QUEUE_SIZE * queueing_factor_bn)
 
         if len(self.bdp_q) == 0:
-            for i in xrange(Config.state_history):
+            for i in xrange(Config.oracle_his):
                 self.bdp_q.append(aggressive_bdp)
-        elif len(self.bdp_q) == Config.state_history:
+        else:
+            assert len(self.bdp_q) == Config.oracle_his
             self.bdp_q.popleft()
             self.bdp_q.append(aggressive_bdp)
 
