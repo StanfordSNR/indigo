@@ -232,8 +232,8 @@ class Policy(object):
                 threshold = max(self.min_rtt, Policy.min_step_len)
                 self.start_phase_cnt += 1
             else:
-                threshold = max(self.min_rtt / Policy.action_frequency, Policy.min_step_len)
-
+                #threshold = max(self.min_rtt / Policy.action_frequency, Policy.min_step_len)
+                threshold = Policy.min_step_len
             return duration >= threshold
 
     def __re_update_rtt(self, curr_ts):
